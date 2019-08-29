@@ -20,8 +20,10 @@
 #include "sql_cmd.h"
 #include "sql_string.h"
 #include "sql_alloc.h"
+#include <list>
 
 class THD;
+struct LEX;
 struct TABLE;
 typedef struct st_mem_root MEM_ROOT;
 
@@ -30,6 +32,7 @@ class FOREIGN_SERVER : public Sql_alloc
 public:
   char *server_name;
   long port;
+  long version;
   size_t server_name_length;
   char *db, *scheme, *username, *password, *socket, *owner, *host, *sport;
 
@@ -49,6 +52,20 @@ void servers_free(bool end=0);
 /* lookup functions */
 FOREIGN_SERVER *get_server_by_name(MEM_ROOT *mem, const char *server_name,
                                    FOREIGN_SERVER *server_buffer);
+
+ulong get_servers_count();
+ulong get_modify_server_version();
+ulong get_server_version_by_name(const char* server_name);
+int back_up_one_server(FOREIGN_SERVER* server);
+bool update_server_version(bool* version_updated);
+void get_deleted_servers();
+bool backup_server_cache();
+void delete_redundant_routings();
+
+void get_server_by_wrapper(std::list<FOREIGN_SERVER*>& server_list, MEM_ROOT* mem, const char* wrapper_name);
+bool tc_flush_routing(LEX *lex, ulong flush_type, bool is_force);
+int tc_check_and_repair_routing();
+void create_check_and_repaire_routing_thread();
 
 
 /**
@@ -256,6 +273,5 @@ public:
   */
   bool execute(THD *thd);
 };
-
 
 #endif /* SQL_SERVERS_INCLUDED */

@@ -44,6 +44,7 @@ This file contains the implementation of error and warnings related
 #include "sql_error.h"
 #include "sp_rcontext.h"
 #include "log.h"          // sql_print_warning
+#include "tc_sqlparse.h"
 
 using std::min;
 using std::max;
@@ -1100,4 +1101,142 @@ bool is_sqlstate_valid(const LEX_STRING *sqlstate)
   }
 
   return true;
+}
+
+
+bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESULT* exec_result)
+{
+  List<Item> field_list;
+  MEM_ROOT* mem_root = thd->mem_root;
+  SELECT_LEX* sel = thd->lex->select_lex;
+  SELECT_LEX_UNIT* unit = thd->lex->unit;
+  uint error_no = 0;
+  Protocol* protocol = thd->get_protocol();
+  DBUG_ENTER("tc_mysqld_show_result");
+
+  field_list.push_back(new Item_empty_string("Type", MYSQL_ERRMSG_SIZE));
+  field_list.push_back(new Item_empty_string("Host", MYSQL_ERRMSG_SIZE));
+  field_list.push_back(new Item_return_int("Code", 4, MYSQL_TYPE_LONG));
+  field_list.push_back(new Item_empty_string("Message", MYSQL_ERRMSG_SIZE));
+
+
+  if (thd->send_result_metadata(&field_list,
+    Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+    DBUG_RETURN(TRUE);
+
+  unit->set_limit(sel);
+
+
+  if (exec_result->result)
+  {/* error happened */
+    map<string, tc_exec_info>::iterator its;
+    for (its = exec_result->spider_result_info.begin(); its != exec_result->spider_result_info.end(); its++)
+    {
+      string ipport = its->first;
+      tc_exec_info exec_info = its->second;
+      const char* type = "tspider";
+      if (exec_info.err_code)
+      {
+        protocol->start_row();
+        protocol->store(type, strlen(type), system_charset_info);
+        protocol->store(ipport.c_str(), ipport.size(), system_charset_info);
+        protocol->store(exec_info.err_code);
+        protocol->store(exec_info.err_msg.c_str(), exec_info.err_msg.size(), system_charset_info);
+        if (protocol->end_row())
+          DBUG_RETURN(TRUE);
+      }
+
+    }
+  }
+
+  if (exec_result->result)
+  {/* error happened */
+    map<string, tc_exec_info>::iterator its;
+    for (its = exec_result->remote_result_info.begin(); its != exec_result->remote_result_info.end(); its++)
+    {
+      string ipport = its->first;
+      tc_exec_info exec_info = its->second;
+      const char* type = "data node";
+      if (exec_info.err_code)
+      {
+        protocol->start_row();
+        protocol->store(type, strlen(type), system_charset_info);
+        protocol->store(ipport.c_str(), ipport.size(), system_charset_info);
+        protocol->store(exec_info.err_code);
+        protocol->store(exec_info.err_msg.c_str(), exec_info.err_msg.size(), system_charset_info);
+        if (protocol->end_row())
+          DBUG_RETURN(TRUE);
+
+      }
+    }
+  }
+  my_eof(thd);
+  DBUG_RETURN(FALSE);
+}
+
+
+bool tc_process_all_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESULT* exec_result)
+{
+  string err_msg;
+  uint err_code = 0;
+  ostringstream  sstr;
+
+  if (exec_result->result)
+  {/* error happened */
+    map<string, tc_exec_info>::iterator its;
+    err_code = ER_TCADMIN_EXECUTE_ERROR;
+    string spider_err_msg_pre = "\nSpider Node Error:\n";
+    string remote_err_msg_pre = "Data Node Error:\n";
+    string spider_err_msg = "";
+    string remote_err_msg = "";
+    for (its = exec_result->spider_result_info.begin(); its != exec_result->spider_result_info.end(); its++)
+    {
+      string ipport = its->first;
+      tc_exec_info exec_info = its->second;
+      if (exec_info.err_code)
+      {
+        sstr.str("");
+        sstr << exec_info.err_code;
+        spider_err_msg = spider_err_msg + "Host," + ipport + ";  Error Code,";
+        spider_err_msg = spider_err_msg + sstr.str() + "; ";
+        spider_err_msg = spider_err_msg + "Error Message," + exec_info.err_msg.c_str();
+        spider_err_msg = spider_err_msg + "\n";
+      }
+    }
+
+    for (its = exec_result->remote_result_info.begin(); its != exec_result->remote_result_info.end(); its++)
+    {
+      string ipport = its->first;
+      tc_exec_info exec_info = its->second;
+      if (exec_info.err_code)
+      {
+        sstr.str("");
+        sstr << exec_info.err_code;
+        remote_err_msg = remote_err_msg + "Host," + ipport + ";  Error Code,";
+        remote_err_msg = remote_err_msg + sstr.str() + "; ";
+        remote_err_msg = remote_err_msg + "Error Message," + exec_info.err_msg.c_str();
+        remote_err_msg = remote_err_msg + "\n";
+      }
+    }
+
+    if (spider_err_msg.size() > 0)
+    {
+      spider_err_msg = spider_err_msg_pre + spider_err_msg;
+      if (remote_err_msg.size() == 0)
+      {
+        string tmp_msg(spider_err_msg.c_str(), spider_err_msg.size() - 1);
+        spider_err_msg = tmp_msg;
+      }
+    }
+    if (remote_err_msg.size() > 0)
+    {
+      string tmp_msg(remote_err_msg.c_str(), remote_err_msg.size() - 1);
+      remote_err_msg = remote_err_msg_pre + tmp_msg;
+    }
+    err_msg = spider_err_msg + remote_err_msg;
+    my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), err_msg.c_str());
+    return TRUE;
+  }
+  my_ok(thd);
+  return FALSE;
 }

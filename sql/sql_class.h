@@ -53,6 +53,9 @@
 
 #include "query_strip_comments.h"
 #include "sql_thd_internal_api.h"
+#include <string>
+#include <map>
+#include <set>
 
 class Reprepare_observer;
 class sp_cache;
@@ -62,8 +65,15 @@ typedef struct st_log_info LOG_INFO;
 typedef struct st_columndef MI_COLUMNDEF;
 typedef struct st_mysql_lex_string LEX_STRING;
 typedef struct user_conn USER_CONN;
+typedef struct st_mysql MYSQL;
 
 extern ulong kill_idle_transaction_timeout;
+
+enum tc_flush_option
+{
+  FLUSH_ALL_ROUTING,
+  FLUSH_ROUTING_BY_SERVER
+};
 
 /**
   The meat of thd_proc_info(THD*, char*), a macro that packs the last
@@ -613,6 +623,8 @@ typedef struct system_variables
   my_bool session_track_schema;
   my_bool session_track_state_change;
   my_bool expand_fast_index_creation;
+  my_bool tc_admin;
+  my_bool tc_force_execute;
 
   uint  threadpool_high_prio_tickets;
   ulong threadpool_high_prio_mode;
@@ -1616,7 +1628,7 @@ public:
    was issued.
    This flag needs to be removed once @@SESSION.GTID_EXECUTED is deprecated.
   */
-  bool gtid_executed_warning_issued;
+  bool gtid_executed_warning_issued; 
 
 private:
   /**
@@ -1667,6 +1679,17 @@ public:
   Relay_log_info* rli_fake;
   /* Slave applier execution context */
   Relay_log_info* rli_slave;
+
+  std::map<std::string, MYSQL*> spider_conn_map;
+  std::map<std::string, MYSQL*> remote_conn_map;
+  std::map<std::string, std::string> spider_user_map;
+  std::map<std::string, std::string> spider_passwd_map;
+  std::map<std::string, std::string> remote_user_map;
+  std::map<std::string, std::string> remote_passwd_map;
+  std::map<std::string, std::string> remote_ipport_map;
+  std::set<std::string> spider_ipport_set;
+  bool tc_conn_init;
+  bool spider_run_first;
 
   /**
     The function checks whether the thread is processing queries from binlog,
@@ -3046,6 +3069,7 @@ public:
     improve performance.
   */
   enum durability_properties durability_property;
+ 
 
   /*
     If checking this in conjunction with a wait condition, please

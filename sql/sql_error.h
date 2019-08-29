@@ -24,6 +24,8 @@
 class THD;
 class my_decimal;
 typedef struct st_mysql_lex_string LEX_STRING;
+typedef struct tc_parse_result TC_PARSE_RESULT;
+typedef struct tc_execute_result TC_EXEC_RESULT;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -711,6 +713,8 @@ void push_warning(THD *thd, Sql_condition::enum_severity_level severity,
 void push_warning_printf(THD *thd, Sql_condition::enum_severity_level severity,
                          uint code, const char *format, ...)
                          MY_ATTRIBUTE((format(printf, 4, 5)));
+bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESULT* exec_result);
+bool tc_process_all_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESULT* exec_result);
 
 /**
   Generates a warning that a feature is deprecated.

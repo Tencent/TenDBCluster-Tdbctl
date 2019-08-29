@@ -1633,34 +1633,37 @@ bool mysql_change_db(THD *thd, const LEX_CSTRING &new_db_name,
 
   DEBUG_SYNC(thd, "before_db_dir_check");
 
-  if (check_db_dir_existence(new_db_file_name.str))
+  if (!thd->variables.tc_admin)
   {
-    if (force_switch)
+    if (check_db_dir_existence(new_db_file_name.str))
     {
-      /* Throw a warning and free new_db_file_name. */
+      if (force_switch)
+      {
+        /* Throw a warning and free new_db_file_name. */
 
-      push_warning_printf(thd, Sql_condition::SL_NOTE,
-                          ER_BAD_DB_ERROR, ER(ER_BAD_DB_ERROR),
-                          new_db_file_name.str);
+        push_warning_printf(thd, Sql_condition::SL_NOTE,
+          ER_BAD_DB_ERROR, ER(ER_BAD_DB_ERROR),
+          new_db_file_name.str);
 
-      my_free(new_db_file_name.str);
+        my_free(new_db_file_name.str);
 
-      /* Change db to NULL. */
-      mysql_change_db_impl(thd, NULL_CSTR, 0, thd->variables.collation_server);
+        /* Change db to NULL. */
+        mysql_change_db_impl(thd, NULL_CSTR, 0, thd->variables.collation_server);
 
-      /* The operation succeed. */
-      goto done;
-    }
-    else
-    {
-      /* Report an error and free new_db_file_name. */
+        /* The operation succeed. */
+        goto done;
+      }
+      else
+      {
+        /* Report an error and free new_db_file_name. */
 
-      my_error(ER_BAD_DB_ERROR, MYF(0), new_db_file_name.str);
-      my_free(new_db_file_name.str);
+        my_error(ER_BAD_DB_ERROR, MYF(0), new_db_file_name.str);
+        my_free(new_db_file_name.str);
 
-      /* The operation failed. */
+        /* The operation failed. */
 
-      DBUG_RETURN(TRUE);
+        DBUG_RETURN(TRUE);
+      }
     }
   }
 

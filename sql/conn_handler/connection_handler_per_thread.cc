@@ -29,6 +29,7 @@
 #include "sql_thd_internal_api.h"        // thd_set_thread_stack
 #include "log.h"                         // Error_log_throttle
 #include "debug_sync.h"
+#include "tc_sqlparse.h"
 
 
 // Initialize static members
@@ -307,10 +308,25 @@ extern "C" void *handle_connection(void *arg)
       handler_manager->inc_aborted_connects();
     else
     {
+      thd->tc_conn_init = FALSE;
       while (thd_connection_alive(thd))
       {
         if (do_command(thd))
           break;
+      }
+      /* disconnect spider/remote conn*/
+      if (thd->tc_conn_init && thd->variables.tc_admin)
+      {
+        tc_conn_free(thd->spider_conn_map);
+        tc_conn_free(thd->remote_conn_map);
+        thd->spider_conn_map.clear();
+        thd->remote_conn_map.clear();
+        thd->spider_ipport_set.clear();
+        thd->remote_ipport_map.clear();
+        thd->spider_user_map.clear();
+        thd->spider_passwd_map.clear();
+        thd->remote_user_map.clear();
+        thd->remote_passwd_map.clear();
       }
       end_connection(thd);
     }

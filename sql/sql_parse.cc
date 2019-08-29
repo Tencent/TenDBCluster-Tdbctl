@@ -102,6 +102,7 @@
 #include "sql_timer.h"   // thd_timer_set, thd_timer_reset
 #include "sp_rcontext.h"
 #include "parse_location.h"
+#include "tc_sqlparse.h"
 
 #ifndef _WIN32
 #include <sys/time.h>
@@ -118,6 +119,9 @@
 
 #include "rpl_group_replication.h"
 #include <algorithm>
+#include <iostream>
+#include <string>
+#include <regex>
 using std::max;
 
 /**
@@ -5218,6 +5222,23 @@ end_with_restore_list:
       my_ok(thd);
     break;
   }
+  case TC_SQLCOM_FLUSH_ROUTING:
+  {
+    bool reload_servers_failed = servers_reload(thd);
+    if (reload_servers_failed)
+    {
+      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+      break;
+    }
+    bool flush_routing_failed = tc_flush_routing(lex, lex->tc_flush_type, lex->is_tc_flush_force);
+    if (flush_routing_failed)
+    {
+      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+      break;
+    }
+    my_ok(thd);
+    break;
+  }
 #endif
   default:
 #ifndef EMBEDDED_LIBRARY
@@ -5401,6 +5422,500 @@ finish:
 
   DBUG_RETURN(res || thd->is_error());
 }
+
+
+int
+tcadmin_execute_command(THD* thd)
+{
+  int res = 0;
+  int  up_result = 0;
+  LEX* lex = thd->lex;
+  /* first SELECT_LEX (have special meaning for many of non-SELECTcommands) */
+  SELECT_LEX* select_lex = lex->select_lex;
+  /* first table of first SELECT_LEX */
+  TABLE_LIST* first_table = select_lex->table_list.first;
+  /* list of all tables in query */
+  TABLE_LIST* all_tables;
+  /* most outer SELECT_LEX_UNIT of query */
+  SELECT_LEX_UNIT* unit = lex->unit;
+  DBUG_ENTER("tcadmin_execute_command");
+
+  thd->work_part_info = 0;
+
+   lex->first_lists_tables_same();
+  all_tables = lex->query_tables;
+  select_lex->context.resolve_in_table_list_only(select_lex->table_list.first);
+
+
+  tc_parse_result parse_result;
+  tc_execute_result exec_result;
+  string spider_sql;
+  string before_sql_for_spider;
+  string before_sql_for_remote;
+  map<string, string> remote_sql_map;
+  int shard_count;
+
+  /* do spider/remote conn init */
+  if (!thd->tc_conn_init && thd->variables.tc_admin)
+  {
+    uint ret = 0;
+    thd->tc_conn_init = TRUE;
+    thd->spider_ipport_set = get_spider_ipport_set(thd->mem_root, thd->spider_user_map, thd->spider_passwd_map);
+    thd->remote_ipport_map = get_remote_ipport_map(thd->mem_root, thd->remote_user_map, thd->remote_passwd_map);
+    thd->spider_conn_map = tc_spider_conn_connect(ret, thd->spider_ipport_set, thd->spider_user_map, thd->spider_passwd_map);
+    thd->remote_conn_map = tc_remote_conn_connect(ret, thd->remote_ipport_map, thd->remote_user_map, thd->remote_passwd_map);
+    if (ret)
+      goto finish;
+  }
+  shard_count = thd->remote_ipport_map.size();
+
+  tc_parse_result_init(&parse_result);
+  /* tc sql parse */
+  switch (lex->sql_command) {
+    /* 1. DML or unsupported DDL or DDL don't need tcadmin to execute */
+  case SQLCOM_SHOW_EVENTS:
+  case SQLCOM_SHOW_STATUS:
+  case SQLCOM_SHOW_STATUS_PROC:
+  case SQLCOM_SHOW_STATUS_FUNC:
+  case SQLCOM_SHOW_DATABASES:
+  case SQLCOM_SHOW_TABLES:
+  case SQLCOM_SHOW_TRIGGERS:
+  case SQLCOM_SHOW_TABLE_STATUS:
+  case SQLCOM_SHOW_OPEN_TABLES:
+  case SQLCOM_SHOW_PLUGINS:
+  case SQLCOM_SHOW_FIELDS:
+  case SQLCOM_SHOW_KEYS:
+  case SQLCOM_SHOW_VARIABLES:
+  case SQLCOM_SHOW_CHARSETS:
+  case SQLCOM_SHOW_COLLATIONS:
+  case SQLCOM_SHOW_STORAGE_ENGINES:
+  case SQLCOM_SHOW_PROFILE:
+  case SQLCOM_PREPARE:
+  case SQLCOM_EXECUTE:
+  case SQLCOM_DEALLOCATE_PREPARE:
+  case SQLCOM_EMPTY_QUERY:
+  case SQLCOM_HELP:
+  case SQLCOM_PURGE:
+  case SQLCOM_PURGE_BEFORE:
+  case SQLCOM_SHOW_WARNS:
+  case SQLCOM_SHOW_ERRORS:
+  case SQLCOM_SHOW_PROFILES:
+  case SQLCOM_ASSIGN_TO_KEYCACHE:
+  case SQLCOM_PRELOAD_KEYS:
+  case SQLCOM_SHOW_ENGINE_STATUS:
+  case SQLCOM_SHOW_ENGINE_MUTEX:
+  case SQLCOM_SHOW_BINLOGS:
+  case SQLCOM_SHOW_CREATE:
+  case SQLCOM_CHECKSUM:
+  case SQLCOM_UPDATE:
+  case SQLCOM_UPDATE_MULTI:
+  case SQLCOM_REPLACE:
+  case SQLCOM_INSERT:
+  case SQLCOM_REPLACE_SELECT:
+  case SQLCOM_INSERT_SELECT:
+  case SQLCOM_DELETE:
+  case SQLCOM_DELETE_MULTI:
+  case SQLCOM_SHOW_PROCESSLIST:
+  case SQLCOM_SHOW_ENGINE_LOGS:
+  case SQLCOM_LOAD:
+  case SQLCOM_SHOW_CREATE_DB:
+  case SQLCOM_XA_START:
+  case SQLCOM_XA_END:
+  case SQLCOM_XA_PREPARE:
+  case SQLCOM_XA_COMMIT:
+  case SQLCOM_XA_ROLLBACK:
+  case SQLCOM_XA_RECOVER:
+  case SQLCOM_ALTER_TABLESPACE:
+  case SQLCOM_INSTALL_PLUGIN:
+  case SQLCOM_UNINSTALL_PLUGIN:
+  case SQLCOM_ANALYZE:
+  case SQLCOM_CHECK:
+  case SQLCOM_OPTIMIZE:
+  case SQLCOM_REPAIR:
+  case SQLCOM_TRUNCATE:
+  case SQLCOM_SIGNAL:
+  case SQLCOM_RESIGNAL:
+  case SQLCOM_GET_DIAGNOSTICS:
+  case SQLCOM_CALL:
+  case SQLCOM_BINLOG_BASE64_EVENT:
+  case SQLCOM_HA_OPEN:
+  case SQLCOM_HA_CLOSE:
+  case SQLCOM_HA_READ:
+  case SQLCOM_SHOW_PRIVILEGES:
+  case SQLCOM_SHOW_CREATE_USER:
+  case SQLCOM_SHOW_GRANTS:
+  case SQLCOM_SHOW_PROC_CODE:
+  case SQLCOM_SHOW_FUNC_CODE:
+  case SQLCOM_SHOW_CREATE_PROC:
+  case SQLCOM_SHOW_CREATE_FUNC:
+  case SQLCOM_SHOW_CREATE_TRIGGER:
+  case SQLCOM_ALTER_INSTANCE:
+  case SQLCOM_CHANGE_REPLICATION_FILTER:
+  case SQLCOM_CREATE_COMPRESSION_DICTIONARY:
+  case SQLCOM_DROP_COMPRESSION_DICTIONARY:
+  case SQLCOM_EXPLAIN_OTHER:
+  case SQLCOM_LOCK_BINLOG_FOR_BACKUP:
+  case SQLCOM_LOCK_TABLES_FOR_BACKUP:
+  case SQLCOM_SHOW_CLIENT_STATS:
+  case SQLCOM_SHOW_INDEX_STATS:
+  case SQLCOM_SHOW_TABLE_STATS:
+  case SQLCOM_SHOW_THREAD_STATS:
+  case SQLCOM_SHOW_USER_STATS:
+  case SQLCOM_START_GROUP_REPLICATION:
+  case SQLCOM_STOP_GROUP_REPLICATION:
+  case SQLCOM_UNLOCK_BINLOG:
+    my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
+    goto finish;
+  case SQLCOM_SELECT:
+    my_ok(thd);
+    goto finish;
+  case SQLCOM_SET_OPTION:
+  {
+    List<set_var_base>* lex_var_list = &lex->var_list;
+    if (likely(!(res = sql_set_variables(thd, lex_var_list, true))))
+    {
+      if (likely(!thd->is_error()))
+        my_ok(thd);
+    }
+    else
+    {
+      if (!thd->is_error())
+        my_error(ER_WRONG_ARGUMENTS, MYF(0), "SET");
+    }
+    goto finish;
+  }
+  /* 2. DDL need dispatch to each spider only */
+  case SQLCOM_CREATE_EVENT:
+  case SQLCOM_ALTER_EVENT:
+  case SQLCOM_CREATE_FUNCTION:                  // UDF function
+  case SQLCOM_CREATE_PROCEDURE:
+  case SQLCOM_CREATE_SPFUNCTION:
+  case SQLCOM_ALTER_PROCEDURE:
+  case SQLCOM_ALTER_FUNCTION:
+  case SQLCOM_DROP_PROCEDURE:
+  case SQLCOM_DROP_FUNCTION:
+  case SQLCOM_CREATE_TRIGGER:
+  case SQLCOM_DROP_TRIGGER:
+    parse_result.query_string = thd->query();
+    if (thd->db().str)
+      parse_result.db_name = thd->db().str;
+    else
+      parse_result.db_name = lex->sphead->m_db.str;
+    parse_result.sql_type = lex->sql_command;
+    parse_result.result = FALSE;
+    break;
+  case SQLCOM_CREATE_VIEW:
+  case SQLCOM_DROP_VIEW:
+    /* thd.db first
+    For example:  create view d1.v1 as select * from t1;  we must execute this query on current db;
+    May be query is: "create view d1.v1 as select * from d2.t1", and thd.db is null;  then  we must use d1 as current db
+    */
+    parse_result.query_string = thd->query();
+    if (thd->db().str)
+      parse_result.db_name = thd->db().str;
+    else
+      parse_result.db_name = tc_get_cur_dbname(thd, lex);
+    parse_result.sql_type = lex->sql_command;
+    parse_result.result = FALSE;
+    break;
+  case SQLCOM_CREATE_USER:
+  case SQLCOM_DROP_USER:
+  case SQLCOM_ALTER_USER:
+  case SQLCOM_RENAME_USER:
+  case SQLCOM_REVOKE:
+  case SQLCOM_GRANT:
+  case SQLCOM_CREATE_SERVER:
+  case SQLCOM_ALTER_SERVER:
+  case SQLCOM_DROP_SERVER:
+    parse_result.query_string = thd->query();
+    parse_result.sql_type = lex->sql_command;
+    parse_result.result = FALSE;
+    break;
+    /* 3. DDL need dispatch to spider and remote mysql */
+  case SQLCOM_CREATE_TABLE:
+  {
+    List_iterator<Create_field> it_field;
+    Create_field* cur_field;
+    const char* tb_charset = NULL;
+    char buf[128];
+    bool create_table_with_field_charset = false;
+    char key_name[256];
+    char result_info[256];
+
+    parse_result.query_string = thd->query();
+    parse_result.db_name = tc_get_cur_dbname(thd, lex);
+    parse_result.table_name = tc_get_cur_tbname(thd, lex);
+    parse_result.result = tc_parse_getkey_for_spider(thd, key_name, result_info, sizeof(result_info), &parse_result.is_with_unique);
+    parse_result.result_info = result_info;
+    parse_result.shard_key = key_name;
+
+    // tb_charset as table charset 
+    if (lex->create_info.default_table_charset)
+      tb_charset = lex->create_info.default_table_charset->csname;
+    else
+      tb_charset = thd->charset()->csname;
+    it_field = lex->alter_info.create_list;
+    while (!!(cur_field = it_field++))
+    {// column charset must be same with table 
+      switch (cur_field->sql_type)
+      {
+      case MYSQL_TYPE_BLOB:
+      case MYSQL_TYPE_TINY_BLOB:
+      case MYSQL_TYPE_MEDIUM_BLOB:
+      case MYSQL_TYPE_LONG_BLOB:
+      case MYSQL_TYPE_VARCHAR:
+      case MYSQL_TYPE_VAR_STRING:
+      case MYSQL_TYPE_STRING:
+      case MYSQL_TYPE_ENUM:
+      case MYSQL_TYPE_SET:
+        if (cur_field->charset)
+        {
+          if (strcmp(cur_field->charset->csname, tb_charset) && strcmp(cur_field->charset->csname, "binary"))
+          {// column have different charset
+            create_table_with_field_charset = true;
+          }
+        }
+      default:
+        if (cur_field->flags & AUTO_INCREMENT_FLAG)
+        {/* with autoincrement */
+          parse_result.is_with_autu = TRUE;
+        }
+        break;
+      }
+    }
+
+    if (lex->create_info.options & HA_LEX_CREATE_TABLE_LIKE)
+    {
+      parse_result.new_db_name = tc_get_new_dbname(thd, lex);
+      parse_result.new_table_name = tc_get_new_tbname(thd, lex);
+      parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_LIKE;
+      parse_result.result = FALSE;
+      break;
+    }
+    else if (lex->select_lex && lex->select_lex->item_list.elements > 0)
+    {// create table select 
+      parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_SELECT;
+      parse_result.result = TRUE;
+      parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH SELECT";
+    }
+    else if (lex->create_info.connect_string.str)
+    {// create table with connect string
+      parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_CONNECT_STRING;
+      parse_result.result = TRUE;
+      parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE CONNECT STRING";
+    }
+    else if (lex->create_info.comment.str &&
+      (parse_get_shard_key_for_spider(lex->create_info.comment.str, buf, sizeof(buf)) &&
+        parse_get_config_table_for_spider(lex->create_info.comment.str, buf, sizeof(buf)))
+      )
+    {// invalid table comment
+      parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT;
+      parse_result.result = TRUE;
+      parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE COMMENT";
+    }
+    else if (create_table_with_field_charset)
+    {// table with other filed charset
+      parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_FIELD_CHARSET;
+      parse_result.result = TRUE;
+      parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH FIELD_CHARSET";
+    }
+    else
+    {
+      parse_result.sql_type = lex->sql_command;
+    }
+
+    if (!lex->create_info.comment.str || parse_get_shard_key_for_spider(lex->create_info.comment.str, buf, sizeof(buf)))
+    {/* no shard key*/
+      parse_result.is_with_shard = FALSE;
+    }
+    else
+    {
+      parse_result.is_with_autu = TRUE;
+    }
+
+    if (parse_result.result)
+    {/* abnormal query */
+      my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), parse_result.result_info.c_str());
+    }
+    break;
+  }
+  case SQLCOM_CREATE_INDEX:
+  case SQLCOM_DROP_INDEX:
+  {
+    parse_result.query_string = thd->query();
+    parse_result.db_name = tc_get_cur_dbname(thd, lex);
+    parse_result.table_name = tc_get_cur_tbname(thd, lex);
+    if (is_add_or_drop_unique_key(thd, lex))
+    {
+      parse_result.sql_type = TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY;
+      parse_result.result = TRUE;
+      parse_result.result_info = "create or drop primary/unique key is not supported";
+      my_error(ER_TCADMIN_CREATE_DROP_INDEX, MYF(0), parse_result.result_info.c_str());
+    }
+    else
+    {
+      parse_result.sql_type = lex->sql_command;
+      parse_result.result = FALSE;
+    }
+    break;
+  }
+  case SQLCOM_ALTER_TABLE:
+  {
+    parse_result.query_string = thd->query();
+    if (lex->alter_info.flags == Alter_info::ALTER_DROP_COLUMN)
+      thd->spider_run_first = TRUE;
+    if (is_add_or_drop_unique_key(thd, lex))
+    {
+      parse_result.sql_type = TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY;
+      parse_result.result = TRUE;
+      parse_result.result_info = "create or drop primary/unique key is not supported";
+      my_error(ER_TCADMIN_CREATE_DROP_INDEX, MYF(0), parse_result.result_info.c_str());
+    }
+    if (lex->alter_info.flags == Alter_info::ALTER_RENAME)
+    {
+      parse_result.db_name = tc_get_cur_dbname(thd, lex);
+      parse_result.table_name = tc_get_cur_tbname(thd, lex);
+      parse_result.new_db_name = lex->select_lex->db;
+      parse_result.new_table_name = lex->name.str;
+      parse_result.sql_type = SQLCOM_RENAME_TABLE;
+      parse_result.result = FALSE;
+    }
+    else if (lex->alter_info.flags == Alter_info::ADD_FOREIGN_KEY ||
+      lex->alter_info.flags == Alter_info::DROP_FOREIGN_KEY)
+    {
+      parse_result.sql_type = TC_SQLCOM_ALTER_TABLE_UNSUPPORT;
+      parse_result.result = TRUE;
+      parse_result.result_info = "command not support";
+      my_error(ER_TCADMIN_ALTER_TABLE, MYF(0), parse_result.result_info.c_str());
+    }
+    else
+    {
+      parse_result.db_name = tc_get_cur_dbname(thd, lex);
+      parse_result.table_name = tc_get_cur_tbname(thd, lex);
+      parse_result.sql_type = lex->sql_command;
+      parse_result.result = FALSE;
+    }
+    break;
+  }
+  case SQLCOM_RENAME_TABLE:
+  {
+    parse_result.query_string = thd->query();
+    parse_result.db_name = tc_get_cur_dbname(thd, lex);
+    parse_result.table_name = tc_get_cur_tbname(thd, lex);
+    if (lex->query_tables->next_global)
+    {
+      parse_result.new_table_name = lex->query_tables->next_global->table_name;
+      parse_result.new_db_name = lex->query_tables->next_global->db;
+    }
+    else
+    {
+      parse_result.result = TRUE;
+      parse_result.result_info = "Invalid RENAME TABLE statement";
+      my_error(ER_TCADMIN_ALTER_TABLE, MYF(0), parse_result.result_info.c_str());
+    }
+    parse_result.sql_type = SQLCOM_RENAME_TABLE;
+    parse_result.result = FALSE;
+    break;
+  }
+  case SQLCOM_DROP_TABLE:
+  {
+    parse_result.query_string = thd->query();
+    parse_result.db_name = tc_get_cur_dbname(thd, lex);
+    parse_result.table_name = tc_get_cur_tbname(thd, lex);
+    parse_result.sql_type = lex->sql_command;
+    parse_result.result = FALSE;
+    thd->spider_run_first = TRUE;
+    break;
+  }
+  case SQLCOM_CHANGE_DB:
+  {
+    if (!mysql_change_db(thd, to_lex_cstring(select_lex->db), FALSE))
+      my_ok(thd);
+    goto finish;
+  }
+  case SQLCOM_CREATE_DB:
+  {
+    parse_result.query_string = thd->query();
+    parse_result.db_name = lex->name.str;
+    parse_result.sql_type = lex->sql_command;
+    parse_result.result = FALSE;
+    break;
+  }
+  case SQLCOM_DROP_DB:
+  {
+    parse_result.query_string = thd->query();
+    parse_result.db_name = lex->name.str;
+    parse_result.sql_type = lex->sql_command;
+    parse_result.result = FALSE;
+    thd->spider_run_first = TRUE;
+    break;
+  }
+  case SQLCOM_ALTER_DB:
+  {
+    parse_result.query_string = thd->query();
+    parse_result.db_name = lex->name.str;
+    parse_result.sql_type = lex->sql_command;
+    parse_result.result = FALSE;
+    thd->spider_run_first = TRUE;
+    break;
+  }
+  /* 4. tcadmin's management instruction */
+
+  case SQLCOM_RESET:
+  case SQLCOM_FLUSH:
+  case SQLCOM_KILL:
+  case SQLCOM_SHUTDOWN:
+    my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
+    break;
+  case TC_SQLCOM_FLUSH_ROUTING:
+  {
+    bool reload_servers_failed = servers_reload(thd);
+    if (reload_servers_failed)
+    {
+      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+      break;
+    }
+    bool flush_routing_failed = tc_flush_routing(lex, lex->tc_flush_type, lex->is_tc_flush_force);
+    if (flush_routing_failed)
+    {
+      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+      break;
+    }
+  }
+  my_ok(thd);
+  break;
+    /* 5. other may be supported int the future */
+  case SQLCOM_UNLOCK_TABLES:
+  case SQLCOM_LOCK_TABLES:
+  case SQLCOM_BEGIN:
+  case SQLCOM_COMMIT:
+  case SQLCOM_ROLLBACK:
+  case SQLCOM_RELEASE_SAVEPOINT:
+  case SQLCOM_ROLLBACK_TO_SAVEPOINT:
+  case SQLCOM_SAVEPOINT:
+  case SQLCOM_ALTER_DB_UPGRADE:
+    my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
+    goto finish;
+  default:
+    my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
+    goto finish;
+  }
+
+  if (!tc_query_convert(thd, lex, &parse_result, shard_count, &spider_sql, &remote_sql_map))
+  {
+    tc_append_before_query(thd, lex, before_sql_for_spider, before_sql_for_remote);
+    tc_ddl_run(thd, before_sql_for_spider, before_sql_for_remote, spider_sql, remote_sql_map, &exec_result);
+    res = tc_process_all_result(thd, &parse_result, &exec_result);
+  }
+
+finish:
+
+  /* Free tables. Set stage 'closing tables' */
+  close_thread_tables(thd);
+
+  DBUG_RETURN(res || thd->is_error());
+}
+
 
 static bool execute_sqlcom_select(THD *thd, TABLE_LIST *all_tables)
 {
@@ -5650,6 +6165,7 @@ void THD::reset_for_next_command()
   thd->gtid_executed_warning_issued= false;
 
   thd->reset_skip_readonly_check();
+  thd->spider_run_first = FALSE;
 
   DBUG_PRINT("debug",
              ("is_current_stmt_binlog_format_row(): %d",
@@ -5897,7 +6413,12 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
             error= 1;
           }
           else
-            error= mysql_execute_command(thd, true);
+          {
+            if (thd->variables.tc_admin)
+              error = tcadmin_execute_command(thd);
+            else
+              error = mysql_execute_command(thd, true);
+          }
 
           MYSQL_QUERY_EXEC_DONE(error);
 	}

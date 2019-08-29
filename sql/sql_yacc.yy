@@ -964,6 +964,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 %token  ROLLUP_SYM                    /* SQL-2003-R */
 %token  ROTATE_SYM
 %token  ROUTINE_SYM                   /* SQL-2003-N */
+%token  ROUTING_SYM                   /* SQL-2003-N */
 %token  ROWS_SYM                      /* SQL-2003-R */
 %token  ROW_FORMAT_SYM
 %token  ROW_SYM                       /* SQL-2003-R */
@@ -1053,6 +1054,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 %token  TABLE_STATS_SYM
 %token  TABLE_CHECKSUM_SYM
 %token  TABLE_NAME_SYM                /* SQL-2003-N */
+%token  TDBCTL_SYM                    /* SQL-2003-N */
 %token  TEMPORARY                     /* SQL-2003-N */
 %token  TEMPTABLE_SYM
 %token  TERMINATED
@@ -1333,6 +1335,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 
 %type <NONE>
         create change drop
+        tdbctl opt_tdbctl_flush opt_force 
         truncate rename
         show describe load alter optimize keycache preload flush
         reset purge begin commit rollback savepoint release
@@ -1719,6 +1722,7 @@ statement:
         | shutdown_stmt         { MAKE_CMD($1); }
         | slave
         | start
+        | tdbctl
         | truncate
         | uninstall
         | unlock
@@ -2270,6 +2274,37 @@ opt_channel:
          Lex->mi.for_channel= true;
        }
     ;
+
+
+tdbctl:
+          TDBCTL_SYM FLUSH_SYM opt_tdbctl_flush ROUTING_SYM opt_force
+          {
+            Lex->sql_command = TC_SQLCOM_FLUSH_ROUTING;
+          }
+          ;
+
+          
+opt_tdbctl_flush:
+         /* empty */ {  Lex->tc_flush_type = FLUSH_ALL_ROUTING; }
+        | SERVER_SYM if_exists ident_or_text
+        {
+          Lex->tc_flush_type = FLUSH_ROUTING_BY_SERVER;
+          if ($3.length == 0)
+          {
+            my_error(ER_WRONG_VALUE, MYF(0), "server name", "");
+            MYSQL_YYABORT;
+          }
+          Lex->server_options.m_server_name= $3;
+        }
+        ;
+
+opt_force:
+         /* empty */ { Lex->is_tc_flush_force =  FALSE; }
+        | FORCE_SYM
+        {
+          Lex->is_tc_flush_force = TRUE;
+        }
+        ;
 
 /* create a table */
 
@@ -13579,6 +13614,7 @@ keyword:
         | REPAIR                {}
         | RESET_SYM             {}
         | RESTORE_SYM           {}
+        | ROUTING_SYM           {}
         | ROLLBACK_SYM          {}
         | SAVEPOINT_SYM         {}
         | SECURITY_SYM          {}
@@ -13590,6 +13626,7 @@ keyword:
         | SONAME_SYM            {}
         | START_SYM             {}
         | STOP_SYM              {}
+        | TDBCTL_SYM            {}
         | TRUNCATE_SYM          {}
         | UNICODE_SYM           {}
         | UNINSTALL_SYM         {}

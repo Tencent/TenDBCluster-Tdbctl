@@ -6319,3 +6319,27 @@ static Sys_var_charptr Sys_disabled_storage_engines(
        READ_ONLY GLOBAL_VAR(opt_disabled_storage_engines),
        CMD_LINE(REQUIRED_ARG), IN_SYSTEM_CHARSET,
        DEFAULT(""));
+
+static Sys_var_mybool Sys_tc_admin(
+       "tc_admin",
+       "If set to TRUE, as config center to process query",
+       SESSION_VAR(tc_admin), CMD_LINE(OPT_ARG),
+       DEFAULT(FALSE));
+
+static Sys_var_mybool Sys_tc_force_execute(
+       "tc_force_execute",
+       "If set to TRUE, go on running spider query if remote failed",
+       SESSION_VAR(tc_force_execute), CMD_LINE(OPT_ARG),
+       DEFAULT(TRUE));
+
+static Sys_var_mybool Sys_tc_check_repair_routing(
+       "tc_check_repair_routing",
+       "If set to TRUE, check and repair routing between tdbctl and spiders",
+       GLOBAL_VAR(tc_check_repair_routing), CMD_LINE(OPT_ARG),
+       DEFAULT(TRUE));
+
+static Sys_var_ulong Sys_tc_check_repair_routing_interval(
+      "tc_check_repair_routing_interval",
+      "The interval time of checking and reparing routing betwwen tdbctl and spiders",
+      GLOBAL_VAR(tc_check_repair_routing_interval), CMD_LINE(REQUIRED_ARG),
+      VALID_RANGE(0, 65535), DEFAULT(300), BLOCK_SIZE(1));

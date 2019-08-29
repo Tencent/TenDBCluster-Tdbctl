@@ -1262,6 +1262,8 @@ THD::THD(bool enable_plugins)
   binlog_bytes_written= 0;
   updated_row_count=    0;
   sent_row_count_2=     0;
+
+  spider_run_first = FALSE;
 #ifndef DBUG_OFF
   dbug_sentry=THD_SENTRY_MAGIC;
 #endif

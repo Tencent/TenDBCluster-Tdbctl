@@ -145,6 +145,9 @@
 #include "item_cmpfunc.h"               // arg_cmp_func
 #include "item_strfunc.h"               // Item_func_uuid
 #include "handler.h"
+#include "tc_sqlparse.h"
+#include<iostream>
+#include<thread>
 
 #ifndef EMBEDDED_LIBRARY
 #include "srv_session.h"
@@ -421,6 +424,8 @@ my_bool check_proxy_users= 0, mysql_native_password_proxy_users= 0, sha256_passw
 volatile bool mqh_used = 0;
 my_bool opt_noacl= 0;
 my_bool sp_automatic_privileges= 1;
+my_bool tc_check_repair_routing = TRUE;
+ulong tc_check_repair_routing_interval = 300;
 
 ulong opt_binlog_rows_event_max_size;
 const char *binlog_checksum_default= "NONE";
@@ -3037,7 +3042,7 @@ int init_common_variables()
     of SQLCOM_ constants.
   */
   compile_time_assert(sizeof(com_status_vars)/sizeof(com_status_vars[0]) - 1 ==
-                     SQLCOM_END + 7);
+                     SQLCOM_END + 7 - (SQLCOM_END - TC_SQLCOM_START));
 #endif
 
   if (get_options(&remaining_argc, &remaining_argv))
@@ -5296,6 +5301,7 @@ int mysqld_main(int argc, char **argv)
 #ifdef _WIN32
   create_shutdown_thread();
 #endif
+  create_check_and_repaire_routing_thread();
   start_handle_manager();
 
   create_compress_gtid_table_thread();

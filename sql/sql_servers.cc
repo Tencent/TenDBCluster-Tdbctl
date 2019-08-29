@@ -44,10 +44,23 @@
 #include "sql_parse.h"
 #include "lock.h"                               // MYSQL_LOCK_IGNORE_TIMEOUT
 #include "transaction.h"      // trans_rollback_stmt, trans_commit_stmt
+#include "sql_class.h"
+#include "tc_sqlparse.h"
+#include <thread>
+#include <string>
+#include <list>
+#include <mutex>
+#include "sql_servers.h"
 /*
   We only use 1 mutex to guard the data structures - THR_LOCK_servers.
   Read locked when only reading data and write-locked for all other access.
 */
+
+static list<string> to_delete_servername_list;
+static MEM_ROOT tc_mem;
+static HASH servers_cache_bak;
+static MEM_ROOT mem_bak;
+ulong global_modify_server_version = 0;
 
 static HASH servers_cache;
 static MEM_ROOT mem;
@@ -69,6 +82,7 @@ enum enum_servers_table_field
   SERVERS_FIELD_OWNER
 };
 
+static string dump_servers_to_sql();
 static bool get_server_from_table_to_cache(TABLE *table);
 
 static uchar *servers_cache_get_key(FOREIGN_SERVER *server, size_t *length,
@@ -148,8 +162,20 @@ bool servers_init(bool dont_read_servers_table)
     goto end;
   }
 
+  /* initialise our servers cache */
+  if (my_hash_init(&servers_cache_bak, system_charset_info, 32, 0, 0,
+                  (my_hash_get_key) servers_cache_get_key, 0, 0,
+                  key_memory_servers))
+  {
+    return_val = TRUE; /* we failed, out of memory? */
+    goto end;
+  }
+
   /* Initialize the mem root for data */
   init_sql_alloc(key_memory_servers, &mem, ACL_ALLOC_BLOCK_SIZE, 0);
+
+  /* Initialize the mem root for data */
+  init_sql_alloc(key_memory_servers, &tc_mem, ACL_ALLOC_BLOCK_SIZE, 0);
 
   if (dont_read_servers_table)
     goto end;
@@ -193,8 +219,11 @@ static bool servers_load(THD *thd, TABLE *table)
 {
   READ_RECORD read_record_info;
   bool return_val= TRUE;
+  bool version_updated = FALSE;
   DBUG_ENTER("servers_load");
 
+  init_sql_alloc(key_memory_servers, &mem_bak, ACL_ALLOC_BLOCK_SIZE, 0);
+  backup_server_cache();
   my_hash_reset(&servers_cache);
   free_root(&mem, MYF(0));
   init_sql_alloc(key_memory_servers, &mem, ACL_ALLOC_BLOCK_SIZE, 0);
@@ -210,10 +239,19 @@ static bool servers_load(THD *thd, TABLE *table)
       goto end;
   }
 
+  update_server_version(&version_updated);
+  get_deleted_servers();
+  if (version_updated)
+  {
+    global_modify_server_version++; /* mean flush privileges modify mysql.servers */
+    sql_print_information("modify mysql.servers and do flush privileges, server_version is %lu", global_modify_server_version);
+  }
   return_val= FALSE;
 
 end:
   end_read_record(&read_record_info);
+  my_hash_reset(&servers_cache_bak);
+  free_root(&mem_bak, MYF(0));
   DBUG_RETURN(return_val);
 }
 
@@ -271,6 +309,7 @@ bool servers_reload(THD *thd)
 end:
   DBUG_PRINT("info", ("unlocking servers_cache"));
   mysql_rwlock_unlock(&THR_LOCK_servers);
+  delete_redundant_routings();
   DBUG_RETURN(return_val);
 }
 
@@ -327,6 +366,7 @@ static bool get_server_from_table_to_cache(TABLE *table)
   server->sport= ptr ? ptr : blank;
 
   server->port= server->sport ? atoi(server->sport) : 0;
+  server->version = 0;
 
   ptr= get_field(&mem, table->field[SERVERS_FIELD_SOCKET]);
   server->socket= ptr && strlen(ptr) ? ptr : blank;
@@ -489,6 +529,7 @@ bool Server_options::insert_into_cache() const
 
   /* set to 0 if not specified */
   server->port= m_port != PORT_NOT_SET ? m_port : 0;
+  server->version = 0;
 
   if (!(server->socket= m_socket.str ?
         strdup_root(&mem, m_socket.str) : unset_ptr))
@@ -553,6 +594,8 @@ bool Server_options::update_cache(FOREIGN_SERVER *existing) const
       !(existing->owner= strdup_root(&mem, m_owner.str)))
     DBUG_RETURN(true);
 
+  existing->version++;
+  global_modify_server_version++;
   DBUG_RETURN(false);
 }
 
@@ -939,6 +982,7 @@ static FOREIGN_SERVER *clone_server(MEM_ROOT *mem, const FOREIGN_SERVER *server,
   buffer->server_name= strmake_root(mem, server->server_name,
                                     server->server_name_length);
   buffer->port= server->port;
+  buffer->version = server->version;
   buffer->server_name_length= server->server_name_length;
   
   /* TODO: We need to examine which of these can really be NULL */
@@ -988,3 +1032,820 @@ FOREIGN_SERVER *get_server_by_name(MEM_ROOT *mem, const char *server_name,
   mysql_rwlock_unlock(&THR_LOCK_servers);
   DBUG_RETURN(server);
 }
+
+ulong get_servers_count()
+{
+  mysql_rwlock_rdlock(&THR_LOCK_servers);
+  ulong records = servers_cache.records;
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+  return records;
+}
+
+void get_server_by_wrapper(list<FOREIGN_SERVER*>& server_list, MEM_ROOT* mem, const char* wrapper_name)
+{
+  ulong records = 0;
+  FOREIGN_SERVER* server;
+  mysql_rwlock_rdlock(&THR_LOCK_servers);
+  records = servers_cache.records;
+  for (ulong i = 0; i < records; i++)
+  {
+    if (!(server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
+    {
+      server = (FOREIGN_SERVER*)NULL;
+    }
+    else
+    {
+      if (!strcasecmp(server->scheme, wrapper_name))
+      {
+        server = clone_server(mem, server, NULL);
+        server_list.push_back(server);
+      }
+    }
+  }
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+}
+
+
+static string dump_servers_to_sql()
+{
+  ulong records = 0;
+  FOREIGN_SERVER* server;
+  mysql_rwlock_rdlock(&THR_LOCK_servers);
+  records = servers_cache.records;
+  string replace_sql_all = "replace into mysql.servers"
+    "(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values";
+  stringstream ss;
+  string quotation = "\"";
+  string comma = ",";
+  if (records == 0)
+  {
+    mysql_rwlock_unlock(&THR_LOCK_servers);
+    return "";
+  }
+  for (ulong i = 0; i < records; i++)
+  {
+    string replace_sql_cur = "(";
+    server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i);
+    if (server)
+    {
+      string name = quotation + server->server_name + quotation + comma;
+      string host = quotation + server->host + quotation + comma;
+      string db = quotation + server->db + quotation + comma;
+      string username = quotation + server->username + quotation + comma;
+      string password = quotation + server->password + quotation + comma;
+      int port = server->port;
+      string socket = quotation + server->socket + quotation + comma;
+      string wrapper = quotation + server->scheme + quotation + comma;
+      string owner = quotation + server->owner + quotation;
+      ss.str("");
+      ss << port;
+      string port_s = ss.str() + comma;
+      replace_sql_cur = replace_sql_cur + name + host + db + username
+        + password + port_s + socket + wrapper + owner;
+      replace_sql_cur += "),";
+    }
+    replace_sql_all += replace_sql_cur;
+  }
+  replace_sql_all.erase(replace_sql_all.end() - 1);
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+  return replace_sql_all;
+}
+
+
+
+bool tc_exec_sql_without_result(MYSQL* mysql, string sql, tc_exec_info* exec_info)
+{
+  int ret = mysql_real_query(mysql, sql.c_str(), sql.length());
+  while (!ret)
+  {
+    ret = tc_mysql_next_result(mysql);
+  }
+  if (ret != -1)
+  {/* error happened */
+    exec_info->err_code = mysql_errno(mysql);
+    exec_info->err_msg = mysql_error(mysql);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+
+MYSQL_RES* tc_exec_sql_with_result(MYSQL* mysql, string sql)
+{
+  MYSQL_RES* result;
+  if (mysql_real_query(mysql, sql.c_str(), sql.length()))
+  {
+    result = NULL;
+  }
+  else
+  {
+    /*
+    //  not a select, field count is 0 , and result is NULL
+    if (mysql_field_count(mysql) == 0)
+    */
+    result = mysql_store_result(mysql);
+  }
+  return result;
+}
+
+bool tc_exec_sql_up(MYSQL* mysql, string sql, tc_exec_info* exec_info)
+{
+  if (mysql)
+  {
+    exec_info->err_code = 0;
+    exec_info->err_msg = "";
+    return tc_exec_sql_without_result(mysql, sql, exec_info);
+  }
+  else
+  {
+    exec_info->err_code = 2013;
+    exec_info->err_msg = "mysql is an null pointer";
+    return TRUE;
+  }
+}
+
+
+bool tc_reconnect(string ipport,
+  map<string, MYSQL*>& spider_conn_map,
+  map<string, string> spider_user_map,
+  map<string, string> spider_passwd_map)
+{
+  bool ret = FALSE;
+  MYSQL* mysql;
+  if (mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport]))
+  {
+    spider_conn_map[ipport] = mysql;
+  }
+  else
+    ret = TRUE;
+  return ret;
+}
+
+
+bool spider_exec_sql_paral(string exec_sql, map<string, MYSQL*>& spider_conn_map,
+  map<string, tc_exec_info>& result_map,
+  map<string, string> spider_user_map,
+  map<string, string> spider_passwd_map,
+  bool error_retry)
+{
+  int i = 0;
+  bool result = FALSE;
+  int spider_count = spider_conn_map.size();
+  thread* thread_array = new thread[spider_count];
+
+  map<string, MYSQL*>::iterator its;
+  map<string, tc_exec_info>::iterator its2;
+  for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
+  {
+    string ipport = its->first;
+    MYSQL* mysql = its->second;
+    thread tmp_t(tc_exec_sql_up, mysql, exec_sql, &result_map[ipport]);
+    thread_array[i] = move(tmp_t);
+    i++;
+  }
+
+  for (int i = 0; i < spider_count; i++)
+  {
+    if (thread_array[i].joinable())
+      thread_array[i].join();
+  }
+
+  for (its2 = result_map.begin(); its2 != result_map.end(); its2++)
+  {/* */
+    string ipport = its2->first;
+    tc_exec_info exec_info = its2->second;
+    if (exec_info.err_code > 0)
+    {
+      if (error_retry)
+      {
+        int retry_times = 3;
+        while (retry_times-- > 0)
+        {/* retry 3 times, 2 seconds interval */
+          sleep(2);
+          if (spider_conn_map[ipport])
+          {
+            mysql_close(spider_conn_map[ipport]);
+            spider_conn_map[ipport] = NULL;
+          }
+          if (!tc_reconnect(ipport, spider_conn_map, spider_user_map, spider_passwd_map))
+          {
+            if (!tc_exec_sql_up(spider_conn_map[ipport], exec_sql, &exec_info))
+              break;
+          }
+        }
+        if (retry_times == -1)
+        {/* error after retry, yet */
+          result = TRUE;
+        }
+      }
+      else
+        result = TRUE;
+    }
+  }
+
+  delete[] thread_array;
+  return result;
+}
+
+
+
+
+bool get_servers_rollback_sql()
+{
+  uint ret;
+  std::map<std::string, MYSQL*> spider_conn_map;
+  std::map<std::string, std::string> spider_user_map;
+  std::map<std::string, std::string> spider_passwd_map;
+  std::set<std::string> spider_ipport_set;
+  spider_ipport_set = get_spider_ipport_set(&mem, spider_user_map, spider_passwd_map);
+  spider_conn_map = tc_spider_conn_connect(ret, spider_ipport_set, spider_user_map, spider_passwd_map);
+  if (ret)
+  {
+    return TRUE;
+  }
+
+  string sql = "select * from mysql.servers";
+
+
+  return FALSE;
+}
+
+int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
+  map<string, tc_exec_info>& result_map,
+  map<string, string> spider_user_map,
+  map<string, string> spider_passwd_map,
+  bool is_force)
+{
+  bool error_retry = FALSE;
+  string flush_priv_sql = "flush privileges";
+  string flush_table_sql = "flush tables";
+  string flush_rdlock_sql = "flush table with read lock";
+  string set_mdl_timeout_sql = "set lock_wait_timeout = 60";
+  string set_interactive_timeout_sql = "set wait_timeout = 180";
+  string set_option_sql = set_mdl_timeout_sql + ";" + set_interactive_timeout_sql;
+  string unlock_sql = "unlock tables";
+  string del_sql = "delete from mysql.servers";
+  string replace_sql = dump_servers_to_sql();
+
+
+  if (spider_exec_sql_paral(set_option_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
+  {/* return, close con, reconnect + retry all */
+    return 1;
+  }
+
+  if (!is_force)
+  {
+    if (spider_exec_sql_paral(flush_table_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE) ||
+      spider_exec_sql_paral(flush_rdlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
+    {/* unlock tables;
+        return, close con, reconnect + retry all, */
+      spider_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+      return 1;
+    }
+  }
+  if (spider_exec_sql_paral(replace_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, TRUE))
+  {/* unlock tables; retry (--force) */
+    spider_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+    return 2;
+  }
+  if (spider_exec_sql_paral(flush_priv_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, TRUE))
+  {/* unlock tables; retry (--force) retry to flush privileges */
+    spider_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+    return 2;
+  }
+  if (!is_force)
+  {
+    spider_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+  }
+  return 0;
+}
+
+
+
+string tc_get_ipport_from_server(Server_options* server_options)
+{
+  FOREIGN_SERVER* server;
+  ostringstream  sstr;
+  string ipport = "";
+
+  mysql_rwlock_rdlock(&THR_LOCK_servers);
+  if (server = (FOREIGN_SERVER*)my_hash_search(&servers_cache,
+    (uchar*)server_options->m_server_name.str,
+    server_options->m_server_name.length))
+  {
+    string host = server->host;
+    string user = server->username;
+    string passwd = server->password;
+    sstr.str("");
+    sstr << server->port;
+    string ports = sstr.str();
+    ipport = host + "#" + ports;
+  }
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+  return ipport;
+}
+
+bool tc_check_ipport_valid()
+{
+  return FALSE;
+
+}
+
+bool tc_flush_routing(LEX* lex, ulong flush_type, bool is_force)
+{
+  uint ret = 0;
+  bool result = FALSE;
+  int retry_times = 3;
+  map<string, MYSQL*> spider_conn_map;
+  map<string, string> spider_user_map;
+  map<string, string> spider_passwd_map;
+  set<string>::iterator its;
+  map<string, tc_exec_info> result_map;
+  MEM_ROOT mem_root;
+  init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+  set<string>  all_spider_ipport_set = get_spider_ipport_set(&mem_root, spider_user_map, spider_passwd_map);
+  set<string> to_flush_ipport_set;
+
+
+  switch (flush_type)
+  {
+  case FLUSH_ALL_ROUTING:
+    to_flush_ipport_set = all_spider_ipport_set;
+    break;
+  case FLUSH_ROUTING_BY_SERVER:
+  {
+    string ipport = tc_get_ipport_from_server(&lex->server_options);
+    if (!ipport.length())
+    {
+      result = TRUE;
+      goto finish;
+    }
+    to_flush_ipport_set.insert(ipport);
+    /*TODO check ipport validate */
+    break;
+  }
+  default:
+    break;
+  }
+
+
+  for (its = to_flush_ipport_set.begin(); its != to_flush_ipport_set.end(); its++)
+  {/* init for exec result: result_map */
+    string ipport = (*its);
+    tc_exec_info exec_info;
+    exec_info.err_code = 0;
+    exec_info.row_affect = 0;
+    exec_info.err_msg = "";
+    result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
+  }
+
+  while (retry_times-- > 0)
+  {
+    int exec_ret = 0;
+    spider_conn_map = tc_spider_conn_connect(ret, to_flush_ipport_set, spider_user_map, spider_passwd_map);
+    if (ret)
+    {
+      result = TRUE;
+      goto finish;
+    }
+    exec_ret = tc_flush_spider_routing(spider_conn_map, result_map, spider_user_map, spider_passwd_map, is_force);
+    if (exec_ret)
+    {
+      tc_conn_free(spider_conn_map);
+      spider_conn_map.clear();
+      /* exec_ret == 2 mean "flush table with read" is ok,
+      but "replace mysql.servers" or "flush privileges" failed
+      so we just retry --force */
+      if (exec_ret == 2)
+        is_force = TRUE; /* switch force */
+      sleep(2);
+    }
+    else
+    {
+      result = FALSE;
+      goto finish;
+    }
+  }
+  if (retry_times == -1)
+    result = TRUE;
+
+
+finish:
+  tc_conn_free(spider_conn_map);
+  spider_conn_map.clear();
+  all_spider_ipport_set.clear();
+  to_flush_ipport_set.clear();
+  spider_user_map.clear();
+  spider_passwd_map.clear();
+  result_map.clear();
+  free_root(&mem_root, MYF(0));
+  return result;
+}
+
+
+bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second)
+{
+  int ret = strcmp(first->server_name, second->server_name);
+  if (ret < 0)
+  {
+    return TRUE;
+  }
+  else
+  {
+    return FALSE;
+  }
+}
+
+
+bool compare_server_list(list<FOREIGN_SERVER*>& first, list<FOREIGN_SERVER*>& second)
+{
+  list<FOREIGN_SERVER*>::iterator its1;
+  list<FOREIGN_SERVER*>::iterator its2;
+  if (first.size() != second.size())
+  {
+    return TRUE;
+  }
+
+  for (its1 = first.begin(), its2 = second.begin();
+    its1 != first.end(), its2 != second.end();
+    its1++, its2++)
+  {
+    FOREIGN_SERVER* sv1 = (*its1);
+    FOREIGN_SERVER* sv2 = (*its2);
+
+    if (strcmp(sv1->server_name, sv2->server_name) ||
+      strcmp(sv1->host, sv2->host) ||
+      strcmp(sv1->username, sv2->username) ||
+      strcmp(sv1->password, sv2->password) ||
+      strcmp(sv1->db, sv2->db) ||
+      strcmp(sv1->scheme, sv2->scheme) ||
+      strcmp(sv1->socket, sv2->socket) ||
+      strcmp(sv1->owner, sv2->owner) ||
+      sv1->port != sv2->port)
+    {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+
+
+void tc_check_and_repair_routing_thread()
+{
+  while (1)
+  {
+    ulong i = 0;
+    if (tc_check_repair_routing)
+    {
+      if (tc_check_and_repair_routing())
+      {
+        sleep(10);
+      }
+      else
+      {
+        for (i = 0; i < tc_check_repair_routing_interval; i++)
+          sleep(1);
+      }
+    }
+    sleep(2);
+  }
+}
+
+int tc_check_and_repair_routing()
+{
+  uint ret = 0;
+  int result = 0;
+  map<string, MYSQL*> spider_conn_map;
+  map<string, string> spider_user_map;
+  map<string, string> spider_passwd_map;
+  map<string, MYSQL*>::iterator its;
+  string sql = "select Server_name,Host,Db,Username,Password,Port,Socket,Wrapper,Owner "
+    "from mysql.servers order by Server_name";
+  string flush_priv_sql = "flush privileges";
+  string del_sql = "delete from mysql.servers";
+  string replace_sql = dump_servers_to_sql();
+  string repair_sql = del_sql + ";" + replace_sql + ";" + flush_priv_sql;
+  FOREIGN_SERVER* server;
+  list<FOREIGN_SERVER*> all_list;
+  ulong records;
+  MEM_ROOT mem_root;
+  tc_exec_info exec_info;
+  init_sql_alloc(key_memory_servers, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+  set<string>  spider_ipport_set = get_spider_ipport_set(&mem_root, spider_user_map, spider_passwd_map);
+
+  mysql_rwlock_rdlock(&THR_LOCK_servers);
+  records = servers_cache.records;
+  for (ulong i = 0; i < records; i++)
+  {
+    if ((server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
+    {
+      FOREIGN_SERVER* cur_server = clone_server(&mem_root, server, NULL);
+      all_list.push_back(cur_server);
+    }
+  }
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+  all_list.sort(server_compare);
+
+  spider_conn_map = tc_spider_conn_connect(ret, spider_ipport_set, spider_user_map, spider_passwd_map);
+  if (ret)
+  {
+    result = 1;
+    goto finish;
+  }
+
+  for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
+  {
+    string ipport = its->first;
+    MYSQL* mysql = its->second;
+    MYSQL_RES* res;
+    time_t to_tm_time = (time_t)time((time_t*)0);
+    struct tm lt;
+    struct tm* l_time = localtime_r(&to_tm_time, &lt);
+    res = tc_exec_sql_with_result(mysql, sql);
+    if (res)
+    {
+      MYSQL_ROW row = NULL;
+      list<FOREIGN_SERVER*> li;
+      while (row = mysql_fetch_row(res))
+      {
+        FOREIGN_SERVER tmp_server;
+        FOREIGN_SERVER* cur_server;
+        tmp_server.server_name = row[0];
+        tmp_server.server_name_length = (uint)strlen(row[0]);
+        tmp_server.host = row[1];
+        tmp_server.db = row[2];
+        tmp_server.username = row[3];
+        tmp_server.password = row[4];
+        tmp_server.sport = row[5];
+        tmp_server.port = tmp_server.sport ? atoi(tmp_server.sport) : 0;
+        tmp_server.socket = row[6];
+        tmp_server.scheme = row[7];
+        tmp_server.owner = row[8];
+        cur_server = clone_server(&mem_root, &tmp_server, NULL);
+        li.push_back(cur_server);
+      }
+      li.sort(server_compare);
+      if (compare_server_list(all_list, li))
+      {
+        result = 2;
+        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
+          "ipport is %s, routing mismatch\n",
+          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+          l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
+        {
+          fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
+            "ipport is %s, routing repair succeed\n",
+            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+            l_time->tm_min, l_time->tm_sec, ipport.c_str());
+          result = 2;
+        }
+        else
+        {
+          fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO TDBCTL] "
+            "ipport is %s, routing repair succeed\n",
+            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+            l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        }
+      }
+      li.clear();
+      mysql_free_result(res);
+    }
+    else
+    {
+      fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
+        "ipport is %s, routing mismatch\n",
+        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+        l_time->tm_min, l_time->tm_sec, ipport.c_str());
+      if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
+      {
+        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
+          "ipport is %s, routing repair succeed\n",
+          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+          l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        result = 2;
+      }
+      else
+      {
+        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO TDBCTL] "
+          "ipport is %s, routing repair succeed\n",
+          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+          l_time->tm_min, l_time->tm_sec, ipport.c_str());
+      }
+    }
+  }
+
+
+finish:
+
+  tc_conn_free(spider_conn_map);
+  spider_conn_map.clear();
+  spider_ipport_set.clear();
+  spider_user_map.clear();
+  spider_passwd_map.clear();
+  all_list.clear();
+  free_root(&mem_root, MYF(0));
+  return result;
+}
+
+
+void create_check_and_repaire_routing_thread()
+{
+  std::thread t(tc_check_and_repair_routing_thread);
+  t.detach();
+}
+
+
+ulong get_modify_server_version()
+{
+  return global_modify_server_version;
+}
+
+
+ulong get_server_version_by_name(const char* server_name)
+{
+  size_t server_name_length;
+  ulong server_version = 0;
+  FOREIGN_SERVER* server;
+  DBUG_ENTER("get_server_version");
+
+  server_name_length = strlen(server_name);
+
+  if (!server_name || !strlen(server_name))
+  {
+    DBUG_RETURN(0);
+  }
+
+  mysql_rwlock_rdlock(&THR_LOCK_servers);
+  if ((server = (FOREIGN_SERVER*)my_hash_search(&servers_cache, (uchar*)server_name, server_name_length)))
+  {
+    server_version = server->version;
+  }
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+  DBUG_RETURN(server_version);
+}
+
+int back_up_one_server(FOREIGN_SERVER* server)
+{
+  int error = 0;
+  DBUG_ENTER("insert_into_servers_cache_version");
+  /* construct  FOREIGN_SERVER_V */
+  FOREIGN_SERVER* tmp = (FOREIGN_SERVER*)alloc_root(&mem_bak, sizeof(FOREIGN_SERVER));
+  tmp->server_name = strdup_root(&mem_bak, server->server_name);
+  tmp->host = strdup_root(&mem_bak, server->host);
+  tmp->username = strdup_root(&mem_bak, server->username);
+  tmp->password = strdup_root(&mem_bak, server->password);
+  tmp->db = strdup_root(&mem_bak, server->db);
+  tmp->scheme = strdup_root(&mem_bak, server->scheme);
+  tmp->socket = strdup_root(&mem_bak, server->socket);
+  tmp->owner = strdup_root(&mem_bak, server->owner);
+  tmp->sport = strdup_root(&mem_bak, server->sport);
+  tmp->port = server->port;
+  tmp->server_name_length = server->server_name_length;
+  tmp->version = server->version;
+
+  if (my_hash_insert(&servers_cache_bak, (uchar*)tmp))
+  {
+    // error handling needed here
+    error = 1;
+  }
+  DBUG_RETURN(error);
+}
+
+
+bool backup_server_cache()
+{
+  FOREIGN_SERVER* server;
+  ulong share_records = servers_cache.records;
+  DBUG_ENTER("backup_server_cache");
+  for (ulong i = 0; i < share_records; i++)
+  {/* foreach share */
+    server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i);
+    if (back_up_one_server(server))
+      DBUG_RETURN(TRUE);
+  }
+  DBUG_RETURN(FALSE);
+}
+
+
+
+bool update_server_version(bool* version_updated)
+{
+  FOREIGN_SERVER* server_bak;
+  FOREIGN_SERVER* server;
+  ulong share_records = servers_cache.records;
+  DBUG_ENTER("replace_server_version");
+  for (ulong i = 0; i < share_records; i++)
+  {/* foreach share */
+    server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i);
+    if ((server_bak = (FOREIGN_SERVER*)my_hash_search(&servers_cache_bak, (uchar*)server->server_name, server->server_name_length)))
+    {/* exist, update mysql.servers.version */
+      if (strcmp(server->host, server_bak->host) ||
+        strcmp(server->username, server_bak->username) ||
+        strcmp(server->password, server_bak->password) ||
+        strcmp(server->db, server_bak->db) ||
+        strcmp(server->scheme, server_bak->scheme) ||
+        strcmp(server->socket, server_bak->socket) ||
+        strcmp(server->owner, server_bak->owner) ||
+        strcmp(server->sport, server_bak->sport) ||
+        server->port != server_bak->port)
+      {/* not equal: 1.update server_v; 2.version++ */
+        server_bak->version++;
+        *version_updated = TRUE;
+      }
+      server->version = server_bak->version;
+    }
+  }
+  DBUG_RETURN(FALSE);
+}
+
+
+
+void get_deleted_servers()
+{
+  FOREIGN_SERVER* server_bak;
+  FOREIGN_SERVER* server;
+  ulong records = servers_cache.records;
+  ulong bak_records = servers_cache_bak.records;
+
+  if (bak_records > records)
+  {/* delete some servers */
+    for (ulong i = 0; i < bak_records; i++)
+    {
+      server_bak = (FOREIGN_SERVER*)my_hash_element(&servers_cache_bak, i);
+      if (!(server = (FOREIGN_SERVER*)my_hash_search(&servers_cache,
+        (uchar*)server_bak->server_name, server_bak->server_name_length)))
+      {/* don't exits */
+        string name = server_bak->server_name;
+        to_delete_servername_list.push_back(name);
+      }
+    }
+  }
+}
+
+string get_delete_routing_sql()
+{
+  list<string>::iterator its;
+  string sql = "";
+  mysql_rwlock_rdlock(&THR_LOCK_servers);
+  if (to_delete_servername_list.size() > 0)
+  {
+    string del_sql = "delete from mysql.servers where Server_name in(";
+    string quotation = "\"";
+    for (its = to_delete_servername_list.begin();
+      its != to_delete_servername_list.end(); its++)
+    {
+      string name = *its;
+      del_sql = del_sql + quotation + name + quotation;
+    }
+    sql = del_sql + ")";
+  }
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+  return sql;
+}
+
+void delete_redundant_routings()
+{
+  string del_sql = get_delete_routing_sql();
+  if (del_sql.length() > 0)
+  {
+    uint ret = 0;
+    int result = 0;
+    map<string, MYSQL*> spider_conn_map;
+    map<string, string> spider_user_map;
+    map<string, string> spider_passwd_map;
+    MEM_ROOT mem_root;
+    init_sql_alloc(key_memory_servers, &mem_root,  ACL_ALLOC_BLOCK_SIZE, 0);
+    set<string>  spider_ipport_set = get_spider_ipport_set(&mem_root, spider_user_map, spider_passwd_map);
+    string flush_priv_sql = "flush privileges";
+    string sql;
+    map<string, MYSQL*>::iterator its2;
+    sql = del_sql + ";" + flush_priv_sql;
+
+    spider_conn_map = tc_spider_conn_connect(ret, spider_ipport_set, spider_user_map, spider_passwd_map);
+    if (ret)
+    {
+      result = 1;
+      goto finish;
+    }
+
+    for (its2 = spider_conn_map.begin(); its2 != spider_conn_map.end(); its2++)
+    {
+      string ipport = its2->first;
+      MYSQL* mysql = its2->second;
+      tc_exec_info exec_info;
+      tc_exec_sql_without_result(mysql, sql, &exec_info);
+    }
+
+  finish:
+    tc_conn_free(spider_conn_map);
+    spider_conn_map.clear();
+    spider_ipport_set.clear();
+    spider_user_map.clear();
+    spider_passwd_map.clear();
+    to_delete_servername_list.clear();
+    free_root(&mem_root, MYF(0));
+  }
+}
+

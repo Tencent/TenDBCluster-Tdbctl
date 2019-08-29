@@ -3243,6 +3243,8 @@ public:
   enum enum_yes_no_unknown tx_chain, tx_release;
   bool safe_to_cache_query;
   bool subqueries;
+  my_bool is_tc_flush_force;
+  ulong tc_flush_type;
 private:
   bool ignore;
 public:
