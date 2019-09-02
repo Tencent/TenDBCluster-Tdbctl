@@ -270,10 +270,6 @@ table_replication_group_member_stats.cc
 )
 
 MYSQL_ADD_PLUGIN(perfschema ${PERFSCHEMA_SOURCES} STORAGE_ENGINE MANDATORY STATIC_ONLY NOT_FOR_EMBEDDED)
-IF(WITH_PERFSCHEMA_STORAGE_ENGINE AND WITH_UNIT_TESTS)
-  ENABLE_TESTING()
-  ADD_SUBDIRECTORY(unittest)
-ENDIF()
 
 # Only disable threads when building without *any* instrumentation,
 # as other instrumentations have a dependency on threads.

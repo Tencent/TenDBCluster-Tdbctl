@@ -64,10 +64,6 @@ TARGET_LINK_LIBRARIES(mysql_upgrade perconaserverclient client_base mysqlcheck_c
 ADD_DEPENDENCIES(mysql_upgrade GenFixPrivs GenSysSchema)
 ENDIF()
 
-MYSQL_ADD_EXECUTABLE(mysqltest mysqltest.cc COMPONENT Test)
-SET_SOURCE_FILES_PROPERTIES(mysqltest.cc PROPERTIES COMPILE_FLAGS "-DTHREADS")
-TARGET_LINK_LIBRARIES(mysqltest perconaserverclient regex)
-
 ADD_CONVENIENCE_LIBRARY(mysqlcheck_core check/mysqlcheck_core.cc)
 TARGET_LINK_LIBRARIES(mysqlcheck_core perconaserverclient)
 

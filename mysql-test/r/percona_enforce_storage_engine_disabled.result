@@ -1,2 +1,0 @@
---enforce_storage_engine=myisam --disabled_storage_engines=myisam should fail to start
-# restart
