@@ -630,25 +630,6 @@ ADD_CUSTOM_TARGET(
         DEPENDS ${GEN_DIGEST_SOURCES}
 )
 
-
-IF(WIN32 OR HAVE_DLOPEN AND NOT DISABLE_SHARED)
-  ADD_LIBRARY(udf_example MODULE udf_example.cc)
-  SET_TARGET_PROPERTIES(udf_example PROPERTIES PREFIX "")
-  # udf_example depends on strings 
-  IF(WIN32)
-    IF(MSVC)
-     SET_TARGET_PROPERTIES(udf_example
-       PROPERTIES LINK_FLAGS "/DEF:${CMAKE_CURRENT_SOURCE_DIR}/udf_example.def")
-    ENDIF()
-    TARGET_LINK_LIBRARIES(udf_example strings)
-  ELSE()
-    # udf_example is using safemutex exported by mysqld
-    TARGET_LINK_LIBRARIES(udf_example mysqld)
-    SET_TARGET_PROPERTIES(udf_example
-      PROPERTIES LINK_FLAGS "${CMAKE_SHARED_LIBRARY_C_FLAGS}")
-  ENDIF()
-ENDIF()
-
 MYSQL_ADD_PLUGIN(locking_service locking_service_udf.cc
                  MODULE_ONLY MODULE_OUTPUT_NAME "locking_service")
 IF(NOT DISABLE_SHARED)
