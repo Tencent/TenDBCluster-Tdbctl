@@ -1204,7 +1204,7 @@ static Sys_var_enum Sys_mi_repository(
        "master_info_repository",
        "Defines the type of the repository for the master information."
        ,GLOBAL_VAR(opt_mi_repository_id), CMD_LINE(REQUIRED_ARG),
-       repository_names, DEFAULT(INFO_REPOSITORY_FILE), NO_MUTEX_GUARD,
+       repository_names, DEFAULT(INFO_REPOSITORY_TABLE), NO_MUTEX_GUARD,
        NOT_IN_BINLOG, ON_CHECK(master_info_repository_check),
        ON_UPDATE(0));
 
@@ -1214,7 +1214,7 @@ static Sys_var_enum Sys_rli_repository(
        "Defines the type of the repository for the relay log information "
        "and associated workers."
        ,GLOBAL_VAR(opt_rli_repository_id), CMD_LINE(REQUIRED_ARG),
-       repository_names, DEFAULT(INFO_REPOSITORY_FILE), NO_MUTEX_GUARD,
+       repository_names, DEFAULT(INFO_REPOSITORY_TABLE), NO_MUTEX_GUARD,
        NOT_IN_BINLOG, ON_CHECK(relay_log_info_repository_check),
        ON_UPDATE(0));
 
@@ -1975,7 +1975,7 @@ static Sys_var_enum Sys_extract_write_set(
        "extract the write set which will be used for various purposes. ",
        SESSION_VAR(transaction_write_set_extraction), CMD_LINE(OPT_ARG),
        transaction_write_set_hashing_algorithms,
-       DEFAULT(HASH_ALGORITHM_OFF), NO_MUTEX_GUARD, NOT_IN_BINLOG,
+       DEFAULT(HASH_ALGORITHM_XXHASH64), NO_MUTEX_GUARD, NOT_IN_BINLOG,
        ON_CHECK(transaction_write_set_check),
        ON_UPDATE(NULL));
 
@@ -3514,7 +3514,7 @@ static Sys_var_ulong Sys_query_cache_size(
        "The memory allocated to store results from old queries. "
        "This variable is deprecated and will be removed in a future release.",
        GLOBAL_VAR(query_cache_size), CMD_LINE(REQUIRED_ARG),
-       VALID_RANGE(0, ULONG_MAX), DEFAULT(1024U*1024U), BLOCK_SIZE(1024),
+       VALID_RANGE(0, ULONG_MAX), DEFAULT(0), BLOCK_SIZE(1024),
        NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(fix_query_cache_size), DEPRECATED(""));
 
@@ -3623,7 +3623,7 @@ static Sys_var_ulong Sys_server_id(
        "Uniquely identifies the server instance in the community of "
        "replication partners",
        GLOBAL_VAR(server_id), CMD_LINE(REQUIRED_ARG, OPT_SERVER_ID),
-       VALID_RANGE(0, UINT_MAX32), DEFAULT(0), BLOCK_SIZE(1), NO_MUTEX_GUARD,
+       VALID_RANGE(0, UINT_MAX32), DEFAULT(1), BLOCK_SIZE(1), NO_MUTEX_GUARD,
        NOT_IN_BINLOG, ON_CHECK(0), ON_UPDATE(fix_server_id));
 
 static Sys_var_charptr Sys_server_uuid(
@@ -3798,7 +3798,7 @@ static Sys_var_enum_binlog_checksum Binlog_checksum_enum(
        "log events in the binary log. Possible values are NONE and CRC32; "
        "default is CRC32.",
        GLOBAL_VAR(binlog_checksum_options), CMD_LINE(REQUIRED_ARG),
-       binlog_checksum_type_names, DEFAULT(binary_log::BINLOG_CHECKSUM_ALG_CRC32),
+       binlog_checksum_type_names, DEFAULT(binary_log::BINLOG_CHECKSUM_ALG_OFF),
        NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(check_outside_trx));
 
 static Sys_var_mybool Sys_master_verify_checksum(
@@ -5535,7 +5535,7 @@ static Sys_var_mybool Sys_log_slave_updates(
        "the slave thread to the binary log. You will need to turn it on if "
        "you plan to daisy-chain the slaves",
        READ_ONLY GLOBAL_VAR(opt_log_slave_updates), CMD_LINE(OPT_ARG),
-       DEFAULT(0));
+       DEFAULT(1));
 
 static Sys_var_charptr Sys_relay_log(
        "relay_log", "The location and name to use for relay logs",
@@ -5882,7 +5882,7 @@ static Sys_var_enforce_gtid_consistency Sys_enforce_gtid_consistency(
        GLOBAL_VAR(_gtid_consistency_mode),
        CMD_LINE(OPT_ARG, OPT_ENFORCE_GTID_CONSISTENCY),
        enforce_gtid_consistency_aliases, 3,
-       DEFAULT(3/*position of "FALSE" in enforce_gtid_consistency_aliases*/),
+       DEFAULT(1/*position of "FALSE" in enforce_gtid_consistency_aliases*/),
        DEFAULT(GTID_CONSISTENCY_MODE_ON),
        NO_MUTEX_GUARD, NOT_IN_BINLOG,
        ON_CHECK(check_super_outside_trx_outside_sf_outside_sp));
@@ -6143,7 +6143,7 @@ static Sys_var_gtid_mode Sys_gtid_mode(
        "be replicated and executed on all servers, and finally set all "
        "servers to GTID_MODE = ON.",
        GLOBAL_VAR(_gtid_mode), CMD_LINE(REQUIRED_ARG), gtid_mode_names,
-       DEFAULT(GTID_MODE_OFF), NO_MUTEX_GUARD, NOT_IN_BINLOG,
+       DEFAULT(GTID_MODE_ON), NO_MUTEX_GUARD, NOT_IN_BINLOG,
        ON_CHECK(check_super_outside_trx_outside_sf_outside_sp));
 
 #endif // HAVE_REPLICATION
