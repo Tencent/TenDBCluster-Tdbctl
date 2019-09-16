@@ -27,10 +27,6 @@ mutex remote_exec_mtx;
 mutex spider_exec_mtx;
 
 
-
-#define SERVER_NAME_PRE "SPT"
-#define SERVER_SPIDER_NAME_PRE "SPIDER"
-
 static string tc_dbname_replace(string sql, string spider_db_name, string remote_db_name)
 {
     string db_org1 = " " + spider_db_name;
@@ -920,6 +916,7 @@ map<string, string> tc_get_remote_create_table(TC_PARSE_RESULT *tc_parse_result_
 {
     map<string, string> map;
     ostringstream  sstr;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
     string create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
     string db_org1 = " " + db_name + ".";
@@ -936,7 +933,7 @@ map<string, string> tc_get_remote_create_table(TC_PARSE_RESULT *tc_parse_result_
         sstr << i;
         string hash_value = sstr.str();
         string remote_db = db_name + "_" + hash_value;
-        string server = SERVER_NAME_PRE + hash_value;
+        string server = server_name_pre + hash_value;
         string db_dst1 = " " + remote_db + ".";
         string db_dst2 = " `" + remote_db + "`.";
 
@@ -965,6 +962,7 @@ string tc_get_only_spider_ddl(TC_PARSE_RESULT *tc_parse_result_t, int shard_coun
 string tc_get_spider_create_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
 {
     ostringstream  sstr;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
     string spider_create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string hash_key = tc_parse_result_t->shard_key;
     string db_name = tc_parse_result_t->db_name;
@@ -999,7 +997,7 @@ string tc_get_spider_create_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_
         string hash_value = sstr.str();
         string server_info;
         string pt_sql;
-        string server_name = SERVER_NAME_PRE + hash_value;
+        string server_name = server_name_pre + hash_value;
         server_info = "server \"" + server_name + "\"";
         pt_sql = "PARTITION pt" + hash_value + " values in (" + hash_value + ") COMMENT = 'database \"" 
             + db_name + "_" + hash_value + "\", table \"" + tb_name + "\", " + server_info +  "\' ENGINE = SPIDER";
@@ -1034,6 +1032,7 @@ map<string, string> tc_get_remote_drop_table(TC_PARSE_RESULT *tc_parse_result_t,
     ostringstream  sstr;
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
 
     string db_org1 = " " + db_name + ".";
@@ -1048,7 +1047,7 @@ map<string, string> tc_get_remote_drop_table(TC_PARSE_RESULT *tc_parse_result_t,
         sstr << i;
         string hash_value = sstr.str();
         string remote_db = db_name + "_" + hash_value;
-        string server = SERVER_NAME_PRE + hash_value;
+        string server = server_name_pre + hash_value;
         string db_dst1 = " " + remote_db + ".";
         string db_dst2 = " `" + remote_db + "`.";
 
@@ -1074,6 +1073,7 @@ map<string, string> tc_get_remote_create_database(TC_PARSE_RESULT *tc_parse_resu
     ostringstream  sstr;
     string create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
     string db_org1 = " " + db_name;
     string db_org2 = "`" + db_name + "`";
@@ -1087,7 +1087,7 @@ map<string, string> tc_get_remote_create_database(TC_PARSE_RESULT *tc_parse_resu
         sstr << i;
         string hash_value = sstr.str();
         string remote_db = db_name + "_" + hash_value;
-        string server = SERVER_NAME_PRE + hash_value;
+        string server = server_name_pre + hash_value;
         string db_dst1 = " " + remote_db;
         string db_dst2 = " `" + remote_db + "`";
 
@@ -1110,6 +1110,7 @@ map<string, string> tc_get_remote_drop_database(TC_PARSE_RESULT *tc_parse_result
     ostringstream  sstr;
     string create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
     string db_org1 = " " + db_name;
     string db_org2 = "`" + db_name + "`";
@@ -1123,7 +1124,7 @@ map<string, string> tc_get_remote_drop_database(TC_PARSE_RESULT *tc_parse_result
         sstr << i;
         string hash_value = sstr.str();
         string remote_db = db_name + "_" + hash_value;
-        string server = SERVER_NAME_PRE + hash_value;
+        string server = server_name_pre + hash_value;
         string db_dst1 = " " + remote_db;
         string db_dst2 = " `" + remote_db + "`";
 
@@ -1147,6 +1148,7 @@ map<string, string> tc_get_remote_change_database(TC_PARSE_RESULT *tc_parse_resu
     ostringstream  sstr;
     string create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
     string db_org1 = " " + db_name;
     string db_org2 = "`" + db_name + "`";
@@ -1160,7 +1162,7 @@ map<string, string> tc_get_remote_change_database(TC_PARSE_RESULT *tc_parse_resu
         sstr << i;
         string hash_value = sstr.str();
         string remote_db = db_name + "_" + hash_value;
-        string server = SERVER_NAME_PRE + hash_value;
+        string server = server_name_pre + hash_value;
         string db_dst1 = " " + remote_db;
         string db_dst2 = " `" + remote_db + "`";
 
@@ -1187,6 +1189,7 @@ map<string, string> tc_get_remote_create_or_drop_index(TC_PARSE_RESULT *tc_parse
     ostringstream  sstr;
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
     string db_org1 = " " + db_name + ".";
     string db_org2 = "`" + db_name + "`.";
@@ -1200,7 +1203,7 @@ map<string, string> tc_get_remote_create_or_drop_index(TC_PARSE_RESULT *tc_parse
         sstr << i;
         string hash_value = sstr.str();
         string remote_db = db_name + "_" + hash_value;
-        string server = SERVER_NAME_PRE + hash_value;
+        string server = server_name_pre + hash_value;
         string db_dst1 = " " + remote_db + ".";
         string db_dst2 = " `" + remote_db + "`.";
 
@@ -1239,6 +1242,7 @@ map<string, string> tc_get_remote_alter_table(TC_PARSE_RESULT *tc_parse_result_t
     ostringstream  sstr;
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
     for (int i = 0; i < shard_count; i++)
     {
@@ -1247,7 +1251,7 @@ map<string, string> tc_get_remote_alter_table(TC_PARSE_RESULT *tc_parse_result_t
         sstr << i;
         string hash_value = sstr.str();
         string remote_db = db_name + "_" + hash_value;
-        string server = SERVER_NAME_PRE + hash_value;
+        string server = server_name_pre + hash_value;
 
         remote_sql = tc_dbname_replace_with_point(remote_sql, db_name, remote_db);
         remote_sql = "use " + remote_db + ";" + remote_sql;
@@ -1265,6 +1269,7 @@ string tc_get_spider_rename_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_
     string table_name = tc_parse_result_t->table_name;
     string new_db = tc_parse_result_t->new_db_name;
     string new_table = tc_parse_result_t->new_table_name;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
     ostringstream  sstr;
     string reorganize_partition_sql = "";
     string  partition_sql = "";
@@ -1277,7 +1282,7 @@ string tc_get_spider_rename_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_
         string hash_value = sstr.str();
         string server_info;
         string pt_sql;
-        string server_name = SERVER_NAME_PRE + hash_value;
+        string server_name = server_name_pre + hash_value;
         server_info = "server \"" + server_name + "\"";
         pt_sql = "PARTITION pt" + hash_value + " values in (" + hash_value + ") COMMENT = 'database \""
             + new_db + "_" + hash_value + "\", table \"" + new_table + "\", " + server_info + "\' ENGINE = SPIDER";
@@ -1308,6 +1313,7 @@ map<string, string> tc_get_remote_rename_table(TC_PARSE_RESULT *tc_parse_result_
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
     string new_db = tc_parse_result_t->new_db_name;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
     for (int i = 0; i < shard_count; i++)
     {
@@ -1317,7 +1323,7 @@ map<string, string> tc_get_remote_rename_table(TC_PARSE_RESULT *tc_parse_result_
         string hash_value = sstr.str();
         string remote_db = db_name + "_" + hash_value;
         string new_remote_db = new_db + "_" + hash_value;
-        string server = SERVER_NAME_PRE + hash_value;
+        string server = server_name_pre + hash_value;
 
         remote_sql = tc_dbname_replace_with_point(remote_sql, db_name, remote_db);
         remote_sql = tc_dbname_replace_with_point(remote_sql, new_db, new_remote_db);
@@ -1331,6 +1337,7 @@ map<string, string> tc_get_remote_rename_table(TC_PARSE_RESULT *tc_parse_result_
 string tc_get_spider_create_table_like(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
 {
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
     string db_name = tc_parse_result_t->db_name;
     string table_name = tc_parse_result_t->table_name;
     string new_db = tc_parse_result_t->new_db_name;
@@ -1347,7 +1354,7 @@ string tc_get_spider_create_table_like(TC_PARSE_RESULT *tc_parse_result_t, int s
         string hash_value = sstr.str();
         string server_info;
         string pt_sql;
-        string server_name = SERVER_NAME_PRE + hash_value;
+        string server_name = server_name_pre + hash_value;
         server_info = "server \"" + server_name + "\"";
         pt_sql = "PARTITION pt" + hash_value + " values in (" + hash_value + ") COMMENT = 'database \""
             + db_name + "_" + hash_value + "\", table \"" + table_name + "\", " + server_info + "\' ENGINE = SPIDER";
@@ -1377,6 +1384,7 @@ map<string, string> tc_get_remote_create_table_like(TC_PARSE_RESULT *tc_parse_re
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
     string new_db = tc_parse_result_t->new_db_name;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
     for (int i = 0; i < shard_count; i++)
     {
@@ -1386,7 +1394,7 @@ map<string, string> tc_get_remote_create_table_like(TC_PARSE_RESULT *tc_parse_re
         string hash_value = sstr.str();
         string remote_db = db_name + "_" + hash_value;
         string new_remote_db = new_db + "_" + hash_value;
-        string server = SERVER_NAME_PRE + hash_value;
+        string server = server_name_pre + hash_value;
 
         remote_sql = tc_dbname_replace_with_point(remote_sql, db_name, remote_db);
         remote_sql = tc_dbname_replace_with_point(remote_sql, new_db, new_remote_db);
@@ -1850,7 +1858,7 @@ set<string> get_spider_ipport_set(MEM_ROOT *mem, map<string, string> &spider_use
     FOREIGN_SERVER *server;
     ostringstream  sstr;
     list<FOREIGN_SERVER*> server_list;
-    string wrapper_name = SERVER_SPIDER_NAME_PRE;
+    string wrapper_name = tdbctl_spider_wrapper_prefix;
     spider_user_map.clear();
     spider_passwd_map.clear();
 
@@ -1880,6 +1888,7 @@ map<string, string> get_remote_ipport_map (MEM_ROOT* mem, map<string, string> &r
     map<string, string> ipport_map;
     FOREIGN_SERVER *server, server_buffer;
     ostringstream  sstr;
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
     ulong records = get_servers_count();
     remote_user_map.clear();
     remote_passwd_map.clear();
@@ -1889,7 +1898,7 @@ map<string, string> get_remote_ipport_map (MEM_ROOT* mem, map<string, string> &r
         sstr.str("");
         sstr << i;
         string hash_value = sstr.str();
-        string server_name = SERVER_NAME_PRE + hash_value;
+        string server_name = server_name_pre + hash_value;
         if (server = get_server_by_name(mem, server_name.c_str(), &server_buffer))
         {
             string host = server->host;

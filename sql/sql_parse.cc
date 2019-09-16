@@ -5124,6 +5124,9 @@ end_with_restore_list:
   case SQLCOM_UNINSTALL_PLUGIN:
   case SQLCOM_SHUTDOWN:
   case SQLCOM_ALTER_INSTANCE:
+  case TC_SQLCOM_CREATE_SERVER:
+  case TC_SQLCOM_ALTER_SERVER:
+  case TC_SQLCOM_DROP_SERVER:
     DBUG_ASSERT(lex->m_sql_cmd != NULL);
     res= lex->m_sql_cmd->execute(thd);
     break;

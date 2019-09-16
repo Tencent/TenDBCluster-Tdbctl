@@ -831,6 +831,8 @@ extern ulong specialflag;
 extern size_t mysql_data_home_len;
 extern size_t mysql_real_data_home_len;
 extern const char *mysql_real_data_home_ptr;
+extern const char *tdbctl_mysql_wrapper_prefix;
+extern const char *tdbctl_spider_wrapper_prefix;
 extern MYSQL_PLUGIN_IMPORT char  *mysql_data_home;
 extern "C" MYSQL_PLUGIN_IMPORT char server_version[SERVER_VERSION_LENGTH];
 extern MYSQL_PLUGIN_IMPORT char mysql_real_data_home[];

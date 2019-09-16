@@ -6343,3 +6343,13 @@ static Sys_var_ulong Sys_tc_check_repair_routing_interval(
       "The interval time of checking and reparing routing betwwen tdbctl and spiders",
       GLOBAL_VAR(tc_check_repair_routing_interval), CMD_LINE(REQUIRED_ARG),
       VALID_RANGE(0, 65535), DEFAULT(300), BLOCK_SIZE(1));
+
+static Sys_var_charptr Sys_tc_spider_wrapper_prefix(
+  "tc_spider_wrapper_prefix", "prefix of server name for SPIDER wrapper",
+  READ_ONLY GLOBAL_VAR(tdbctl_spider_wrapper_prefix),
+  CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPIDER"));
+
+static Sys_var_charptr Sys_tc_mysql_wrapper_prefix(
+  "tc_mysql_wrapper_prefix", "prefix of server name for MYSQL wrapper",
+  READ_ONLY GLOBAL_VAR(tdbctl_mysql_wrapper_prefix),
+  CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPT"));
