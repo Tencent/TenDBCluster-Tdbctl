@@ -116,8 +116,8 @@ bool tc_ddl_run(THD *thd, string before_sql_for_spider, string before_sql_for_re
 bool tc_append_before_query(THD *thd, LEX *lex, string &sql_spider, string &sql_remote);
 
 MYSQL* tc_conn_connect(string ipport, string user, string passwd);
-map<string, MYSQL*> tc_remote_conn_connect(uint &ret, map<string, string> remote_ipport_map, map<string, string> remote_user_map, map<string, string> remote_passwd_map);
-map<string, MYSQL*> tc_spider_conn_connect(uint &ret, set<string> spider_ipport_set, map<string, string> spider_user_map, map<string, string> spider_passwd_map);
+map<string, MYSQL*> tc_remote_conn_connect(int &ret, map<string, string> remote_ipport_map, map<string, string> remote_user_map, map<string, string> remote_passwd_map);
+map<string, MYSQL*> tc_spider_conn_connect(int &ret, set<string> spider_ipport_set, map<string, string> spider_user_map, map<string, string> spider_passwd_map);
 bool tc_conn_free(map<string, MYSQL*> &conn_map);
 
 set<string> get_spider_ipport_set(MEM_ROOT *mem, map<string, string> &spider_user_map, map<string, string> &spider_passwd_map);

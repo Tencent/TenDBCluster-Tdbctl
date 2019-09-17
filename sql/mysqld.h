@@ -173,6 +173,7 @@ extern ulonglong opt_slow_query_log_use_global_control;
 extern ulong opt_slow_query_log_rate_type;
 extern my_bool sp_automatic_privileges, opt_noacl;
 extern my_bool tc_check_repair_routing;
+extern my_bool tc_set_changed_node_read_only;
 extern ulong tc_check_repair_routing_interval;
 extern my_bool opt_old_style_user_limits, trust_function_creators;
 extern my_bool check_proxy_users, mysql_native_password_proxy_users, sha256_password_proxy_users;

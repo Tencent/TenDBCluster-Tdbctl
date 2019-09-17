@@ -82,6 +82,10 @@ enum enum_servers_table_field
   SERVERS_FIELD_OWNER
 };
 
+#define RESULT_SUCCEED  0
+#define RESULT_FAILED   1
+#define RESULT_ABNORMAL 0
+
 static string dump_servers_to_sql();
 static bool get_server_from_table_to_cache(TABLE *table);
 
@@ -711,7 +715,6 @@ bool Sql_cmd_create_server::execute(THD *thd)
   }
 
   int error;
-  tmp_disable_binlog(table->in_use);
   table->use_all_columns();
   empty_record(table);
 
@@ -755,7 +758,6 @@ bool Sql_cmd_create_server::execute(THD *thd)
     }
   }
 
-  reenable_binlog(table->in_use);
   mysql_rwlock_unlock(&THR_LOCK_servers);
 
   if (error)
@@ -794,7 +796,6 @@ bool Sql_cmd_alter_server::execute(THD *thd)
   }
 
   int error;
-  tmp_disable_binlog(table->in_use);
   table->use_all_columns();
 
   /* set the field that's the PK to the value we're looking for */
@@ -833,8 +834,6 @@ bool Sql_cmd_alter_server::execute(THD *thd)
     }
   }
 
-  reenable_binlog(table->in_use);
-
   /* Perform a reload so we don't have a 'hole' in our mem_root */
   servers_load(thd, table);
 
@@ -869,7 +868,6 @@ bool Sql_cmd_drop_server::execute(THD *thd)
 
   int error;
   mysql_rwlock_wrlock(&THR_LOCK_servers);
-  tmp_disable_binlog(table->in_use);
   table->use_all_columns();
 
   /* set the field that's the PK to the value we're looking for */
@@ -912,7 +910,6 @@ bool Sql_cmd_drop_server::execute(THD *thd)
     }
   }
 
-  reenable_binlog(table->in_use);
   mysql_rwlock_unlock(&THR_LOCK_servers);
 
   if (error)
@@ -1182,20 +1179,20 @@ bool tc_reconnect(string ipport,
 }
 
 
-bool spider_exec_sql_paral(string exec_sql, map<string, MYSQL*>& spider_conn_map,
+bool tc_exec_sql_paral(string exec_sql, map<string, MYSQL*>& conn_map,
   map<string, tc_exec_info>& result_map,
-  map<string, string> spider_user_map,
-  map<string, string> spider_passwd_map,
+  map<string, string> user_map,
+  map<string, string> passwd_map,
   bool error_retry)
 {
   int i = 0;
   bool result = FALSE;
-  int spider_count = spider_conn_map.size();
-  thread* thread_array = new thread[spider_count];
+  int count = conn_map.size();
+  thread* thread_array = new thread[count];
 
   map<string, MYSQL*>::iterator its;
   map<string, tc_exec_info>::iterator its2;
-  for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
+  for (its = conn_map.begin(); its != conn_map.end(); its++)
   {
     string ipport = its->first;
     MYSQL* mysql = its->second;
@@ -1204,7 +1201,7 @@ bool spider_exec_sql_paral(string exec_sql, map<string, MYSQL*>& spider_conn_map
     i++;
   }
 
-  for (int i = 0; i < spider_count; i++)
+  for (int i = 0; i < count; i++)
   {
     if (thread_array[i].joinable())
       thread_array[i].join();
@@ -1222,14 +1219,14 @@ bool spider_exec_sql_paral(string exec_sql, map<string, MYSQL*>& spider_conn_map
         while (retry_times-- > 0)
         {/* retry 3 times, 2 seconds interval */
           sleep(2);
-          if (spider_conn_map[ipport])
+          if (conn_map[ipport])
           {
-            mysql_close(spider_conn_map[ipport]);
-            spider_conn_map[ipport] = NULL;
+            mysql_close(conn_map[ipport]);
+            conn_map[ipport] = NULL;
           }
-          if (!tc_reconnect(ipport, spider_conn_map, spider_user_map, spider_passwd_map))
+          if (!tc_reconnect(ipport, conn_map, user_map, passwd_map))
           {
-            if (!tc_exec_sql_up(spider_conn_map[ipport], exec_sql, &exec_info))
+            if (!tc_exec_sql_up(conn_map[ipport], exec_sql, &exec_info))
               break;
           }
         }
@@ -1252,7 +1249,7 @@ bool spider_exec_sql_paral(string exec_sql, map<string, MYSQL*>& spider_conn_map
 
 bool get_servers_rollback_sql()
 {
-  uint ret;
+  int ret;
   std::map<std::string, MYSQL*> spider_conn_map;
   std::map<std::string, std::string> spider_user_map;
   std::map<std::string, std::string> spider_passwd_map;
@@ -1269,6 +1266,105 @@ bool get_servers_rollback_sql()
 
   return FALSE;
 }
+
+
+map<string, string> get_ipport_map_from_serverlist(
+  map<string, string>& user_map,
+  map<string, string>& passwd_map,
+  list<FOREIGN_SERVER*>& diff_server_list
+)
+{
+  map<string, string> ipport_map;
+  ostringstream  sstr;
+  user_map.clear();
+  passwd_map.clear();
+
+  list<FOREIGN_SERVER*>::iterator its;
+  for (its = diff_server_list.begin(); its != diff_server_list.end(); its++)
+  {
+    FOREIGN_SERVER* server = (*its);
+    string server_name = server->server_name;
+    string host = server->host;
+    string user = server->username;
+    string passwd = server->password;
+    sstr.str("");
+    sstr << server->port;
+    string ports = sstr.str();
+    string s = host + "#" + ports;
+    ipport_map.insert(pair<string, string>(server_name, s));
+    user_map.insert(pair<string, string>(s, user));
+    passwd_map.insert(pair<string, string>(s, passwd));
+  }
+  return ipport_map;
+}
+
+int tc_set_changed_remote_read_only()
+{
+  int ret = 0;
+  int result = 0;
+  tc_exec_info exec_info;
+//  string sql = "set global super_read_only=1";
+  string sql = "set global read_only=1";
+  list<FOREIGN_SERVER*> diff_server_list;
+  ostringstream  sstr;
+  map<string, MYSQL*> conn_map;
+  map<string, string> remote_user_map;
+  map<string, string> remote_passwd_map;
+  map<string, string> remote_ipport_map;
+  map<string, tc_exec_info> result_map;
+  map<string, string>::iterator its;
+  MEM_ROOT mem_root;
+
+  if (!tc_set_changed_node_read_only)
+    return result;
+  init_sql_alloc(key_memory_servers, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+  ret = get_remote_changed_servers(&mem_root, &diff_server_list);
+
+  if (ret == 1)
+  {
+    remote_ipport_map = get_ipport_map_from_serverlist(remote_user_map, remote_passwd_map, diff_server_list);
+    conn_map = tc_remote_conn_connect(ret, remote_ipport_map, remote_user_map, remote_passwd_map);
+
+    for (its = remote_ipport_map.begin(); its != remote_ipport_map.end(); its++)
+    {/* init for exec result: result_map */
+      string ipport = its->second;
+      tc_exec_info exec_info;
+      exec_info.err_code = 0;
+      exec_info.row_affect = 0;
+      exec_info.err_msg = "";
+      result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
+    }
+    if (tc_exec_sql_paral(sql, conn_map, result_map, remote_user_map, remote_passwd_map, FALSE))
+    {// error 
+      time_t to_tm_time = (time_t)time((time_t*)0);
+      struct tm lt;
+      struct tm* l_time = localtime_r(&to_tm_time, &lt);
+      fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
+        "failed to set remote data node read only %s, and some error happened when modify spider routing \n",
+        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+        l_time->tm_min, l_time->tm_sec, remote_ipport_map.begin()->second.c_str());
+      result = 1;
+    }
+    else
+      result = 0;
+  }
+  else if(ret == 2)
+  {
+    result = 2;
+  }
+  else
+  {// nothing to change
+    result = 0;
+  }
+
+  diff_server_list.clear();
+  remote_passwd_map.clear();
+  remote_user_map.clear();
+  remote_ipport_map.clear();
+  free_root(&mem_root, MYF(0));
+  return result;
+}
+
 
 int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
   map<string, tc_exec_info>& result_map,
@@ -1288,34 +1384,36 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
   string replace_sql = dump_servers_to_sql();
 
 
-  if (spider_exec_sql_paral(set_option_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
-  {/* return, close con, reconnect + retry all */
+  if (tc_exec_sql_paral(set_option_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
+  {/* return, close conn, reconnect + retry all */
     return 1;
   }
 
   if (!is_force)
   {
-    if (spider_exec_sql_paral(flush_table_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE) ||
-      spider_exec_sql_paral(flush_rdlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
+    if (tc_exec_sql_paral(flush_table_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE) ||
+      tc_exec_sql_paral(flush_rdlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
     {/* unlock tables;
         return, close con, reconnect + retry all, */
-      spider_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+      tc_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
       return 1;
     }
   }
-  if (spider_exec_sql_paral(replace_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, TRUE))
+  if (tc_exec_sql_paral(replace_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, TRUE))
   {/* unlock tables; retry (--force) */
-    spider_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+    tc_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+    /* if failed to replace mysql.servers; set changed data node read only */
+    tc_set_changed_remote_read_only();
     return 2;
   }
-  if (spider_exec_sql_paral(flush_priv_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, TRUE))
+  if (tc_exec_sql_paral(flush_priv_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, TRUE))
   {/* unlock tables; retry (--force) retry to flush privileges */
-    spider_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+    tc_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
     return 2;
   }
   if (!is_force)
   {
-    spider_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+    tc_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
   }
   return 0;
 }
@@ -1353,7 +1451,7 @@ bool tc_check_ipport_valid()
 
 bool tc_flush_routing(LEX* lex, ulong flush_type, bool is_force)
 {
-  uint ret = 0;
+  int ret = 0;
   bool result = FALSE;
   int retry_times = 3;
   map<string, MYSQL*> spider_conn_map;
@@ -1490,6 +1588,46 @@ bool compare_server_list(list<FOREIGN_SERVER*>& first, list<FOREIGN_SERVER*>& se
 }
 
 
+int compare_and_return_changed_server(
+  list<FOREIGN_SERVER*>& old_list,
+  list<FOREIGN_SERVER*>& new_list,
+  list<FOREIGN_SERVER*>* server_list
+)
+{
+  list<FOREIGN_SERVER*>::iterator its1;
+  list<FOREIGN_SERVER*>::iterator its2;
+  int ret = 0;
+  if (old_list.size() != new_list.size())
+  {
+    ret = 2;
+    return ret;
+  }
+
+  for (its1 = old_list.begin(), its2 = new_list.begin();
+    its1 != old_list.end(), its2 != new_list.end();
+    its1++, its2++)
+  {
+    FOREIGN_SERVER* sv1 = (*its1);
+    FOREIGN_SERVER* sv2 = (*its2);
+
+    if (strcmp(sv1->server_name, sv2->server_name) ||
+      strcmp(sv1->host, sv2->host) ||
+      strcmp(sv1->username, sv2->username) ||
+      strcmp(sv1->password, sv2->password) ||
+      strcmp(sv1->db, sv2->db) ||
+      strcmp(sv1->scheme, sv2->scheme) ||
+      strcmp(sv1->socket, sv2->socket) ||
+      strcmp(sv1->owner, sv2->owner) ||
+      sv1->port != sv2->port)
+    {
+      server_list->push_back(sv1);
+      ret = 1;
+    }
+  }
+  return ret;
+}
+
+
 
 void tc_check_and_repair_routing_thread()
 {
@@ -1514,7 +1652,7 @@ void tc_check_and_repair_routing_thread()
 
 int tc_check_and_repair_routing()
 {
-  uint ret = 0;
+  int ret = 0;
   int result = 0;
   map<string, MYSQL*> spider_conn_map;
   map<string, string> spider_user_map;
@@ -1761,7 +1899,6 @@ bool update_server_version(bool* version_updated)
 }
 
 
-
 void get_deleted_servers()
 {
   FOREIGN_SERVER* server_bak;
@@ -1782,6 +1919,106 @@ void get_deleted_servers()
       }
     }
   }
+}
+
+
+int get_remote_changed_servers(MEM_ROOT *mem_root, list<FOREIGN_SERVER*> *diff_serverlist)
+{
+  int ret = 0;
+  int result = 0;
+  map<string, MYSQL*> spider_conn_map;
+  map<string, string> spider_user_map;
+  map<string, string> spider_passwd_map;
+  map<string, MYSQL*>::iterator its;
+  string sql = "select Server_name,Host,Db,Username,Password,Port,Socket,Wrapper,Owner "
+               "from mysql.servers where Wrapper = \"mysql\" order by Server_name";
+  list<FOREIGN_SERVER*> new_list;
+  tc_exec_info exec_info;
+  const char *mysql_wrapper = "mysql";
+  set<string>  spider_ipport_set = get_spider_ipport_set(mem_root, spider_user_map, spider_passwd_map);
+
+
+  get_server_by_wrapper(new_list, mem_root, mysql_wrapper);
+  new_list.sort(server_compare);
+
+  spider_conn_map = tc_spider_conn_connect(ret, spider_ipport_set, spider_user_map, spider_passwd_map);
+  if (ret)
+  {
+    result = 1;
+    goto finish;
+  }
+
+
+  for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
+  {
+    string ipport = its->first;
+    MYSQL* mysql = its->second;
+    MYSQL_RES* res;
+    time_t to_tm_time = (time_t)time((time_t*)0);
+    struct tm lt;
+    struct tm* l_time = localtime_r(&to_tm_time, &lt);
+    res = tc_exec_sql_with_result(mysql, sql);
+    if (res)
+    {
+      MYSQL_ROW row = NULL;
+      list<FOREIGN_SERVER*> old_list;
+      int ret = 0;
+      while (row = mysql_fetch_row(res))
+      {
+        FOREIGN_SERVER tmp_server;
+        FOREIGN_SERVER* cur_server;
+        tmp_server.server_name = row[0];
+        tmp_server.server_name_length = (uint)strlen(row[0]);
+        tmp_server.host = row[1];
+        tmp_server.db = row[2];
+        tmp_server.username = row[3];
+        tmp_server.password = row[4];
+        tmp_server.sport = row[5];
+        tmp_server.port = tmp_server.sport ? atoi(tmp_server.sport) : 0;
+        tmp_server.socket = row[6];
+        tmp_server.scheme = row[7];
+        tmp_server.owner = row[8];
+        cur_server = clone_server(mem_root, &tmp_server, NULL);
+        old_list.push_back(cur_server);
+      }
+      old_list.sort(server_compare);
+
+      ret = compare_and_return_changed_server(old_list, new_list, diff_serverlist);
+      if (ret == 2)
+      {
+        result = 2;
+      }
+      else if(ret == 1)
+      {
+        result = 1;
+      }
+      else
+      {
+        result = 0;
+      }
+      old_list.clear();
+      mysql_free_result(res);
+    }
+    else
+    {
+      fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
+        "ipport is %s, routing mismatch\n",
+        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+        l_time->tm_min, l_time->tm_sec, ipport.c_str());
+      result = 2;
+    }
+    break;
+  }
+
+
+finish:
+  tc_conn_free(spider_conn_map);
+  spider_conn_map.clear();
+  spider_ipport_set.clear();
+  spider_user_map.clear();
+  spider_passwd_map.clear();
+  new_list.clear();
+  return result;
 }
 
 string get_delete_routing_sql()
@@ -1810,7 +2047,7 @@ void delete_redundant_routings()
   string del_sql = get_delete_routing_sql();
   if (del_sql.length() > 0)
   {
-    uint ret = 0;
+    int ret = 0;
     int result = 0;
     map<string, MYSQL*> spider_conn_map;
     map<string, string> spider_user_map;

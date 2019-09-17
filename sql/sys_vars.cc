@@ -6353,3 +6353,9 @@ static Sys_var_charptr Sys_tc_mysql_wrapper_prefix(
   "tc_mysql_wrapper_prefix", "prefix of server name for MYSQL wrapper",
   READ_ONLY GLOBAL_VAR(tdbctl_mysql_wrapper_prefix),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPT"));
+
+static Sys_var_mybool Sys_tc_set_changed_node_read_only(
+  "tc_set_changed_node_read_only",
+  "If set to TRUE, set the old data node read only when switch error (partly failed to modify routing) ",
+  GLOBAL_VAR(tc_set_changed_node_read_only), CMD_LINE(OPT_ARG),
+  DEFAULT(FALSE));

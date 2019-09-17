@@ -61,6 +61,7 @@ bool update_server_version(bool* version_updated);
 void get_deleted_servers();
 bool backup_server_cache();
 void delete_redundant_routings();
+int get_remote_changed_servers(MEM_ROOT* mem_root, std::list<FOREIGN_SERVER*>* diff_serverlist);
 
 void get_server_by_wrapper(std::list<FOREIGN_SERVER*>& server_list, MEM_ROOT* mem, const char* wrapper_name);
 bool tc_flush_routing(LEX *lex, ulong flush_type, bool is_force);

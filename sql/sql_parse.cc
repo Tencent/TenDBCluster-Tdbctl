@@ -5461,7 +5461,7 @@ tcadmin_execute_command(THD* thd)
   /* do spider/remote conn init */
   if (!thd->tc_conn_init && thd->variables.tc_admin)
   {
-    uint ret = 0;
+    int ret = 0;
     thd->tc_conn_init = TRUE;
     thd->spider_ipport_set = get_spider_ipport_set(thd->mem_root, thd->spider_user_map, thd->spider_passwd_map);
     thd->remote_ipport_map = get_remote_ipport_map(thd->mem_root, thd->remote_user_map, thd->remote_passwd_map);

@@ -1952,7 +1952,7 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
     return mysql;
 }
 
-map<string, MYSQL*> tc_spider_conn_connect(uint &ret, set<string> spider_ipport_set, 
+map<string, MYSQL*> tc_spider_conn_connect(int &ret, set<string> spider_ipport_set, 
                                           map<string, string> spider_user_map, 
                                           map<string, string> spider_passwd_map)
 {
@@ -1980,7 +1980,7 @@ map<string, MYSQL*> tc_spider_conn_connect(uint &ret, set<string> spider_ipport_
 }
 
 
-map<string, MYSQL*> tc_remote_conn_connect(uint &ret, map<string, string> remote_ipport_map, map<string, string> remote_user_map, map<string, string> remote_passwd_map)
+map<string, MYSQL*> tc_remote_conn_connect(int &ret, map<string, string> remote_ipport_map, map<string, string> remote_user_map, map<string, string> remote_passwd_map)
 {
     map<int, string> ipport_map;
     map<string, MYSQL*> conn_map;
