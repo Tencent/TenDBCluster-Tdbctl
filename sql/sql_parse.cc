@@ -5906,6 +5906,8 @@ tcadmin_execute_command(THD* thd)
 
   if (!tc_query_convert(thd, lex, &parse_result, shard_count, &spider_sql, &remote_sql_map))
   {
+    if (res = xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str()))
+      goto finish;
     tc_append_before_query(thd, lex, before_sql_for_spider, before_sql_for_remote);
     tc_ddl_run(thd, before_sql_for_spider, before_sql_for_remote, spider_sql, remote_sql_map, &exec_result);
     res = tc_process_all_result(thd, &parse_result, &exec_result);
@@ -8175,3 +8177,28 @@ merge_charset_and_collation(const CHARSET_INFO *cs, const CHARSET_INFO *cl)
   }
   return cs;
 }
+
+bool xlock_dbtb_name(THD* thd, const char* db_name, const char* tb_name)
+{
+  MDL_request_list mdl_requests;
+  MDL_request global_request;
+  MDL_request ull_request;
+  if (!db_name)
+  {
+    return FALSE;
+  }
+  string dbtb = db_name;
+  dbtb = dbtb + "#";
+  dbtb = dbtb + tb_name;
+
+
+  MDL_REQUEST_INIT(&ull_request, MDL_key::USER_LEVEL_LOCK, "",
+    dbtb.c_str(), MDL_EXCLUSIVE, MDL_STATEMENT);
+  mdl_requests.push_front(&ull_request);
+  if (thd->mdl_context.acquire_locks(&mdl_requests,
+    thd->variables.lock_wait_timeout))
+    return TRUE;
+
+  return FALSE;
+}
+
