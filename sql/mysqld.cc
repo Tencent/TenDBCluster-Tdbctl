@@ -426,6 +426,7 @@ my_bool opt_noacl= 0;
 my_bool sp_automatic_privileges= 1;
 my_bool tc_check_repair_routing = TRUE;
 my_bool tc_set_changed_node_read_only  = FALSE;
+my_bool sort_when_partition_prefix_order = TRUE;
 ulong tc_check_repair_routing_interval = 300;
 
 ulong opt_binlog_rows_event_max_size;

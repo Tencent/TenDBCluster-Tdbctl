@@ -6359,3 +6359,9 @@ static Sys_var_mybool Sys_tc_set_changed_node_read_only(
   "If set to TRUE, set the old data node read only when switch error (partly failed to modify routing) ",
   GLOBAL_VAR(tc_set_changed_node_read_only), CMD_LINE(OPT_ARG),
   DEFAULT(FALSE));
+
+static Sys_var_mybool Sys_sort_when_partition_prefix_order(
+  "sort_when_partition_prefix_order",
+  " using file sort when query with partition table + prefix index + order by ",
+  GLOBAL_VAR(sort_when_partition_prefix_order),
+  CMD_LINE(OPT_ARG), DEFAULT(TRUE));
