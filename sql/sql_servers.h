@@ -50,8 +50,11 @@ bool servers_reload(THD *thd);
 void servers_free(bool end=0);
 
 /* lookup functions */
-FOREIGN_SERVER *get_server_by_name(MEM_ROOT *mem, const char *server_name,
-                                   FOREIGN_SERVER *server_buffer);
+FOREIGN_SERVER* get_server_by_name(
+  MEM_ROOT *mem, 
+  const char *server_name,
+  FOREIGN_SERVER *server_buffer
+);
 
 ulong get_servers_count();
 ulong get_modify_server_version();
@@ -61,9 +64,18 @@ bool update_server_version(bool* version_updated);
 void get_deleted_servers();
 bool backup_server_cache();
 void delete_redundant_routings();
-int get_remote_changed_servers(MEM_ROOT* mem_root, std::list<FOREIGN_SERVER*>* diff_serverlist);
+int get_remote_changed_servers(
+  MEM_ROOT* mem_root, 
+  std::list<FOREIGN_SERVER*>* diff_serverlist
+);
 
-void get_server_by_wrapper(std::list<FOREIGN_SERVER*>& server_list, MEM_ROOT* mem, const char* wrapper_name);
+void get_server_by_wrapper(
+  std::list<FOREIGN_SERVER*>& server_list, 
+  MEM_ROOT* mem, 
+  const char* wrapper_name, 
+  bool with_slave
+);
+
 bool tc_flush_routing(LEX *lex, ulong flush_type, bool is_force);
 int tc_check_and_repair_routing();
 void create_check_and_repaire_routing_thread();

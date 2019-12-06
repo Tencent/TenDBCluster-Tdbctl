@@ -1808,11 +1808,20 @@ bool tc_ddl_run(THD *thd, string before_sql_for_spider, string before_sql_for_re
     exec_result->result = FALSE;
     if (spider_run_first)
     {/* drop table/database/column */
-        if (!tc_spider_ddl_run_paral(before_sql_for_spider, spider_sql, thd->spider_conn_map, exec_result) || 
-            thd->variables.tc_force_execute)
+        if (!tc_spider_ddl_run_paral(
+                before_sql_for_spider, 
+                spider_sql, 
+                thd->spider_conn_map, 
+                exec_result) || 
+             thd->variables.tc_force_execute)
         {
-            tc_remotedb_ddl_run_paral(before_sql_for_remote, remote_sql_map, thd->remote_conn_map, thd->remote_ipport_map, exec_result);
-        }
+            tc_remotedb_ddl_run_paral(
+               before_sql_for_remote, 
+               remote_sql_map, 
+               thd->remote_conn_map, 
+               thd->remote_ipport_map, 
+               exec_result );
+         }
     }
     else
     {/* other */
@@ -1852,7 +1861,12 @@ bool tc_append_before_query(THD *thd, LEX *lex, string &sql_spider, string &sql_
 }
 
 
-set<string> get_spider_ipport_set(MEM_ROOT *mem, map<string, string> &spider_user_map, map<string, string> &spider_passwd_map)
+set<string> get_spider_ipport_set(
+  MEM_ROOT *mem, 
+  map<string, string> &spider_user_map, 
+  map<string, string> &spider_passwd_map,
+  bool with_slave
+)
 {
     set<string> ipport_set;
     FOREIGN_SERVER *server;
@@ -1862,7 +1876,7 @@ set<string> get_spider_ipport_set(MEM_ROOT *mem, map<string, string> &spider_use
     spider_user_map.clear();
     spider_passwd_map.clear();
 
-    get_server_by_wrapper(server_list, mem, wrapper_name.c_str());
+    get_server_by_wrapper(server_list, mem, wrapper_name.c_str(), with_slave);
 
     list<FOREIGN_SERVER*>::iterator its;
     for(its = server_list.begin(); its != server_list.end(); its++)
@@ -1883,7 +1897,11 @@ set<string> get_spider_ipport_set(MEM_ROOT *mem, map<string, string> &spider_use
     return ipport_set;
 }
 
-map<string, string> get_remote_ipport_map (MEM_ROOT* mem, map<string, string> &remote_user_map, map<string, string> &remote_passwd_map)
+map<string, string> get_remote_ipport_map(
+  MEM_ROOT* mem, 
+  map<string, string> &remote_user_map, 
+  map<string, string> &remote_passwd_map
+)
 {
     map<string, string> ipport_map;
     FOREIGN_SERVER *server, server_buffer;
