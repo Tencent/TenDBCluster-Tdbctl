@@ -30,7 +30,6 @@ const char* tc_get_cur_dbname(THD *thd, LEX *lex);
 const char* tc_get_new_tbname(THD *thd, LEX *lex);
 const char* tc_get_new_dbname(THD *thd, LEX *lex);
 bool tc_is_with_shard(THD *thd, LEX *lex);
-bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_len, bool *is_unique_key);
 
 const char* get_stmt_type_str(int type);
 
@@ -75,54 +74,202 @@ sub convert_spider_privilege_sql {
 sub convert_spider_create_event {
 sub convert_spider_dml {
 **/
-string tc_get_only_spider_ddl_withdb(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-string tc_get_only_spider_ddl(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-string tc_get_spider_create_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-map<string, string> tc_get_remote_create_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
+bool tc_parse_getkey_for_spider(
+  THD *thd, 
+  char *key_name, 
+  char *result, 
+  int buf_len, 
+  bool *is_unique_key
+);
 
-string tc_get_spider_create_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-map<string, string> tc_get_remote_create_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
+string tc_get_only_spider_ddl_withdb(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-string tc_get_spider_rename_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-map<string, string> tc_get_remote_rename_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
+string tc_get_only_spider_ddl(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-string tc_get_spider_create_table_like(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-map<string, string> tc_get_remote_create_table_like(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
+string tc_get_spider_create_table(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-string tc_get_spider_drop_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-map<string, string> tc_get_remote_drop_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
+map<string, string> tc_get_remote_create_table(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-string tc_get_spider_drop_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-map<string, string> tc_get_remote_drop_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
+string tc_get_spider_create_database(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-string tc_get_spider_change_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-map<string, string> tc_get_remote_change_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
+map<string, string> tc_get_remote_create_database(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-string tc_get_spider_alter_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-map<string, string> tc_get_remote_alter_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
+string tc_get_spider_rename_table(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-string tc_get_spider_create_or_drop_index(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-map<string, string> tc_get_remote_create_or_drop_index(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
+map<string, string> tc_get_remote_rename_table(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-string tc_get_spider_create_procedure(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
-string tc_get_spider_drop_procedure(TC_PARSE_RESULT *tc_parse_result_t, int shard_count);
+string tc_get_spider_create_table_like(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-bool tc_query_parse(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t);
-bool tc_query_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t, int shard_count, string *spider_create_sql, map<string, string> *remote_create_sql);
+map<string, string> tc_get_remote_create_table_like(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-bool tc_spider_ddl_run_async(string query, map<string, MYSQL> spider_conn_map, tc_execute_result *exec_result);
-bool tc_remotedb_ddl_run_async(map<string, string> remote_sql, map<string, MYSQL> remote_conn_map, map<string, string> remote_ipport_map, tc_execute_result *exec_result);
-bool tc_ddl_run(THD *thd, string before_sql_for_spider, string before_sql_for_remote, string spider_sql, map<string, string> remote_sql, tc_execute_result *exec_result);
-bool tc_append_before_query(THD *thd, LEX *lex, string &sql_spider, string &sql_remote);
+string tc_get_spider_drop_table(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-MYSQL* tc_conn_connect(string ipport, string user, string passwd);
-map<string, MYSQL*> tc_remote_conn_connect(int &ret, map<string, string> remote_ipport_map, map<string, string> remote_user_map, map<string, string> remote_passwd_map);
-map<string, MYSQL*> tc_spider_conn_connect(int &ret, set<string> spider_ipport_set, map<string, string> spider_user_map, map<string, string> spider_passwd_map);
-bool tc_conn_free(map<string, MYSQL*> &conn_map);
+map<string, string> tc_get_remote_drop_table(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
-set<string> get_spider_ipport_set(MEM_ROOT *mem, map<string, string> &spider_user_map, map<string, string> &spider_passwd_map);
-map<string, string> get_remote_ipport_map(MEM_ROOT *mem, map<string, string> &remote_user_map, map<string, string> &remote_passwd_map);
+string tc_get_spider_drop_database(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
 
+map<string, string> tc_get_remote_drop_database(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
+
+string tc_get_spider_change_database(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
+
+map<string, string> tc_get_remote_change_database(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
+
+string tc_get_spider_alter_table(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
+
+map<string, string> tc_get_remote_alter_table(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
+
+string tc_get_spider_create_or_drop_index(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
+
+map<string, string> tc_get_remote_create_or_drop_index(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
+
+string tc_get_spider_create_procedure(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
+
+string tc_get_spider_drop_procedure(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+);
+
+bool tc_query_parse(
+  THD *thd, 
+  LEX *lex, 
+  TC_PARSE_RESULT *tc_parse_result_t
+);
+
+bool tc_query_convert(
+  THD *thd, 
+  LEX *lex, 
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count, 
+  string *spider_create_sql, 
+  map<string, string> *remote_create_sql
+);
+
+bool tc_spider_ddl_run_async(
+  string query, 
+  map<string, MYSQL> spider_conn_map, 
+  tc_execute_result *exec_result
+);
+
+bool tc_remotedb_ddl_run_async(
+  map<string, string> remote_sql, 
+  map<string, MYSQL> remote_conn_map, 
+  map<string, string> remote_ipport_map, 
+  tc_execute_result *exec_result
+);
+
+bool tc_ddl_run(
+  THD *thd, 
+  string before_sql_for_spider, 
+  string before_sql_for_remote, 
+  string spider_sql, 
+  map<string, string> remote_sql, 
+  tc_execute_result *exec_result
+);
+
+bool tc_append_before_query(
+  THD *thd, 
+  LEX *lex, 
+  string &sql_spider, 
+  string &sql_remote
+);
+
+MYSQL* tc_conn_connect(
+  string ipport, 
+  string user, 
+  string passwd
+);
+
+map<string, MYSQL*> tc_remote_conn_connect(
+  int &ret, 
+  map<string, string> remote_ipport_map, 
+  map<string, string> remote_user_map, 
+  map<string, string> remote_passwd_map);
+
+map<string, MYSQL*> tc_spider_conn_connect(
+  int &ret,
+  set<string> spider_ipport_set, 
+  map<string, string> spider_user_map,
+  map<string, string> spider_passwd_map
+);
+
+
+set<string> get_spider_ipport_set(
+  MEM_ROOT *mem, 
+  map<string, string> &spider_user_map, 
+  map<string, string> &spider_passwd_map, 
+  bool with_slave
+);
+
+map<string, string> get_remote_ipport_map(
+  MEM_ROOT *mem, 
+  map<string, string> &remote_user_map, 
+  map<string, string> &remote_passwd_map
+);
+
+bool tc_conn_free( map<string, MYSQL*> &conn_map);
 int tc_mysql_next_result(MYSQL* mysql);
 
 

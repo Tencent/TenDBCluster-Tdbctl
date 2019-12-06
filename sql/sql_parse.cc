@@ -5463,10 +5463,25 @@ tcadmin_execute_command(THD* thd)
   {
     int ret = 0;
     thd->tc_conn_init = TRUE;
-    thd->spider_ipport_set = get_spider_ipport_set(thd->mem_root, thd->spider_user_map, thd->spider_passwd_map);
-    thd->remote_ipport_map = get_remote_ipport_map(thd->mem_root, thd->remote_user_map, thd->remote_passwd_map);
-    thd->spider_conn_map = tc_spider_conn_connect(ret, thd->spider_ipport_set, thd->spider_user_map, thd->spider_passwd_map);
-    thd->remote_conn_map = tc_remote_conn_connect(ret, thd->remote_ipport_map, thd->remote_user_map, thd->remote_passwd_map);
+    thd->spider_ipport_set = get_spider_ipport_set(
+                               thd->mem_root, 
+                               thd->spider_user_map, 
+                               thd->spider_passwd_map,
+                               TRUE);
+    thd->remote_ipport_map = get_remote_ipport_map(
+                               thd->mem_root, 
+                               thd->remote_user_map, 
+                               thd->remote_passwd_map);
+    thd->spider_conn_map = tc_spider_conn_connect(
+                             ret, 
+                             thd->spider_ipport_set, 
+                             thd->spider_user_map, 
+                             thd->spider_passwd_map);
+    thd->remote_conn_map = tc_remote_conn_connect(
+                             ret, 
+                             thd->remote_ipport_map, 
+                             thd->remote_user_map, 
+                             thd->remote_passwd_map);
     if (ret)
       goto finish;
   }
@@ -5748,7 +5763,7 @@ tcadmin_execute_command(THD* thd)
     parse_result.query_string = thd->query();
     parse_result.db_name = tc_get_cur_dbname(thd, lex);
     parse_result.table_name = tc_get_cur_tbname(thd, lex);
-    if (is_add_or_drop_unique_key(thd, lex))
+    /*if (is_add_or_drop_unique_key(thd, lex))
     {
       parse_result.sql_type = TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY;
       parse_result.result = TRUE;
@@ -5756,10 +5771,10 @@ tcadmin_execute_command(THD* thd)
       my_error(ER_TCADMIN_CREATE_DROP_INDEX, MYF(0), parse_result.result_info.c_str());
     }
     else
-    {
+    {*/
       parse_result.sql_type = lex->sql_command;
       parse_result.result = FALSE;
-    }
+  /*  }*/
     break;
   }
   case SQLCOM_ALTER_TABLE:
@@ -5767,13 +5782,14 @@ tcadmin_execute_command(THD* thd)
     parse_result.query_string = thd->query();
     if (lex->alter_info.flags == Alter_info::ALTER_DROP_COLUMN)
       thd->spider_run_first = TRUE;
-    if (is_add_or_drop_unique_key(thd, lex))
-    {
-      parse_result.sql_type = TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY;
-      parse_result.result = TRUE;
-      parse_result.result_info = "create or drop primary/unique key is not supported";
-      my_error(ER_TCADMIN_CREATE_DROP_INDEX, MYF(0), parse_result.result_info.c_str());
-    }
+    //if (is_add_or_drop_unique_key(thd, lex))
+    //{
+    //  parse_result.sql_type = TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY;
+    //  parse_result.result = TRUE;
+    //  parse_result.result_info = "create or drop primary/unique key is not supported";
+    //  my_error(ER_TCADMIN_CREATE_DROP_INDEX, MYF(0), parse_result.result_info.c_str());
+    //  break;
+    //}
     if (lex->alter_info.flags == Alter_info::ALTER_RENAME)
     {
       parse_result.db_name = tc_get_cur_dbname(thd, lex);
@@ -5805,10 +5821,12 @@ tcadmin_execute_command(THD* thd)
     parse_result.query_string = thd->query();
     parse_result.db_name = tc_get_cur_dbname(thd, lex);
     parse_result.table_name = tc_get_cur_tbname(thd, lex);
+    parse_result.sql_type = SQLCOM_RENAME_TABLE;
     if (lex->query_tables->next_global)
     {
       parse_result.new_table_name = lex->query_tables->next_global->table_name;
       parse_result.new_db_name = lex->query_tables->next_global->db;
+      parse_result.result = FALSE;
     }
     else
     {
@@ -5816,8 +5834,6 @@ tcadmin_execute_command(THD* thd)
       parse_result.result_info = "Invalid RENAME TABLE statement";
       my_error(ER_TCADMIN_ALTER_TABLE, MYF(0), parse_result.result_info.c_str());
     }
-    parse_result.sql_type = SQLCOM_RENAME_TABLE;
-    parse_result.result = FALSE;
     break;
   }
   case SQLCOM_DROP_TABLE:
