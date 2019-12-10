@@ -310,6 +310,17 @@ IF(WIN32)
 ENDIF()
 
 INCLUDE(${MYSQL_CMAKE_SCRIPT_DIR}/compile_flags.cmake)
+
+ADD_COMPILE_FLAGS(
+   tc_sqlparse.cc
+   sql_parse.cc
+   sql_connect.cc
+   sql_error.cc
+   sql_servers.cc
+   conn_handler/connection_handler_per_thread.cc
+   mysqld.cc
+   COMPILE_FLAGS "-std=c++11"
+)
 IF (NOT WIN32)
   ADD_COMPILE_FLAGS(
     debug_sync.cc
