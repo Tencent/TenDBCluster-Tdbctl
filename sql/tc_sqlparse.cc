@@ -42,8 +42,8 @@ static string tc_dbname_replace(string sql, string spider_db_name, string remote
 
 static string tc_dbname_replace_with_point(string sql, string spider_db_name, string remote_db_name)
 {
-    string db_org1 = " " + spider_db_name + ".";
-    string db_org2 = "`" + spider_db_name + "`.";
+    string db_org1 = " " + spider_db_name + "\\.";
+    string db_org2 = "`" + spider_db_name + "`\\.";
     string db_dst1 = " " + remote_db_name + ".";
     string db_dst2 = " `" + remote_db_name + "`.";
     regex pattern1(db_org1);
@@ -919,8 +919,8 @@ map<string, string> tc_get_remote_create_table(TC_PARSE_RESULT *tc_parse_result_
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
     string create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
-    string db_org1 = " " + db_name + ".";
-    string db_org2 = "`" + db_name + "`.";
+    string db_org1 = " " + db_name + "\\.";
+    string db_org2 = "`" + db_name + "`\\.";
     regex pattern("ENGINE\\s*=\\s*spider", regex::icase);
     regex pattern1(db_org1);
     regex pattern2(db_org2);
@@ -1035,8 +1035,8 @@ map<string, string> tc_get_remote_drop_table(TC_PARSE_RESULT *tc_parse_result_t,
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
 
-    string db_org1 = " " + db_name + ".";
-    string db_org2 = "`" + db_name + "`.";
+    string db_org1 = " " + db_name + "\\.";
+    string db_org2 = "`" + db_name + "`\\.";
     regex pattern1(db_org1);
     regex pattern2(db_org2);
 
@@ -1191,8 +1191,8 @@ map<string, string> tc_get_remote_create_or_drop_index(TC_PARSE_RESULT *tc_parse
     string db_name = tc_parse_result_t->db_name;
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
-    string db_org1 = " " + db_name + ".";
-    string db_org2 = "`" + db_name + "`.";
+    string db_org1 = " " + db_name + "\\.";
+    string db_org2 = "`" + db_name + "`\\.";
     regex pattern1(db_org1);
     regex pattern2(db_org2);
 
