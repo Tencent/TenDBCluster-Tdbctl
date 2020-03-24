@@ -692,8 +692,16 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
 
             break;
         }
-        case keytype::KEYTYPE_FOREIGN:
         case keytype::KEYTYPE_FULLTEXT:
+        {
+          if (has_shard_key && !(strcmp(key_name, column->field_name.str))) {
+            strcpy(key_name, "");
+            snprintf(result, buf_len, "%s", "ERROR: fulltext key can't be shard key");
+            return 1;
+          }
+          break;
+        }
+        case keytype::KEYTYPE_FOREIGN:
         case keytype::KEYTYPE_SPATIAL:
         default:
         {
