@@ -103,7 +103,7 @@
 #include "sp_rcontext.h"
 #include "parse_location.h"
 #include "tc_base.h"
-
+#include "tc_monitor.h"
 #ifndef _WIN32
 #include <sys/time.h>
 #endif // !_WIN32
@@ -5242,6 +5242,16 @@ end_with_restore_list:
     my_ok(thd);
     break;
   }
+  case TC_SQLCOM_MONITOR_INIT:
+  {
+	  if (tc_check_cluster_availability_init())
+	  {
+		  my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
+		  break;
+	  }
+	  my_ok(thd);
+	  break;
+  }
 #endif
   default:
 #ifndef EMBEDDED_LIBRARY
@@ -5431,22 +5441,14 @@ int
 tcadmin_execute_command(THD* thd)
 {
   int res = 0;
-  int  up_result = 0;
   LEX* lex = thd->lex;
   /* first SELECT_LEX (have special meaning for many of non-SELECTcommands) */
   SELECT_LEX* select_lex = lex->select_lex;
-  /* first table of first SELECT_LEX */
-  TABLE_LIST* first_table = select_lex->table_list.first;
-  /* list of all tables in query */
-  TABLE_LIST* all_tables;
-  /* most outer SELECT_LEX_UNIT of query */
-  SELECT_LEX_UNIT* unit = lex->unit;
   DBUG_ENTER("tcadmin_execute_command");
 
   thd->work_part_info = 0;
 
    lex->first_lists_tables_same();
-  all_tables = lex->query_tables;
   select_lex->context.resolve_in_table_list_only(select_lex->table_list.first);
 
 
@@ -5922,7 +5924,7 @@ tcadmin_execute_command(THD* thd)
 
   if (!tc_query_convert(thd, lex, &parse_result, shard_count, &spider_sql, &remote_sql_map))
   {
-    if (res = xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str()))
+    if ((res = xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str())))
       goto finish;
     tc_append_before_query(thd, lex, before_sql_for_spider, before_sql_for_remote);
     tc_ddl_run(thd, before_sql_for_spider, before_sql_for_remote, spider_sql, remote_sql_map, &exec_result);

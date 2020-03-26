@@ -76,6 +76,9 @@ void get_server_by_wrapper(
   bool with_slave
 );
 
+ulong get_servers_count_by_wrapper(
+	const char* wrapper_name, 
+	bool with_slave);
 bool tc_flush_routing(LEX *lex, ulong flush_type, bool is_force);
 int tc_check_and_repair_routing();
 void create_check_and_repaire_routing_thread();

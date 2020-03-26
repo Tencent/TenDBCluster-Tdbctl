@@ -109,7 +109,7 @@ void tc_get_remote_prepared_trans(
     if (res)
     {
       MYSQL_ROW row = NULL;
-      while (row = mysql_fetch_row(res))
+      while ((row = mysql_fetch_row(res)))
       {
         string xid = row[3]; // row->data
         string prepare_time = row[4]; // row->prepare_time

@@ -1040,6 +1040,40 @@ ulong get_servers_count()
   return records;
 }
 
+ulong get_servers_count_by_wrapper(const char* wrapper_name, bool with_slave)
+{
+	ulong ret = 0;
+	FOREIGN_SERVER* server = NULL;
+	string wrapper_slave = wrapper_name;
+	mysql_rwlock_rdlock(&THR_LOCK_servers);
+	ulong records = servers_cache.records;
+	if(records == 0)
+		goto finish;
+	if (with_slave)
+	{
+		wrapper_slave += "_SLAVE";
+	}
+	for (ulong i = 0; i < records; i++)
+	{
+		if (!(server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
+		{
+			server = (FOREIGN_SERVER*)NULL;
+		}
+		else
+		{
+			if (!strcasecmp(server->scheme, wrapper_name) ||
+				!strcasecmp(server->scheme, wrapper_slave.c_str()))
+			{
+				++ret;
+			}
+		}
+	}
+
+finish:
+	mysql_rwlock_unlock(&THR_LOCK_servers);
+	return ret;
+}
+
 void get_server_by_wrapper(
   list<FOREIGN_SERVER*>& server_list, 
   MEM_ROOT* mem, 
@@ -1253,7 +1287,6 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
   map<string, string> spider_passwd_map,
   bool is_force)
 {
-  bool error_retry = FALSE;
   string flush_priv_sql = "flush privileges";
   string flush_table_sql = "flush tables";
   string flush_rdlock_sql = "flush table with read lock";
@@ -1308,9 +1341,9 @@ string tc_get_ipport_from_server(Server_options* server_options)
   string ipport = "";
 
   mysql_rwlock_rdlock(&THR_LOCK_servers);
-  if (server = (FOREIGN_SERVER*)my_hash_search(&servers_cache,
+  if ((server = (FOREIGN_SERVER*)my_hash_search(&servers_cache,
     (uchar*)server_options->m_server_name.str,
-    server_options->m_server_name.length))
+    server_options->m_server_name.length)))
   {
     string host = server->host;
     string user = server->username;
@@ -1597,7 +1630,7 @@ int tc_check_and_repair_routing()
     {
       MYSQL_ROW row = NULL;
       list<FOREIGN_SERVER*> li;
-      while (row = mysql_fetch_row(res))
+      while ((row = mysql_fetch_row(res)))
       {
         FOREIGN_SERVER tmp_server;
         FOREIGN_SERVER* cur_server;
@@ -1618,7 +1651,6 @@ int tc_check_and_repair_routing()
       li.sort(server_compare);
       if (compare_server_list(all_list, li))
       {
-        result = 2;
         fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
           "ipport is %s, routing mismatch\n",
           l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, 
@@ -1626,7 +1658,7 @@ int tc_check_and_repair_routing()
         if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
         {
           fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
-            "ipport is %s, routing repair succeed\n",
+            "ipport is %s, routing repair failed\n",
             l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, 
             l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
           result = 2;
@@ -1651,7 +1683,7 @@ int tc_check_and_repair_routing()
       if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
       {
         fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
-          "ipport is %s, routing repair succeed\n",
+          "ipport is %s, routing repair failed\n",
           l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
           l_time->tm_min, l_time->tm_sec, ipport.c_str());
         result = 2;
@@ -1870,7 +1902,7 @@ int get_remote_changed_servers(
       MYSQL_ROW row = NULL;
       list<FOREIGN_SERVER*> old_list;
       int ret = 0;
-      while (row = mysql_fetch_row(res))
+      while ((row = mysql_fetch_row(res)))
       {
         FOREIGN_SERVER tmp_server;
         FOREIGN_SERVER* cur_server;
@@ -1955,7 +1987,6 @@ void delete_redundant_routings()
   if (del_sql.length() > 0)
   {
     int ret = 0;
-    int result = 0;
     map<string, MYSQL*> spider_conn_map;
     map<string, string> spider_user_map;
     map<string, string> spider_passwd_map;
@@ -1978,7 +2009,6 @@ void delete_redundant_routings()
                         spider_passwd_map);
     if (ret)
     {
-      result = 1;
       goto finish;
     }
 

@@ -1107,10 +1107,8 @@ bool is_sqlstate_valid(const LEX_STRING *sqlstate)
 bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESULT* exec_result)
 {
   List<Item> field_list;
-  MEM_ROOT* mem_root = thd->mem_root;
   SELECT_LEX* sel = thd->lex->select_lex;
   SELECT_LEX_UNIT* unit = thd->lex->unit;
-  uint error_no = 0;
   Protocol* protocol = thd->get_protocol();
   DBUG_ENTER("tc_mysqld_show_result");
 
@@ -1178,13 +1176,11 @@ bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESU
 bool tc_process_all_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESULT* exec_result)
 {
   string err_msg;
-  uint err_code = 0;
   ostringstream  sstr;
 
   if (exec_result->result)
   {/* error happened */
     map<string, tc_exec_info>::iterator its;
-    err_code = ER_TCADMIN_EXECUTE_ERROR;
     string spider_err_msg_pre = "\nSpider Node Error:\n";
     string remote_err_msg_pre = "Data Node Error:\n";
     string spider_err_msg = "";

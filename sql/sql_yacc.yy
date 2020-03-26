@@ -717,6 +717,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 %token  INDEX_SYM
 %token  INDEX_STATS_SYM
 %token  INFILE
+%token  INIT_SYM
 %token  INITIAL_SIZE_SYM
 %token  INNER_SYM                     /* SQL-2003-R */
 %token  INOUT_SYM                     /* SQL-2003-R */
@@ -823,6 +824,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 %token  MINUTE_SYM                    /* SQL-2003-R */
 %token  MIN_ROWS
 %token  MIN_SYM                       /* SQL-2003-N */
+%token  MONITOR_SYM
 %token  MODE_SYM
 %token  MODIFIES_SYM                  /* SQL-2003-R */
 %token  MODIFY_SYM
@@ -2278,8 +2280,12 @@ opt_channel:
 
 tdbctl:
           TDBCTL_SYM FLUSH_SYM opt_tdbctl_flush ROUTING_SYM opt_force
+	  {
+	    Lex->sql_command = TC_SQLCOM_FLUSH_ROUTING;
+	  }
+	  |TDBCTL_SYM    MONITOR_SYM  INIT_SYM
           {
-            Lex->sql_command = TC_SQLCOM_FLUSH_ROUTING;
+            Lex->sql_command = TC_SQLCOM_MONITOR_INIT;
           }
           ;
 
@@ -13600,7 +13606,9 @@ keyword:
         | HELP_SYM              {}
         | HOST_SYM              {}
         | INSTALL_SYM           {}
+        | INIT_SYM              {}
         | LANGUAGE_SYM          {}
+	| MONITOR_SYM           {}
         | NO_SYM                {}
         | OPEN_SYM              {}
         | OPTIONS_SYM           {}

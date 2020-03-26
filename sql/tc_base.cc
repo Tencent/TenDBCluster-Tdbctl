@@ -19,7 +19,8 @@
 #include <regex>
 #include <thread>
 #include <mutex>
-
+#include "rpl_group_replication.h"
+#include "rpl_slave.h"
 
 using namespace std;
 
@@ -414,11 +415,11 @@ void gettype_create_filed(Create_field *cr_field, String &res)
 {
     const CHARSET_INFO *cs = res.charset();
     ulonglong field_length = cr_field->length;
-    ulong length;
+	ulong length = 0;
     bool unsigned_flag = cr_field->flags & UNSIGNED_FLAG;
     bool zerofill_flag = cr_field->flags & ZEROFILL_FLAG;
     ulonglong tmp = field_length;
-
+	const char *str = NULL;
     switch (cr_field->field->type())
     {
     case MYSQL_TYPE_DECIMAL:
@@ -428,7 +429,7 @@ void gettype_create_filed(Create_field *cr_field, String &res)
         if (cr_field->decimals)
             tmp--;
         res.length(cs->cset->snprintf(cs, (char*)res.ptr(), res.alloced_length(),
-            "decimal(%d,%d)", tmp, cr_field->decimals));
+            "decimal(%lld,%d)", tmp, cr_field->decimals));
         filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
         break;
     case MYSQL_TYPE_TINY:
@@ -448,7 +449,7 @@ void gettype_create_filed(Create_field *cr_field, String &res)
         break;
     case MYSQL_TYPE_LONG:
         res.length(cs->cset->snprintf(cs, (char*)res.ptr(), res.alloced_length(),
-            "int(%d)", field_length));
+            "int(%lld)", field_length));
         filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
         break;
     case MYSQL_TYPE_FLOAT:
@@ -592,8 +593,6 @@ void gettype_create_filed(Create_field *cr_field, String &res)
     case MYSQL_TYPE_MEDIUM_BLOB:
     case MYSQL_TYPE_LONG_BLOB:
     case MYSQL_TYPE_BLOB:
-        const char *str;
-        uint length;
         switch (cr_field->field->type())
         {
         case MYSQL_TYPE_TINY_BLOB:
@@ -743,7 +742,6 @@ int parse_get_config_table_for_spider(
 bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_len, bool *is_unique_key)
 {
     LEX* lex = thd->lex;
-    TABLE_LIST* table_list = lex->query_tables;
     List_iterator<Create_field> it_field = lex->alter_info.create_list;
     Create_field *field;
     List_iterator<Key> key_iterator(lex->alter_info.key_list);
@@ -771,7 +769,7 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
             Create_field *field;
 
             bool field_exists = false;
-            while (field = list_field++)
+            while ((field = list_field++))
             {
                 if (!strcmp(field->field_name, key_name))
                 {
@@ -790,7 +788,7 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
 
 
     key_iterator.rewind();
-    while (key = key_iterator++)
+    while ((key = key_iterator++))
     {
         List_iterator<Key_part_spec> cols(key->columns);
         column = cols++;
@@ -806,7 +804,7 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
                 int has_flag = 0;
                 Key_part_spec *tmp_column;
                 cols.rewind();
-                while (tmp_column = cols++)
+                while ((tmp_column = cols++))
                 {
                     if (!strcmp(key_name, tmp_column->field_name.str))
                     {
@@ -848,7 +846,7 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
             {/* 存在shard_key, 是不是普通索引的一部分 */
                 Key_part_spec *tmp_column;
                 cols.rewind();
-                while (tmp_column = cols++)
+                while ((tmp_column = cols++))
                 {
                     if (!strcmp(key_name, tmp_column->field_name.str))
                         is_key_part = 1;
@@ -915,7 +913,6 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
 
 bool is_add_or_drop_unique_key(THD *thd, LEX *lex)
 {
-    TABLE_LIST* table_list = lex->query_tables;
     List_iterator<Key> key_iterator(lex->alter_info.key_list);
     List_iterator<Alter_drop> it_drop_field = lex->alter_info.drop_list;
     Alter_drop *alter_drop_field;
@@ -923,7 +920,7 @@ bool is_add_or_drop_unique_key(THD *thd, LEX *lex)
     ulonglong flags = lex->alter_info.flags;
     if (flags & Alter_info::ALTER_ADD_INDEX)
     {
-        while (key = key_iterator++)
+        while ((key = key_iterator++))
         {
             if (key->type == keytype::KEYTYPE_PRIMARY || key->type == keytype::KEYTYPE_UNIQUE)
             {
@@ -933,7 +930,7 @@ bool is_add_or_drop_unique_key(THD *thd, LEX *lex)
     }
     if (flags & Alter_info::ALTER_DROP_INDEX)
     {
-        while (alter_drop_field = it_drop_field++)
+        while ((alter_drop_field = it_drop_field++))
         {
             if (!strcmp(alter_drop_field->name, "PRIMARY"))
                 return true;
@@ -1081,6 +1078,8 @@ void tc_query_run(THD *thd, TC_PARSE_RESULT *parse_result_t)
         break;
     case SQLCOM_DROP_DB:
         break;
+	default:
+		break;
     }
     return;
 }
@@ -1832,6 +1831,8 @@ bool tc_query_convert(
     case TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY:
         my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(tc_parse_result_t->sql_type));
         return TRUE;
+	default:
+		break;
     }
     return FALSE;
 }
@@ -2143,7 +2144,7 @@ map<string, string> get_remote_ipport_map(
         sstr << i;
         string hash_value = sstr.str();
         string server_name = server_name_pre + hash_value;
-        if (server = get_server_by_name(mem, server_name.c_str(), &server_buffer))
+        if ((server = get_server_by_name(mem, server_name.c_str(), &server_buffer)))
         {
             string host = server->host;
             string user = server->username;
@@ -2160,6 +2161,35 @@ map<string, string> get_remote_ipport_map(
     return ipport_map;
 }
 
+/*
+get map for ipport->server_name
+*/
+map<string, string> get_spider_server_name_map(
+	MEM_ROOT *mem,
+	bool with_slave
+)
+{
+	map<string,string> server_name_map;
+	FOREIGN_SERVER *server;
+	ostringstream  sstr;
+	list<FOREIGN_SERVER*> server_list;
+	string wrapper_name = tdbctl_spider_wrapper_prefix;
+	get_server_by_wrapper(server_list, mem, wrapper_name.c_str(), with_slave);
+	list<FOREIGN_SERVER*>::iterator its;
+	for (its = server_list.begin(); its != server_list.end(); its++)
+	{
+		server = *its;
+		string host = server->host;
+		sstr.str("");
+		sstr << server->port;
+		string ports = sstr.str();
+		string s = host + "#" + ports;
+		string server_name = server->server_name;
+		server_name_map.insert(pair<string,string>(s, server_name));
+	}
+
+	return server_name_map;
+}
 
 MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 {
@@ -2171,7 +2201,6 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
     string ports = ipport.substr(pos + 1);
     uint port = atoi(ports.c_str());
     uint connect_retry_count = 3;
-    ulong connect_retry_interval = 1000;
     uint real_connect_option = 0;
     MYSQL* mysql;
 
@@ -2196,6 +2225,84 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
     return mysql;
 }
 
+
+MYSQL *tc_tdbctl_conn_primary(
+	int &ret,
+	map<string, string> tdbctl_ipport_map,
+	map<string, string> tdbctl_user_map,
+	map<string, string> tdbctl_passwd_map
+)
+{
+	MYSQL *conn = NULL;
+	string address;
+	if (is_group_replication_running()) {
+		/*
+		we always is primary node, because tdbctl only support single_primary_node
+		slave node is read_only in MGR and impossibility run to here
+		*/
+		address = string(report_host) + "#" + to_string(report_port);
+	}
+	else {
+		if (tdbctl_ipport_map.size() > 1) {
+			ret = 1;
+			my_error(ER_TCADMIN_MULTI_NODE_EXISTS, MYF(0));
+			return conn;
+		}
+		address = tdbctl_ipport_map.begin()->second;
+	}
+
+	conn = tc_conn_connect(address, tdbctl_user_map[address], tdbctl_passwd_map[address]);
+	if (conn == NULL) {
+		ret = 1;
+		my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
+	}
+
+	return conn;
+}
+
+
+
+/*
+get tdbctl's ipport map
+server_name->ip#port->user, server_name->ip#port->passwd
+*/
+map<string, string> get_tdbctl_ipport_map(
+	MEM_ROOT* mem,
+	map<string, string> &tdbctl_user_map,
+	map<string, string> &tdbctl_passwd_map
+)
+{
+	map<string, string> ipport_map;
+	FOREIGN_SERVER *server, server_buffer;
+	ostringstream  sstr;
+	string server_name_pre = tdbctl_control_wrapper_prefix;
+	ulong records = get_servers_count();
+	tdbctl_user_map.clear();
+	tdbctl_passwd_map.clear();
+
+	for (ulong i = 0; i < records; i++)
+	{
+		sstr.str("");
+		sstr << i;
+		string hash_value = sstr.str();
+		string server_name = server_name_pre + hash_value;
+		if ((server = get_server_by_name(mem, server_name.c_str(), &server_buffer)))
+		{
+			string host = server->host;
+			string user = server->username;
+			string passwd = server->password;
+			sstr.str("");
+			sstr << server->port;
+			string ports = sstr.str();
+			string s = host + "#" + ports;
+			ipport_map.insert(pair<string, string>(server_name, s));
+			tdbctl_user_map.insert(pair<string, string>(s, user));
+			tdbctl_passwd_map.insert(pair<string, string>(s, passwd));
+		}
+	}
+	return ipport_map;
+}
+
 map<string, MYSQL*> tc_spider_conn_connect(
   int &ret, 
   set<string> spider_ipport_set, 
@@ -2203,17 +2310,13 @@ map<string, MYSQL*> tc_spider_conn_connect(
   map<string, string> spider_passwd_map
 )
 {
-    map<int, string> ipport_map;
     map<string, MYSQL*> conn_map;
     set<string>::iterator its;
-    int read_timeout = 600;
-    int write_timeout = 600;
-    int connect_timeout = 60;
     for (its = spider_ipport_set.begin(); its != spider_ipport_set.end(); its++)
     {// ipport_c must like 1.1.1.1#3306
         string ipport = (*its);
         MYSQL* mysql;
-        if(mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])) 
+        if((mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])))
             conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
         else
         {
@@ -2224,6 +2327,32 @@ map<string, MYSQL*> tc_spider_conn_connect(
         }
     }
     return conn_map;
+}
+MYSQL* tc_spider_conn_single(
+	int &ret,
+	set<string> spider_ipport_set,
+	map<string, string> spider_user_map,
+	map<string, string> spider_passwd_map
+)
+{
+	MYSQL* mysql = NULL;
+	set<string>::iterator its;
+	if (spider_ipport_set.size())
+	{
+		// ipport_c must like 1.1.1.1#3306
+		string ipport = *(spider_ipport_set.begin());
+		if (!(mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])))
+		{
+			/* error */
+			ret = 1;
+			my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+		}
+	}
+	else
+	{
+		ret = 1;
+	}
+	return mysql;
 }
 
 
@@ -2237,9 +2366,6 @@ map<string, MYSQL*> tc_remote_conn_connect(
     map<int, string> ipport_map;
     map<string, MYSQL*> conn_map;
     map<string, string>::iterator its2;
-    int read_timeout = 600;
-    int write_timeout = 600;
-    int connect_timeout = 60;
 
     for (its2 = remote_ipport_map.begin(); its2 != remote_ipport_map.end(); its2++)
     {
@@ -2247,9 +2373,8 @@ map<string, MYSQL*> tc_remote_conn_connect(
         ulong pos = ipport.find("#");
         string hosts = ipport.substr(0, pos);
         string ports = ipport.substr(pos + 1);
-        uint port = atoi(ports.c_str());
         MYSQL* mysql;
-        if (mysql = tc_conn_connect(ipport, remote_user_map[ipport], remote_passwd_map[ipport]))
+        if ((mysql = tc_conn_connect(ipport, remote_user_map[ipport], remote_passwd_map[ipport])))
             conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
         else
         {
@@ -2426,7 +2551,7 @@ bool tc_reconnect(string ipport,
 {
   bool ret = FALSE;
   MYSQL* mysql;
-  if (mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport]))
+  if ((mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])))
   {
     spider_conn_map[ipport] = mysql;
   }

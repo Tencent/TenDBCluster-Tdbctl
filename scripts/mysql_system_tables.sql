@@ -86,6 +86,9 @@ CREATE TABLE IF NOT EXISTS event ( db char(64) CHARACTER SET utf8 COLLATE utf8_b
 
 CREATE TABLE IF NOT EXISTS ndb_binlog_index (Position BIGINT UNSIGNED NOT NULL, File VARCHAR(255) NOT NULL, epoch BIGINT UNSIGNED NOT NULL, inserts INT UNSIGNED NOT NULL, updates INT UNSIGNED NOT NULL, deletes INT UNSIGNED NOT NULL, schemaops INT UNSIGNED NOT NULL, orig_server_id INT UNSIGNED NOT NULL, orig_epoch BIGINT UNSIGNED NOT NULL, gci INT UNSIGNED NOT NULL, next_position BIGINT UNSIGNED NOT NULL, next_file VARCHAR(255) NOT NULL, PRIMARY KEY(epoch, orig_server_id, orig_epoch)) ENGINE=MYISAM;
 
+--Create cluster_heartbeat for monitor
+CREATE TABLE IF NOT EXISTS cluster_heartbeat_log(id bigint(20) NOT NULL, time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, server_name  char(64)  NOT NULL DEFAULT '',  host char(64) NOT NULL DEFAULT '', code int default 0, message mediumtext DEFAULT NULL, PRIMARY KEY (id), index spt(server_name)) ENGINE=InnoDB;
+
 SET @sql_mode_orig=@@SESSION.sql_mode;
 SET SESSION sql_mode='NO_ENGINE_SUBSTITUTION';
 
