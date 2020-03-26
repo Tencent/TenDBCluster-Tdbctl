@@ -44,7 +44,7 @@ This file contains the implementation of error and warnings related
 #include "sql_error.h"
 #include "sp_rcontext.h"
 #include "log.h"          // sql_print_warning
-#include "tc_sqlparse.h"
+#include "tc_base.h"
 
 using std::min;
 using std::max;

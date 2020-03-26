@@ -6344,6 +6344,18 @@ static Sys_var_ulong Sys_tc_check_repair_routing_interval(
       GLOBAL_VAR(tc_check_repair_routing_interval), CMD_LINE(REQUIRED_ARG),
       VALID_RANGE(0, 65535), DEFAULT(300), BLOCK_SIZE(1));
 
+static Sys_var_mybool Sys_tc_check_repair_trans(
+  "tc_check_repair_trans",
+  "If set to TRUE, check and repair  prepared transaction of remote data node",
+  GLOBAL_VAR(tc_check_repair_trans), CMD_LINE(OPT_ARG),
+  DEFAULT(FALSE));
+
+static Sys_var_ulong Sys_tc_check_repair_trans_interval(
+  "tc_check_repair_trans_interval",
+  "The interval time of checking and reparing prepared transaction of remote data node",
+  GLOBAL_VAR(tc_check_repair_trans_interval), CMD_LINE(REQUIRED_ARG),
+  VALID_RANGE(0, 65535), DEFAULT(60), BLOCK_SIZE(1));
+
 static Sys_var_charptr Sys_tc_spider_wrapper_prefix(
   "tc_spider_wrapper_prefix", "prefix of server name for SPIDER wrapper",
   READ_ONLY GLOBAL_VAR(tdbctl_spider_wrapper_prefix),

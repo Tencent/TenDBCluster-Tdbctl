@@ -1,7 +1,7 @@
 #include "sql_base.h"         // open_tables, open_and_lock_tables,
 #include "sql_lex.h"
 #include "sp_head.h"
-#include "tc_sqlparse.h"
+#include "tc_base.h"
 #include "sql_servers.h"
 #include "mysql.h"
 #include "sql_common.h"
@@ -27,7 +27,11 @@ mutex remote_exec_mtx;
 mutex spider_exec_mtx;
 
 
-static string tc_dbname_replace(string sql, string spider_db_name, string remote_db_name)
+static string tc_dbname_replace(
+  string sql, 
+  string spider_db_name, 
+  string remote_db_name
+)
 {
     string db_org1 = " " + spider_db_name;
     string db_org2 = "`" + spider_db_name + "`";
@@ -40,7 +44,11 @@ static string tc_dbname_replace(string sql, string spider_db_name, string remote
     return sql;
 }
 
-static string tc_dbname_replace_with_point(string sql, string spider_db_name, string remote_db_name)
+static string tc_dbname_replace_with_point(
+  string sql, 
+  string spider_db_name, 
+  string remote_db_name
+)
 {
     string db_org1 = " " + spider_db_name + "\\.";
     string db_org2 = "`" + spider_db_name + "`\\.";
@@ -81,163 +89,319 @@ const char* get_stmt_type_str(int type)
 {
     switch (type)
     {
-    case SQLCOM_SELECT: return "SQLCOM_SELECT";
-    case SQLCOM_CREATE_TABLE: return "SQLCOM_CREATE_TABLE";
-    case SQLCOM_CREATE_INDEX: return "SQLCOM_CREATE_INDEX";
-    case SQLCOM_ALTER_TABLE: return "SQLCOM_ALTER_TABLE";
-    case SQLCOM_UPDATE: return "SQLCOM_UPDATE";
-    case SQLCOM_INSERT: return "SQLCOM_INSERT";
-    case SQLCOM_INSERT_SELECT: return "SQLCOM_INSERT_SELECT";
-    case SQLCOM_DELETE: return "SQLCOM_DELETE";
-    case SQLCOM_TRUNCATE: return "SQLCOM_TRUNCATE";
-    case SQLCOM_DROP_TABLE: return "SQLCOM_DROP_TABLE";
-    case SQLCOM_DROP_INDEX: return "SQLCOM_DROP_INDEX";
-    case SQLCOM_SHOW_DATABASES: return "SQLCOM_SHOW_DATABASES";
-    case SQLCOM_SHOW_TABLES: return "SQLCOM_SHOW_TABLES";
-    case SQLCOM_SHOW_FIELDS: return "SQLCOM_SHOW_FIELDS";
-    case SQLCOM_SHOW_KEYS: return "SQLCOM_SHOW_KEYS";
-    case SQLCOM_SHOW_VARIABLES: return "SQLCOM_SHOW_VARIABLES";
-    case SQLCOM_SHOW_STATUS: return "SQLCOM_SHOW_STATUS";
-    case SQLCOM_SHOW_ENGINE_LOGS: return "SQLCOM_SHOW_ENGINE_LOGS";
-    case SQLCOM_SHOW_ENGINE_STATUS: return "SQLCOM_SHOW_ENGINE_STATUS";
-    case SQLCOM_SHOW_ENGINE_MUTEX: return "SQLCOM_SHOW_ENGINE_MUTEX";
-    case SQLCOM_SHOW_PROCESSLIST: return "SQLCOM_SHOW_PROCESSLIST";
-    case SQLCOM_SHOW_MASTER_STAT: return "SQLCOM_SHOW_MASTER_STAT";
-    case SQLCOM_SHOW_SLAVE_STAT: return "SQLCOM_SHOW_SLAVE_STAT";
-    case SQLCOM_SHOW_GRANTS: return "SQLCOM_SHOW_GRANTS";
-    case SQLCOM_SHOW_CREATE: return "SQLCOM_SHOW_CREATE";
-    case SQLCOM_SHOW_CHARSETS: return "SQLCOM_SHOW_CHARSETS";
-    case SQLCOM_SHOW_COLLATIONS: return "SQLCOM_SHOW_COLLATIONS";
-    case SQLCOM_SHOW_CREATE_DB: return "SQLCOM_SHOW_CREATE_DB";
-    case SQLCOM_SHOW_TABLE_STATUS: return "SQLCOM_SHOW_TABLE_STATUS";
-    case SQLCOM_SHOW_TRIGGERS: return "SQLCOM_SHOW_TRIGGERS";
-    case SQLCOM_LOAD: return "SQLCOM_LOAD";
-    case SQLCOM_SET_OPTION: return "SQLCOM_SET_OPTION";
-    case SQLCOM_LOCK_TABLES: return "SQLCOM_LOCK_TABLES";
-    case SQLCOM_UNLOCK_TABLES: return "SQLCOM_UNLOCK_TABLES";
-    case SQLCOM_GRANT: return "SQLCOM_GRANT";
-    case SQLCOM_CHANGE_DB: return "SQLCOM_CHANGE_DB";
-    case SQLCOM_CREATE_DB: return "SQLCOM_CREATE_DB";
-    case SQLCOM_DROP_DB: return "SQLCOM_DROP_DB";
-    case SQLCOM_ALTER_DB: return "SQLCOM_ALTER_DB";
-    case SQLCOM_REPAIR: return "SQLCOM_REPAIR";
-    case SQLCOM_REPLACE: return "SQLCOM_REPLACE";
-    case SQLCOM_REPLACE_SELECT: return "SQLCOM_REPLACE_SELECT";
-    case SQLCOM_CREATE_FUNCTION: return "SQLCOM_CREATE_FUNCTION";
-    case SQLCOM_DROP_FUNCTION: return "SQLCOM_DROP_FUNCTION";
-    case SQLCOM_REVOKE: return "SQLCOM_REVOKE";
-    case SQLCOM_OPTIMIZE: return "SQLCOM_OPTIMIZE";
-    case SQLCOM_CHECK: return "SQLCOM_CHECK";
-    case SQLCOM_ASSIGN_TO_KEYCACHE: return "SQLCOM_ASSIGN_TO_KEYCACHE";
-    case SQLCOM_PRELOAD_KEYS: return "SQLCOM_PRELOAD_KEYS";
-    case SQLCOM_FLUSH: return "SQLCOM_FLUSH";
-    case SQLCOM_KILL: return "SQLCOM_KILL";
-    case SQLCOM_ANALYZE: return "SQLCOM_ANALYZE";
-    case SQLCOM_ROLLBACK: return "SQLCOM_ROLLBACK";
-    case SQLCOM_ROLLBACK_TO_SAVEPOINT: return "SQLCOM_ROLLBACK_TO_SAVEPOINT";
-    case SQLCOM_COMMIT: return "SQLCOM_COMMIT";
-    case SQLCOM_SAVEPOINT: return "SQLCOM_SAVEPOINT";
-    case SQLCOM_RELEASE_SAVEPOINT: return "SQLCOM_RELEASE_SAVEPOINT";
-    case SQLCOM_SLAVE_START: return "SQLCOM_SLAVE_START";
-    case SQLCOM_SLAVE_STOP: return "SQLCOM_SLAVE_STOP";
-    case SQLCOM_BEGIN: return "SQLCOM_BEGIN";
-    case SQLCOM_CHANGE_MASTER: return "SQLCOM_CHANGE_MASTER";
-    case SQLCOM_RENAME_TABLE: return "SQLCOM_RENAME_TABLE";
-    case SQLCOM_RESET: return "SQLCOM_RESET";
-    case SQLCOM_PURGE: return "SQLCOM_PURGE";
-    case SQLCOM_PURGE_BEFORE: return "SQLCOM_PURGE_BEFORE";
-    case SQLCOM_SHOW_BINLOGS: return "SQLCOM_SHOW_BINLOGS";
-    case SQLCOM_SHOW_OPEN_TABLES: return "SQLCOM_SHOW_OPEN_TABLES";
-    case SQLCOM_HA_OPEN: return "SQLCOM_HA_OPEN";
-    case SQLCOM_HA_CLOSE: return "SQLCOM_HA_CLOSE";
-    case SQLCOM_HA_READ: return "SQLCOM_HA_READ";
-    case SQLCOM_SHOW_SLAVE_HOSTS: return "SQLCOM_SHOW_SLAVE_HOSTS";
-    case SQLCOM_DELETE_MULTI: return "SQLCOM_DELETE_MULTI";
-    case SQLCOM_UPDATE_MULTI: return "SQLCOM_UPDATE_MULTI";
-    case SQLCOM_SHOW_BINLOG_EVENTS: return "SQLCOM_SHOW_BINLOG_EVENTS";
-    case SQLCOM_DO: return "SQLCOM_DO";
-    case SQLCOM_SHOW_WARNS: return "SQLCOM_SHOW_WARNS";
-    case SQLCOM_EMPTY_QUERY: return "SQLCOM_EMPTY_QUERY";
-    case SQLCOM_SHOW_ERRORS: return "SQLCOM_SHOW_ERRORS";
-    case SQLCOM_SHOW_STORAGE_ENGINES: return "SQLCOM_SHOW_STORAGE_ENGINES";
-    case SQLCOM_SHOW_PRIVILEGES: return "SQLCOM_SHOW_PRIVILEGES";
-    case SQLCOM_HELP: return "SQLCOM_HELP";
-    case SQLCOM_CREATE_USER: return "SQLCOM_CREATE_USER";
-    case SQLCOM_DROP_USER: return "SQLCOM_DROP_USER";
-    case SQLCOM_RENAME_USER: return "SQLCOM_RENAME_USER";
-    case SQLCOM_REVOKE_ALL: return "SQLCOM_REVOKE_ALL";
-    case SQLCOM_CHECKSUM: return "SQLCOM_CHECKSUM";
-    case SQLCOM_CREATE_PROCEDURE: return "SQLCOM_CREATE_PROCEDURE";
-    case SQLCOM_CREATE_SPFUNCTION: return "SQLCOM_CREATE_SPFUNCTION";
-    case SQLCOM_CALL: return "SQLCOM_CALL";
-    case SQLCOM_DROP_PROCEDURE: return "SQLCOM_DROP_PROCEDURE";
-    case SQLCOM_ALTER_PROCEDURE: return "SQLCOM_ALTER_PROCEDURE";
-    case SQLCOM_ALTER_FUNCTION: return "SQLCOM_ALTER_FUNCTION";
-    case SQLCOM_SHOW_CREATE_PROC: return "SQLCOM_SHOW_CREATE_PROC";
-    case SQLCOM_SHOW_CREATE_FUNC: return "SQLCOM_SHOW_CREATE_FUNC";
-    case SQLCOM_SHOW_STATUS_PROC: return "SQLCOM_SHOW_STATUS_PROC";
-    case SQLCOM_SHOW_STATUS_FUNC: return "SQLCOM_SHOW_STATUS_FUNC";
-    case SQLCOM_PREPARE: return "SQLCOM_PREPARE";
-    case SQLCOM_EXECUTE: return "SQLCOM_EXECUTE";
-    case SQLCOM_DEALLOCATE_PREPARE: return "SQLCOM_DEALLOCATE_PREPARE";
-    case SQLCOM_CREATE_VIEW: return "SQLCOM_CREATE_VIEW";
-    case SQLCOM_DROP_VIEW: return "SQLCOM_DROP_VIEW";
-    case SQLCOM_CREATE_TRIGGER: return "SQLCOM_CREATE_TRIGGER";
-    case SQLCOM_DROP_TRIGGER: return "SQLCOM_DROP_TRIGGER";
-    case SQLCOM_XA_START: return "SQLCOM_XA_START";
-    case SQLCOM_XA_END: return "SQLCOM_XA_END";
-    case SQLCOM_XA_PREPARE: return "SQLCOM_XA_PREPARE";
-    case SQLCOM_XA_COMMIT: return "SQLCOM_XA_COMMIT";
-    case SQLCOM_XA_ROLLBACK: return "SQLCOM_XA_ROLLBACK";
-    case SQLCOM_XA_RECOVER: return "SQLCOM_XA_RECOVER";
-    case SQLCOM_SHOW_PROC_CODE: return "SQLCOM_SHOW_PROC_CODE";
-    case SQLCOM_SHOW_FUNC_CODE: return "SQLCOM_SHOW_FUNC_CODE";
-    case SQLCOM_ALTER_TABLESPACE: return "SQLCOM_ALTER_TABLESPACE";
-    case SQLCOM_INSTALL_PLUGIN: return "SQLCOM_INSTALL_PLUGIN";
-    case SQLCOM_UNINSTALL_PLUGIN: return "SQLCOM_UNINSTALL_PLUGIN";
-    case SQLCOM_BINLOG_BASE64_EVENT: return "SQLCOM_BINLOG_BASE64_EVENT";
-    case SQLCOM_SHOW_PLUGINS: return "SQLCOM_SHOW_PLUGINS";
-    case SQLCOM_CREATE_SERVER: return "SQLCOM_CREATE_SERVER";
-    case SQLCOM_DROP_SERVER: return "SQLCOM_DROP_SERVER";
-    case SQLCOM_ALTER_SERVER: return "SQLCOM_ALTER_SERVER";
-    case SQLCOM_CREATE_EVENT: return "SQLCOM_CREATE_EVENT";
-    case SQLCOM_ALTER_EVENT: return "SQLCOM_ALTER_EVENT";
-    case SQLCOM_DROP_EVENT: return "SQLCOM_DROP_EVENT";
-    case SQLCOM_SHOW_CREATE_EVENT: return "SQLCOM_SHOW_CREATE_EVENT";
-    case SQLCOM_SHOW_EVENTS: return "SQLCOM_SHOW_EVENTS";
-    case SQLCOM_SHOW_CREATE_TRIGGER: return "SQLCOM_SHOW_CREATE_TRIGGER";
-    case SQLCOM_ALTER_DB_UPGRADE: return "SQLCOM_ALTER_DB_UPGRADE";
-    case SQLCOM_SHOW_PROFILE: return "SQLCOM_SHOW_PROFILE";
-    case SQLCOM_SHOW_PROFILES: return "SQLCOM_SHOW_PROFILES";
-    case SQLCOM_SIGNAL: return "SQLCOM_SIGNAL";
-    case SQLCOM_RESIGNAL: return "SQLCOM_RESIGNAL";
-    case SQLCOM_SHOW_RELAYLOG_EVENTS: return "SQLCOM_SHOW_RELAYLOG_EVENTS";
-    case SQLCOM_GET_DIAGNOSTICS: return "SQLCOM_GET_DIAGNOSTICS";
-    case SQLCOM_SHUTDOWN: return "SQLCOM_SHUTDOWN";
-    case SQLCOM_ALTER_USER: return "SQLCOM_ALTER_USER";
-    case SQLCOM_SHOW_CREATE_USER: return "SQLCOM_SHOW_CREATE_USER";
-    case SQLCOM_ALTER_INSTANCE: return "SQLCOM_ALTER_INSTANCE";
-    case SQLCOM_CHANGE_REPLICATION_FILTER: return "SQLCOM_CHANGE_REPLICATION_FILTER";
-    case SQLCOM_CREATE_COMPRESSION_DICTIONARY: return "SQLCOM_CREATE_COMPRESSION_DICTIONARY";
-    case SQLCOM_DROP_COMPRESSION_DICTIONARY: return "SQLCOM_DROP_COMPRESSION_DICTIONARY";
-    case SQLCOM_EXPLAIN_OTHER: return "SQLCOM_EXPLAIN_OTHER";
-    case SQLCOM_LOCK_BINLOG_FOR_BACKUP: return "SQLCOM_LOCK_BINLOG_FOR_BACKUP";
-    case SQLCOM_LOCK_TABLES_FOR_BACKUP: return "SQLCOM_LOCK_TABLES_FOR_BACKUP";
-    case SQLCOM_SHOW_CLIENT_STATS: return "SQLCOM_SHOW_CLIENT_STATS";
-    case SQLCOM_SHOW_INDEX_STATS: return "SQLCOM_SHOW_INDEX_STATS";
-    case SQLCOM_SHOW_TABLE_STATS: return "SQLCOM_SHOW_TABLE_STATS";
-    case SQLCOM_SHOW_THREAD_STATS: return "SQLCOM_SHOW_THREAD_STATS";
-    case SQLCOM_SHOW_USER_STATS: return "SQLCOM_SHOW_USER_STATS";
-    case SQLCOM_START_GROUP_REPLICATION: return "SQLCOM_START_GROUP_REPLICATION";
-    case SQLCOM_STOP_GROUP_REPLICATION: return "SQLCOM_STOP_GROUP_REPLICATION";
+    case SQLCOM_SELECT: 
+      return "SQLCOM_SELECT";
+    case SQLCOM_CREATE_TABLE: 
+      return "SQLCOM_CREATE_TABLE";
+    case SQLCOM_CREATE_INDEX: 
+      return "SQLCOM_CREATE_INDEX";
+    case SQLCOM_ALTER_TABLE:
+      return "SQLCOM_ALTER_TABLE";
+    case SQLCOM_UPDATE: 
+      return "SQLCOM_UPDATE";
+    case SQLCOM_INSERT:
+      return "SQLCOM_INSERT";
+    case SQLCOM_INSERT_SELECT:
+      return "SQLCOM_INSERT_SELECT";
+    case SQLCOM_DELETE:
+      return "SQLCOM_DELETE";
+    case SQLCOM_TRUNCATE:
+      return "SQLCOM_TRUNCATE";
+    case SQLCOM_DROP_TABLE:
+      return "SQLCOM_DROP_TABLE";
+    case SQLCOM_DROP_INDEX:
+      return "SQLCOM_DROP_INDEX";
+    case SQLCOM_SHOW_DATABASES:
+      return "SQLCOM_SHOW_DATABASES";
+    case SQLCOM_SHOW_TABLES: 
+      return "SQLCOM_SHOW_TABLES";
+    case SQLCOM_SHOW_FIELDS:
+      return "SQLCOM_SHOW_FIELDS";
+    case SQLCOM_SHOW_KEYS: 
+      return "SQLCOM_SHOW_KEYS";
+    case SQLCOM_SHOW_VARIABLES: 
+      return "SQLCOM_SHOW_VARIABLES";
+    case SQLCOM_SHOW_STATUS:
+      return "SQLCOM_SHOW_STATUS";
+    case SQLCOM_SHOW_ENGINE_LOGS:
+      return "SQLCOM_SHOW_ENGINE_LOGS";
+    case SQLCOM_SHOW_ENGINE_STATUS:
+      return "SQLCOM_SHOW_ENGINE_STATUS";
+    case SQLCOM_SHOW_ENGINE_MUTEX: 
+      return "SQLCOM_SHOW_ENGINE_MUTEX";
+    case SQLCOM_SHOW_PROCESSLIST:
+      return "SQLCOM_SHOW_PROCESSLIST";
+    case SQLCOM_SHOW_MASTER_STAT:
+      return "SQLCOM_SHOW_MASTER_STAT";
+    case SQLCOM_SHOW_SLAVE_STAT:
+      return "SQLCOM_SHOW_SLAVE_STAT";
+    case SQLCOM_SHOW_GRANTS: 
+      return "SQLCOM_SHOW_GRANTS";
+    case SQLCOM_SHOW_CREATE:
+      return "SQLCOM_SHOW_CREATE";
+    case SQLCOM_SHOW_CHARSETS:
+      return "SQLCOM_SHOW_CHARSETS";
+    case SQLCOM_SHOW_COLLATIONS: 
+      return "SQLCOM_SHOW_COLLATIONS";
+    case SQLCOM_SHOW_CREATE_DB: 
+      return "SQLCOM_SHOW_CREATE_DB";
+    case SQLCOM_SHOW_TABLE_STATUS: 
+      return "SQLCOM_SHOW_TABLE_STATUS";
+    case SQLCOM_SHOW_TRIGGERS:
+      return "SQLCOM_SHOW_TRIGGERS";
+    case SQLCOM_LOAD:
+      return "SQLCOM_LOAD";
+    case SQLCOM_SET_OPTION: 
+      return "SQLCOM_SET_OPTION";
+    case SQLCOM_LOCK_TABLES:
+      return "SQLCOM_LOCK_TABLES";
+    case SQLCOM_UNLOCK_TABLES:
+      return "SQLCOM_UNLOCK_TABLES";
+    case SQLCOM_GRANT:
+      return "SQLCOM_GRANT";
+    case SQLCOM_CHANGE_DB: 
+      return "SQLCOM_CHANGE_DB";
+    case SQLCOM_CREATE_DB:
+      return "SQLCOM_CREATE_DB";
+    case SQLCOM_DROP_DB: 
+      return "SQLCOM_DROP_DB";
+    case SQLCOM_ALTER_DB: 
+      return "SQLCOM_ALTER_DB";
+    case SQLCOM_REPAIR: 
+      return "SQLCOM_REPAIR";
+    case SQLCOM_REPLACE:
+      return "SQLCOM_REPLACE";
+    case SQLCOM_REPLACE_SELECT:
+      return "SQLCOM_REPLACE_SELECT";
+    case SQLCOM_CREATE_FUNCTION:
+      return "SQLCOM_CREATE_FUNCTION";
+    case SQLCOM_DROP_FUNCTION:
+      return "SQLCOM_DROP_FUNCTION";
+    case SQLCOM_REVOKE: 
+      return "SQLCOM_REVOKE";
+    case SQLCOM_OPTIMIZE:
+      return "SQLCOM_OPTIMIZE";
+    case SQLCOM_CHECK: 
+      return "SQLCOM_CHECK";
+    case SQLCOM_ASSIGN_TO_KEYCACHE: 
+      return "SQLCOM_ASSIGN_TO_KEYCACHE";
+    case SQLCOM_PRELOAD_KEYS:
+      return "SQLCOM_PRELOAD_KEYS";
+    case SQLCOM_FLUSH: 
+      return "SQLCOM_FLUSH";
+    case SQLCOM_KILL: 
+      return "SQLCOM_KILL";
+    case SQLCOM_ANALYZE:
+      return "SQLCOM_ANALYZE";
+    case SQLCOM_ROLLBACK:
+      return "SQLCOM_ROLLBACK";
+    case SQLCOM_ROLLBACK_TO_SAVEPOINT: 
+      return "SQLCOM_ROLLBACK_TO_SAVEPOINT";
+    case SQLCOM_COMMIT: 
+      return "SQLCOM_COMMIT";
+    case SQLCOM_SAVEPOINT: 
+      return "SQLCOM_SAVEPOINT";
+    case SQLCOM_RELEASE_SAVEPOINT:
+      return "SQLCOM_RELEASE_SAVEPOINT";
+    case SQLCOM_SLAVE_START:
+      return "SQLCOM_SLAVE_START";
+    case SQLCOM_SLAVE_STOP:
+      return "SQLCOM_SLAVE_STOP";
+    case SQLCOM_BEGIN:
+      return "SQLCOM_BEGIN";
+    case SQLCOM_CHANGE_MASTER: 
+      return "SQLCOM_CHANGE_MASTER";
+    case SQLCOM_RENAME_TABLE:
+      return "SQLCOM_RENAME_TABLE";
+    case SQLCOM_RESET:
+      return "SQLCOM_RESET";
+    case SQLCOM_PURGE:
+      return "SQLCOM_PURGE";
+    case SQLCOM_PURGE_BEFORE:
+      return "SQLCOM_PURGE_BEFORE";
+    case SQLCOM_SHOW_BINLOGS:
+      return "SQLCOM_SHOW_BINLOGS";
+    case SQLCOM_SHOW_OPEN_TABLES:
+      return "SQLCOM_SHOW_OPEN_TABLES";
+    case SQLCOM_HA_OPEN: 
+      return "SQLCOM_HA_OPEN";
+    case SQLCOM_HA_CLOSE:
+      return "SQLCOM_HA_CLOSE";
+    case SQLCOM_HA_READ: 
+      return "SQLCOM_HA_READ";
+    case SQLCOM_SHOW_SLAVE_HOSTS: 
+      return "SQLCOM_SHOW_SLAVE_HOSTS";
+    case SQLCOM_DELETE_MULTI:
+      return "SQLCOM_DELETE_MULTI";
+    case SQLCOM_UPDATE_MULTI:
+      return "SQLCOM_UPDATE_MULTI";
+    case SQLCOM_SHOW_BINLOG_EVENTS:
+      return "SQLCOM_SHOW_BINLOG_EVENTS";
+    case SQLCOM_DO:
+      return "SQLCOM_DO";
+    case SQLCOM_SHOW_WARNS:
+      return "SQLCOM_SHOW_WARNS";
+    case SQLCOM_EMPTY_QUERY: 
+      return "SQLCOM_EMPTY_QUERY";
+    case SQLCOM_SHOW_ERRORS: 
+      return "SQLCOM_SHOW_ERRORS";
+    case SQLCOM_SHOW_STORAGE_ENGINES:
+      return "SQLCOM_SHOW_STORAGE_ENGINES";
+    case SQLCOM_SHOW_PRIVILEGES: 
+      return "SQLCOM_SHOW_PRIVILEGES";
+    case SQLCOM_HELP:
+      return "SQLCOM_HELP";
+    case SQLCOM_CREATE_USER:
+      return "SQLCOM_CREATE_USER";
+    case SQLCOM_DROP_USER: 
+      return "SQLCOM_DROP_USER";
+    case SQLCOM_RENAME_USER:
+      return "SQLCOM_RENAME_USER";
+    case SQLCOM_REVOKE_ALL:
+      return "SQLCOM_REVOKE_ALL";
+    case SQLCOM_CHECKSUM:
+      return "SQLCOM_CHECKSUM";
+    case SQLCOM_CREATE_PROCEDURE:
+      return "SQLCOM_CREATE_PROCEDURE";
+    case SQLCOM_CREATE_SPFUNCTION:
+      return "SQLCOM_CREATE_SPFUNCTION";
+    case SQLCOM_CALL: 
+      return "SQLCOM_CALL";
+    case SQLCOM_DROP_PROCEDURE:
+      return "SQLCOM_DROP_PROCEDURE";
+    case SQLCOM_ALTER_PROCEDURE:
+      return "SQLCOM_ALTER_PROCEDURE";
+    case SQLCOM_ALTER_FUNCTION:
+      return "SQLCOM_ALTER_FUNCTION";
+    case SQLCOM_SHOW_CREATE_PROC: 
+      return "SQLCOM_SHOW_CREATE_PROC";
+    case SQLCOM_SHOW_CREATE_FUNC:
+      return "SQLCOM_SHOW_CREATE_FUNC";
+    case SQLCOM_SHOW_STATUS_PROC:
+      return "SQLCOM_SHOW_STATUS_PROC";
+    case SQLCOM_SHOW_STATUS_FUNC:
+      return "SQLCOM_SHOW_STATUS_FUNC";
+    case SQLCOM_PREPARE: 
+      return "SQLCOM_PREPARE";
+    case SQLCOM_EXECUTE:
+      return "SQLCOM_EXECUTE";
+    case SQLCOM_DEALLOCATE_PREPARE:
+      return "SQLCOM_DEALLOCATE_PREPARE";
+    case SQLCOM_CREATE_VIEW: 
+      return "SQLCOM_CREATE_VIEW";
+    case SQLCOM_DROP_VIEW: 
+      return "SQLCOM_DROP_VIEW";
+    case SQLCOM_CREATE_TRIGGER:
+      return "SQLCOM_CREATE_TRIGGER";
+    case SQLCOM_DROP_TRIGGER:
+      return "SQLCOM_DROP_TRIGGER";
+    case SQLCOM_XA_START:
+      return "SQLCOM_XA_START";
+    case SQLCOM_XA_END:
+      return "SQLCOM_XA_END";
+    case SQLCOM_XA_PREPARE:
+      return "SQLCOM_XA_PREPARE";
+    case SQLCOM_XA_COMMIT:
+      return "SQLCOM_XA_COMMIT";
+    case SQLCOM_XA_ROLLBACK: 
+      return "SQLCOM_XA_ROLLBACK";
+    case SQLCOM_XA_RECOVER:
+      return "SQLCOM_XA_RECOVER";
+    case SQLCOM_SHOW_PROC_CODE: 
+      return "SQLCOM_SHOW_PROC_CODE";
+    case SQLCOM_SHOW_FUNC_CODE:
+      return "SQLCOM_SHOW_FUNC_CODE";
+    case SQLCOM_ALTER_TABLESPACE:
+      return "SQLCOM_ALTER_TABLESPACE";
+    case SQLCOM_INSTALL_PLUGIN:
+      return "SQLCOM_INSTALL_PLUGIN";
+    case SQLCOM_UNINSTALL_PLUGIN: 
+      return "SQLCOM_UNINSTALL_PLUGIN";
+    case SQLCOM_BINLOG_BASE64_EVENT:
+      return "SQLCOM_BINLOG_BASE64_EVENT";
+    case SQLCOM_SHOW_PLUGINS:
+      return "SQLCOM_SHOW_PLUGINS";
+    case SQLCOM_CREATE_SERVER:
+      return "SQLCOM_CREATE_SERVER";
+    case SQLCOM_DROP_SERVER:
+      return "SQLCOM_DROP_SERVER";
+    case SQLCOM_ALTER_SERVER:
+      return "SQLCOM_ALTER_SERVER";
+    case SQLCOM_CREATE_EVENT:
+      return "SQLCOM_CREATE_EVENT";
+    case SQLCOM_ALTER_EVENT:
+      return "SQLCOM_ALTER_EVENT";
+    case SQLCOM_DROP_EVENT:
+      return "SQLCOM_DROP_EVENT";
+    case SQLCOM_SHOW_CREATE_EVENT:
+      return "SQLCOM_SHOW_CREATE_EVENT";
+    case SQLCOM_SHOW_EVENTS:
+      return "SQLCOM_SHOW_EVENTS";
+    case SQLCOM_SHOW_CREATE_TRIGGER:
+      return "SQLCOM_SHOW_CREATE_TRIGGER";
+    case SQLCOM_ALTER_DB_UPGRADE: 
+      return "SQLCOM_ALTER_DB_UPGRADE";
+    case SQLCOM_SHOW_PROFILE:
+      return "SQLCOM_SHOW_PROFILE";
+    case SQLCOM_SHOW_PROFILES:
+      return "SQLCOM_SHOW_PROFILES";
+    case SQLCOM_SIGNAL:
+      return "SQLCOM_SIGNAL";
+    case SQLCOM_RESIGNAL:
+      return "SQLCOM_RESIGNAL";
+    case SQLCOM_SHOW_RELAYLOG_EVENTS:
+      return "SQLCOM_SHOW_RELAYLOG_EVENTS";
+    case SQLCOM_GET_DIAGNOSTICS:
+      return "SQLCOM_GET_DIAGNOSTICS";
+    case SQLCOM_SHUTDOWN:
+      return "SQLCOM_SHUTDOWN";
+    case SQLCOM_ALTER_USER:
+      return "SQLCOM_ALTER_USER";
+    case SQLCOM_SHOW_CREATE_USER: 
+      return "SQLCOM_SHOW_CREATE_USER";
+    case SQLCOM_ALTER_INSTANCE:
+      return "SQLCOM_ALTER_INSTANCE";
+    case SQLCOM_CHANGE_REPLICATION_FILTER:
+      return "SQLCOM_CHANGE_REPLICATION_FILTER";
+    case SQLCOM_CREATE_COMPRESSION_DICTIONARY:
+      return "SQLCOM_CREATE_COMPRESSION_DICTIONARY";
+    case SQLCOM_DROP_COMPRESSION_DICTIONARY:
+      return "SQLCOM_DROP_COMPRESSION_DICTIONARY";
+    case SQLCOM_EXPLAIN_OTHER:
+      return "SQLCOM_EXPLAIN_OTHER";
+    case SQLCOM_LOCK_BINLOG_FOR_BACKUP: 
+      return "SQLCOM_LOCK_BINLOG_FOR_BACKUP";
+    case SQLCOM_LOCK_TABLES_FOR_BACKUP:
+      return "SQLCOM_LOCK_TABLES_FOR_BACKUP";
+    case SQLCOM_SHOW_CLIENT_STATS:
+      return "SQLCOM_SHOW_CLIENT_STATS";
+    case SQLCOM_SHOW_INDEX_STATS: 
+      return "SQLCOM_SHOW_INDEX_STATS";
+    case SQLCOM_SHOW_TABLE_STATS:
+      return "SQLCOM_SHOW_TABLE_STATS";
+    case SQLCOM_SHOW_THREAD_STATS:
+      return "SQLCOM_SHOW_THREAD_STATS";
+    case SQLCOM_SHOW_USER_STATS:
+      return "SQLCOM_SHOW_USER_STATS";
+    case SQLCOM_START_GROUP_REPLICATION:
+      return "SQLCOM_START_GROUP_REPLICATION";
+    case SQLCOM_STOP_GROUP_REPLICATION: 
+      return "SQLCOM_STOP_GROUP_REPLICATION";
     case SQLCOM_UNLOCK_BINLOG: return "SQLCOM_UNLOCK_BINLOG";
-    case TC_SQLCOM_CREATE_TABLE_WITH_SELECT: return "TC_SQLCOM_CREATE_TABLE_WITH_SELECT";
-    case TC_SQLCOM_CREATE_TABLE_WITH_CONNECT_STRING: return "TC_SQLCOM_CREATE_TABLE_WITH_CONNECT_STRING";
-    case TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT: return "TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT";
-    case TC_SQLCOM_CREATE_TABLE_WITH_FIELD_CHARSET: return "TC_SQLCOM_CREATE_TABLE_WITH_FIELD_CHARSET";
-    case TC_SQLCOM_CREATE_TABLE_LIKE: return "TC_SQLCOM_CREATE_TABLE_LIKE";
-    case TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY: return "TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY";
-    case TC_SQLCOM_ALTER_TABLE_UNSUPPORT: return "TC_SQLCOM_ALTER_TABLE_UNSUPPORT";
+    case TC_SQLCOM_CREATE_TABLE_WITH_SELECT: 
+      return "TC_SQLCOM_CREATE_TABLE_WITH_SELECT";
+    case TC_SQLCOM_CREATE_TABLE_WITH_CONNECT_STRING: 
+      return "TC_SQLCOM_CREATE_TABLE_WITH_CONNECT_STRING";
+    case TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT: 
+      return "TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT";
+    case TC_SQLCOM_CREATE_TABLE_WITH_FIELD_CHARSET: 
+      return "TC_SQLCOM_CREATE_TABLE_WITH_FIELD_CHARSET";
+    case TC_SQLCOM_CREATE_TABLE_LIKE:
+      return "TC_SQLCOM_CREATE_TABLE_LIKE";
+    case TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY: 
+      return "TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY";
+    case TC_SQLCOM_ALTER_TABLE_UNSUPPORT: 
+      return "TC_SQLCOM_ALTER_TABLE_UNSUPPORT";
     default:
         return "unkonw type";
     }
@@ -346,7 +510,9 @@ void gettype_create_filed(Create_field *cr_field, String &res)
         break;
     case MYSQL_TYPE_NEWDECIMAL:
         res.length(cs->cset->snprintf(cs, (char*)res.ptr(), res.alloced_length(),
-            "decimal(%ld,%d)", cr_field->length - (cr_field->decimals>0 ? 1 : 0) - (unsigned_flag || !cr_field->length ? 0 : 1),
+            "decimal(%ld,%d)", cr_field->length 
+             - (cr_field->decimals>0 ? 1 : 0) - 
+            (unsigned_flag || !cr_field->length ? 0 : 1),
             cr_field->decimals));
         filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
         break;
@@ -454,12 +620,7 @@ void gettype_create_filed(Create_field *cr_field, String &res)
 
         if (cr_field->charset)
         {
-            /* TODO,   这处的mbmaxlen是什么含义 ？！ varchar(10)的时候，mbmaxlen为3，为什么 ？
-            length= cs->cset->snprintf(cs,(char*) res.ptr(), res.alloced_length(), "%s(%d)",
-            ((cr_field->charset && cr_field->charset->csname) ? "varchar" : "varbinary"),
-            (int) field_length / cr_field->charset->mbmaxlen);
-            */
-            length = cs->cset->snprintf(cs, (char*)res.ptr(), res.alloced_length(), "%s(%d)",
+                length = cs->cset->snprintf(cs, (char*)res.ptr(), res.alloced_length(), "%s(%d)",
                 (strcmp(cr_field->charset->csname, "binary") == 0 ? "varbinary" : "varchar"),
                 (int)field_length);
         }
@@ -591,7 +752,11 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
     bool has_shard_key = false;
     Key_part_spec *column;
     int is_key_part = 0; 
-    int level = 0;  // first part of the common key，level is 1;  first part of the unique key，level is 2; first part of the primary key, level is 3
+    int level = 0;  
+    /* 
+    first part of the common key，level is 1;  
+    first part of the unique key，level is 2; 
+    first part of the primary key, level is 3 */
     *is_unique_key = FALSE; // do not have unique key
 
     strcpy(result, "SUCCESS");
@@ -1342,9 +1507,13 @@ map<string, string> tc_get_remote_rename_table(TC_PARSE_RESULT *tc_parse_result_
 }
 
 
-string tc_get_spider_create_table_like(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+string tc_get_spider_create_table_like(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+)
 {
-    string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
+    string sql(tc_parse_result_t->query_string.str, 
+      tc_parse_result_t->query_string.length);
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
     string db_name = tc_parse_result_t->db_name;
     string table_name = tc_parse_result_t->table_name;
@@ -1353,7 +1522,8 @@ string tc_get_spider_create_table_like(TC_PARSE_RESULT *tc_parse_result_t, int s
     ostringstream  sstr;
     string reorganize_partition_sql = "";
     string  partition_sql = "";
-    sql = sql + "; alter table " + db_name + "." + table_name + " reorganize partition ";
+    sql = sql + "; alter table " + db_name + "." + table_name 
+      + " reorganize partition ";
 
     for (int i = 0; i < shard_count; i++)
     {
@@ -1364,32 +1534,42 @@ string tc_get_spider_create_table_like(TC_PARSE_RESULT *tc_parse_result_t, int s
         string pt_sql;
         string server_name = server_name_pre + hash_value;
         server_info = "server \"" + server_name + "\"";
-        pt_sql = "PARTITION pt" + hash_value + " values in (" + hash_value + ") COMMENT = 'database \""
-            + db_name + "_" + hash_value + "\", table \"" + table_name + "\", " + server_info + "\' ENGINE = SPIDER";
+        pt_sql = "PARTITION pt" + hash_value + 
+          " values in (" + hash_value + ") COMMENT = 'database \""
+            + db_name + "_" + hash_value 
+            + "\", table \"" + table_name + "\", " 
+            + server_info + "\' ENGINE = SPIDER";
 
         if (i < shard_count - 1)
         {
-            reorganize_partition_sql = reorganize_partition_sql + "pt" + hash_value + ",";
+            reorganize_partition_sql = 
+              reorganize_partition_sql + "pt" + hash_value + ",";
             pt_sql = pt_sql + ",";
         }
         else
         {
             pt_sql = pt_sql + ");";
-            reorganize_partition_sql = reorganize_partition_sql + "pt" + hash_value + " into(";
+            reorganize_partition_sql = 
+              reorganize_partition_sql + "pt" + hash_value + " into(";
         }
         partition_sql = partition_sql + pt_sql;
     }
     sstr.clear();
 
-    sql = "use " + db_name + ";" + sql + reorganize_partition_sql + partition_sql;
+    sql = "use " + db_name + ";" + sql + 
+      reorganize_partition_sql + partition_sql;
     return sql;
 }
 
-map<string, string> tc_get_remote_create_table_like(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+map<string, string> tc_get_remote_create_table_like(
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count
+)
 {
     map<string, string> map;
     ostringstream  sstr;
-    string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
+    string sql(tc_parse_result_t->query_string.str, 
+      tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
     string new_db = tc_parse_result_t->new_db_name;
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
@@ -1421,7 +1601,14 @@ bool tc_query_parse(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 
 
 /* convert common query to spider/remotedb query */
-bool tc_query_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t, int shard_count, string *spider_sql, map<string, string> *remote_sql_map)
+bool tc_query_convert(
+  THD *thd, 
+  LEX *lex, 
+  TC_PARSE_RESULT *tc_parse_result_t, 
+  int shard_count, 
+  string *spider_sql, 
+  map<string, string> *remote_sql_map
+)
 {
     if (tc_parse_result_t->result)
     {// result TURE mean abnormal query
@@ -1522,7 +1709,8 @@ bool tc_query_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t, in
     case SQLCOM_START_GROUP_REPLICATION:
     case SQLCOM_STOP_GROUP_REPLICATION:
     case SQLCOM_UNLOCK_BINLOG:
-        my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(tc_parse_result_t->sql_type));
+        my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), 
+          get_stmt_type_str(tc_parse_result_t->sql_type));
         return TRUE;
 
         /* 2. DDL need dispatch to each spider only */
@@ -1649,7 +1837,12 @@ bool tc_query_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t, in
 }
 
 
-void tc_spider_real_query(MYSQL *mysql, string sql, tc_execute_result *exec_result, string ipport)
+void tc_spider_real_query(
+  MYSQL *mysql, 
+  string sql, 
+  tc_execute_result *exec_result, 
+  string ipport
+)
 {
     int ret = mysql_real_query(mysql, sql.c_str(), sql.length());
     tc_exec_info exec_info;
@@ -1671,7 +1864,12 @@ void tc_spider_real_query(MYSQL *mysql, string sql, tc_execute_result *exec_resu
 }
 
 
-void tc_remote_real_query(MYSQL *mysql, string sql, tc_execute_result *exec_result, string ipport)
+void tc_remote_real_query(
+  MYSQL *mysql, 
+  string sql, 
+  tc_execute_result *exec_result, 
+  string ipport
+)
 {
     int ret = mysql_real_query(mysql, sql.c_str(), sql.length());
     tc_exec_info exec_info;
@@ -1693,9 +1891,12 @@ void tc_remote_real_query(MYSQL *mysql, string sql, tc_execute_result *exec_resu
 }
 
 
-bool tc_spider_ddl_run_paral(string before_sql, string spider_sql, 
-                             map<string, MYSQL*> spider_conn_map, 
-                             tc_execute_result *exec_result)
+bool tc_spider_ddl_run_paral(
+  string before_sql, 
+  string spider_sql, 
+  map<string, MYSQL*> spider_conn_map, 
+  tc_execute_result *exec_result
+)
 {
     int spider_count = spider_conn_map.size();
     string exec_sql = before_sql + spider_sql;
@@ -1746,9 +1947,13 @@ bool tc_spider_ddl_run_paral(string before_sql, string spider_sql,
     return result;
 }
 
-bool tc_remotedb_ddl_run_paral(string before_sql, map<string, string> remote_sql_map, 
-                               map<string, MYSQL*> remote_conn_map, map<string, string> remote_ipport_map, 
-                               tc_execute_result *exec_result)
+bool tc_remotedb_ddl_run_paral(
+  string before_sql, 
+  map<string, string> remote_sql_map, 
+  map<string, MYSQL*> remote_conn_map, 
+  map<string, string> remote_ipport_map, 
+  tc_execute_result *exec_result
+)
 {
     int remote_count = remote_conn_map.size();
     tc_exec_info exec_info;
@@ -1808,9 +2013,14 @@ bool tc_remotedb_ddl_run_paral(string before_sql, map<string, string> remote_sql
 }
 
 
-bool tc_ddl_run(THD *thd, string before_sql_for_spider, string before_sql_for_remote, 
-                string spider_sql, map<string, string> remote_sql_map, 
-                tc_execute_result *exec_result)
+bool tc_ddl_run(
+  THD *thd, 
+  string before_sql_for_spider, 
+  string before_sql_for_remote, 
+  string spider_sql, 
+  map<string, string> remote_sql_map, 
+  tc_execute_result *exec_result
+)
 {
     bool spider_run_first = FALSE;
     exec_result->result = FALSE;
@@ -1833,10 +2043,18 @@ bool tc_ddl_run(THD *thd, string before_sql_for_spider, string before_sql_for_re
     }
     else
     {/* other */
-        if (!tc_remotedb_ddl_run_paral(before_sql_for_remote, remote_sql_map, thd->remote_conn_map, thd->remote_ipport_map, exec_result) || 
-            thd->variables.tc_force_execute)
+        if (!tc_remotedb_ddl_run_paral(
+          before_sql_for_remote, 
+          remote_sql_map, 
+          thd->remote_conn_map, 
+          thd->remote_ipport_map, exec_result) || 
+         thd->variables.tc_force_execute)
         {
-            tc_spider_ddl_run_paral(before_sql_for_spider, spider_sql, thd->spider_conn_map, exec_result);
+            tc_spider_ddl_run_paral(
+              before_sql_for_spider, 
+              spider_sql, 
+              thd->spider_conn_map, 
+              exec_result);
         }
     }
     return FALSE;
@@ -1978,9 +2196,12 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
     return mysql;
 }
 
-map<string, MYSQL*> tc_spider_conn_connect(int &ret, set<string> spider_ipport_set, 
-                                          map<string, string> spider_user_map, 
-                                          map<string, string> spider_passwd_map)
+map<string, MYSQL*> tc_spider_conn_connect(
+  int &ret, 
+  set<string> spider_ipport_set, 
+  map<string, string> spider_user_map, 
+  map<string, string> spider_passwd_map
+)
 {
     map<int, string> ipport_map;
     map<string, MYSQL*> conn_map;
@@ -2006,7 +2227,12 @@ map<string, MYSQL*> tc_spider_conn_connect(int &ret, set<string> spider_ipport_s
 }
 
 
-map<string, MYSQL*> tc_remote_conn_connect(int &ret, map<string, string> remote_ipport_map, map<string, string> remote_user_map, map<string, string> remote_passwd_map)
+map<string, MYSQL*> tc_remote_conn_connect(
+  int &ret, 
+  map<string, string> remote_ipport_map,
+  map<string, string> remote_user_map, 
+  map<string, string> remote_passwd_map
+)
 {
     map<int, string> ipport_map;
     map<string, MYSQL*> conn_map;
@@ -2050,4 +2276,138 @@ bool tc_conn_free(map<string, MYSQL*> &conn_map)
         }
     }
     return FALSE;
+}
+
+
+bool tc_exec_sql_paral(string exec_sql, map<string, MYSQL*>& conn_map,
+  map<string, tc_exec_info>& result_map,
+  map<string, string> user_map,
+  map<string, string> passwd_map,
+  bool error_retry)
+{
+  int i = 0;
+  bool result = FALSE;
+  int count = conn_map.size();
+  thread* thread_array = new thread[count];
+
+  map<string, MYSQL*>::iterator its;
+  map<string, tc_exec_info>::iterator its2;
+  for (its = conn_map.begin(); its != conn_map.end(); its++)
+  {
+    string ipport = its->first;
+    MYSQL* mysql = its->second;
+    thread tmp_t(tc_exec_sql_up, mysql, exec_sql, &result_map[ipport]);
+    thread_array[i] = move(tmp_t);
+    i++;
+  }
+
+  for (int i = 0; i < count; i++)
+  {
+    if (thread_array[i].joinable())
+      thread_array[i].join();
+  }
+
+  for (its2 = result_map.begin(); its2 != result_map.end(); its2++)
+  {/* */
+    string ipport = its2->first;
+    tc_exec_info exec_info = its2->second;
+    if (exec_info.err_code > 0)
+    {
+      if (error_retry)
+      {
+        int retry_times = 3;
+        while (retry_times-- > 0)
+        {/* retry 3 times, 2 seconds interval */
+          sleep(2);
+          if (conn_map[ipport])
+          {
+            mysql_close(conn_map[ipport]);
+            conn_map[ipport] = NULL;
+          }
+          if (!tc_reconnect(ipport, conn_map, user_map, passwd_map))
+          {
+            if (!tc_exec_sql_up(conn_map[ipport], exec_sql, &exec_info))
+              break;
+          }
+        }
+        if (retry_times == -1)
+        {/* error after retry, yet */
+          result = TRUE;
+        }
+      }
+      else
+        result = TRUE;
+    }
+  }
+
+  delete[] thread_array;
+  return result;
+}
+
+bool tc_reconnect(string ipport,
+  map<string, MYSQL*>& spider_conn_map,
+  map<string, string> spider_user_map,
+  map<string, string> spider_passwd_map)
+{
+  bool ret = FALSE;
+  MYSQL* mysql;
+  if (mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport]))
+  {
+    spider_conn_map[ipport] = mysql;
+  }
+  else
+    ret = TRUE;
+  return ret;
+}
+
+
+bool tc_exec_sql_up(MYSQL* mysql, string sql, tc_exec_info* exec_info)
+{
+  if (mysql)
+  {
+    exec_info->err_code = 0;
+    exec_info->err_msg = "";
+    return tc_exec_sql_without_result(mysql, sql, exec_info);
+  }
+  else
+  {
+    exec_info->err_code = 2013;
+    exec_info->err_msg = "mysql is an null pointer";
+    return TRUE;
+  }
+}
+
+MYSQL_RES* tc_exec_sql_with_result(MYSQL* mysql, string sql)
+{
+  MYSQL_RES* result;
+  if (mysql_real_query(mysql, sql.c_str(), sql.length()))
+  {
+    result = NULL;
+  }
+  else
+  {
+    /*
+    //  not a select, field count is 0 , and result is NULL
+    if (mysql_field_count(mysql) == 0)
+    */
+    result = mysql_store_result(mysql);
+  }
+  return result;
+}
+
+
+bool tc_exec_sql_without_result(MYSQL* mysql, string sql, tc_exec_info* exec_info)
+{
+  int ret = mysql_real_query(mysql, sql.c_str(), sql.length());
+  while (!ret)
+  {
+    ret = tc_mysql_next_result(mysql);
+  }
+  if (ret != -1)
+  {/* error happened */
+    exec_info->err_code = mysql_errno(mysql);
+    exec_info->err_msg = mysql_error(mysql);
+    return TRUE;
+  }
+  return FALSE;
 }

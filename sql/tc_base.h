@@ -1,5 +1,5 @@
-#ifndef TC_PARSE_INCLUDED
-#define TC_PARSE_INCLUDED
+#ifndef TC_BASE_INCLUDED
+#define TC_BASE_INCLUDED
 
 #include <iostream>
 #include <string>
@@ -272,5 +272,20 @@ map<string, string> get_remote_ipport_map(
 bool tc_conn_free( map<string, MYSQL*> &conn_map);
 int tc_mysql_next_result(MYSQL* mysql);
 
+bool tc_exec_sql_paral(string exec_sql, map<string, MYSQL*>& conn_map,
+  map<string, tc_exec_info>& result_map,
+  map<string, string> user_map,
+  map<string, string> passwd_map,
+  bool error_retry);
 
-#endif /* TC_PARSE_INCLUDED */
+bool tc_reconnect(string ipport,
+  map<string, MYSQL*>& spider_conn_map,
+  map<string, string> spider_user_map,
+  map<string, string> spider_passwd_map);
+
+bool tc_exec_sql_up(MYSQL* mysql, string sql, tc_exec_info* exec_info);
+MYSQL_RES* tc_exec_sql_with_result(MYSQL* mysql, string sql);
+bool tc_exec_sql_without_result(MYSQL* mysql, string sql, tc_exec_info* exec_info);
+
+
+#endif /* TC_BASE_INCLUDED */

@@ -45,7 +45,7 @@
 #include "lock.h"                               // MYSQL_LOCK_IGNORE_TIMEOUT
 #include "transaction.h"      // trans_rollback_stmt, trans_commit_stmt
 #include "sql_class.h"
-#include "tc_sqlparse.h"
+#include "tc_base.h"
 #include <thread>
 #include <string>
 #include <list>
@@ -1123,144 +1123,6 @@ static string dump_servers_to_sql()
 }
 
 
-
-bool tc_exec_sql_without_result(MYSQL* mysql, string sql, tc_exec_info* exec_info)
-{
-  int ret = mysql_real_query(mysql, sql.c_str(), sql.length());
-  while (!ret)
-  {
-    ret = tc_mysql_next_result(mysql);
-  }
-  if (ret != -1)
-  {/* error happened */
-    exec_info->err_code = mysql_errno(mysql);
-    exec_info->err_msg = mysql_error(mysql);
-    return TRUE;
-  }
-  return FALSE;
-}
-
-
-MYSQL_RES* tc_exec_sql_with_result(MYSQL* mysql, string sql)
-{
-  MYSQL_RES* result;
-  if (mysql_real_query(mysql, sql.c_str(), sql.length()))
-  {
-    result = NULL;
-  }
-  else
-  {
-    /*
-    //  not a select, field count is 0 , and result is NULL
-    if (mysql_field_count(mysql) == 0)
-    */
-    result = mysql_store_result(mysql);
-  }
-  return result;
-}
-
-bool tc_exec_sql_up(MYSQL* mysql, string sql, tc_exec_info* exec_info)
-{
-  if (mysql)
-  {
-    exec_info->err_code = 0;
-    exec_info->err_msg = "";
-    return tc_exec_sql_without_result(mysql, sql, exec_info);
-  }
-  else
-  {
-    exec_info->err_code = 2013;
-    exec_info->err_msg = "mysql is an null pointer";
-    return TRUE;
-  }
-}
-
-
-bool tc_reconnect(string ipport,
-  map<string, MYSQL*>& spider_conn_map,
-  map<string, string> spider_user_map,
-  map<string, string> spider_passwd_map)
-{
-  bool ret = FALSE;
-  MYSQL* mysql;
-  if (mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport]))
-  {
-    spider_conn_map[ipport] = mysql;
-  }
-  else
-    ret = TRUE;
-  return ret;
-}
-
-
-bool tc_exec_sql_paral(string exec_sql, map<string, MYSQL*>& conn_map,
-  map<string, tc_exec_info>& result_map,
-  map<string, string> user_map,
-  map<string, string> passwd_map,
-  bool error_retry)
-{
-  int i = 0;
-  bool result = FALSE;
-  int count = conn_map.size();
-  thread* thread_array = new thread[count];
-
-  map<string, MYSQL*>::iterator its;
-  map<string, tc_exec_info>::iterator its2;
-  for (its = conn_map.begin(); its != conn_map.end(); its++)
-  {
-    string ipport = its->first;
-    MYSQL* mysql = its->second;
-    thread tmp_t(tc_exec_sql_up, mysql, exec_sql, &result_map[ipport]);
-    thread_array[i] = move(tmp_t);
-    i++;
-  }
-
-  for (int i = 0; i < count; i++)
-  {
-    if (thread_array[i].joinable())
-      thread_array[i].join();
-  }
-
-  for (its2 = result_map.begin(); its2 != result_map.end(); its2++)
-  {/* */
-    string ipport = its2->first;
-    tc_exec_info exec_info = its2->second;
-    if (exec_info.err_code > 0)
-    {
-      if (error_retry)
-      {
-        int retry_times = 3;
-        while (retry_times-- > 0)
-        {/* retry 3 times, 2 seconds interval */
-          sleep(2);
-          if (conn_map[ipport])
-          {
-            mysql_close(conn_map[ipport]);
-            conn_map[ipport] = NULL;
-          }
-          if (!tc_reconnect(ipport, conn_map, user_map, passwd_map))
-          {
-            if (!tc_exec_sql_up(conn_map[ipport], exec_sql, &exec_info))
-              break;
-          }
-        }
-        if (retry_times == -1)
-        {/* error after retry, yet */
-          result = TRUE;
-        }
-      }
-      else
-        result = TRUE;
-    }
-  }
-
-  delete[] thread_array;
-  return result;
-}
-
-
-
-
 bool get_servers_rollback_sql()
 {
   int ret;
@@ -1665,7 +1527,7 @@ void tc_check_and_repair_routing_thread()
       }
       else
       {
-        for (i = 0; i < tc_check_repair_routing_interval; i++)
+        for (i = 0; i < tc_check_repair_trans_interval; i++)
           sleep(1);
       }
     }

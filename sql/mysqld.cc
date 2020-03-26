@@ -145,7 +145,7 @@
 #include "item_cmpfunc.h"               // arg_cmp_func
 #include "item_strfunc.h"               // Item_func_uuid
 #include "handler.h"
-#include "tc_sqlparse.h"
+#include "tc_base.h"
 #include<iostream>
 #include<thread>
 
@@ -425,9 +425,11 @@ volatile bool mqh_used = 0;
 my_bool opt_noacl= 0;
 my_bool sp_automatic_privileges= 1;
 my_bool tc_check_repair_routing = TRUE;
+my_bool tc_check_repair_trans = TRUE;
 my_bool tc_set_changed_node_read_only  = FALSE;
 my_bool sort_when_partition_prefix_order = TRUE;
 ulong tc_check_repair_routing_interval = 300;
+ulong tc_check_repair_trans_interval = 60;
 
 ulong opt_binlog_rows_event_max_size;
 const char *binlog_checksum_default= "NONE";
