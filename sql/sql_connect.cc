@@ -35,7 +35,7 @@
 
 #include <algorithm>
 #include <string.h>
-#include "tc_sqlparse.h"
+#include "tc_base.h"
 
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>

@@ -102,7 +102,7 @@
 #include "sql_timer.h"   // thd_timer_set, thd_timer_reset
 #include "sp_rcontext.h"
 #include "parse_location.h"
-#include "tc_sqlparse.h"
+#include "tc_base.h"
 
 #ifndef _WIN32
 #include <sys/time.h>

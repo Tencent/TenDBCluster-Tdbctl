@@ -29,7 +29,7 @@
 #include "sql_thd_internal_api.h"        // thd_set_thread_stack
 #include "log.h"                         // Error_log_throttle
 #include "debug_sync.h"
-#include "tc_sqlparse.h"
+#include "tc_base.h"
 
 
 // Initialize static members
