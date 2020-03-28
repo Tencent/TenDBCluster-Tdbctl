@@ -1146,6 +1146,152 @@ void get_server_by_wrapper(
   server_list.sort(server_compare);
 }
 
+/*
+Generate internal spider GRANT sql according to mysql.servers's info.
+Each spider should do [GRANT ALL PRIVILEGES] sql for all tdbctls, which use to
+do DDL on spider. If not, after tdbctl(MGR) failover, new primary tdbctl may
+access denied by spider
+The generate sqls should execute on each spider
+*/
+static string get_spider_grant_sql(
+				set<string> spider_ipport_set,
+				map<string, string> spider_user_map,
+				map<string, string> spider_passwd_map,
+				map<string, string> tdbctl_ipport_map,
+				map<string, string> tdbctl_user_map,
+				map<string, string> tdbctl_passwd_map)
+{
+	string spider_do_sql;
+	char create_sql[256], grant_sql[256];
+  set<string>::iterator spider_it;
+  map<string, string>::iterator tdbctl_it;
+	for (spider_it = spider_ipport_set.begin(); spider_it != spider_ipport_set.end(); spider_it++) {
+		const char *spider_user = spider_user_map[*spider_it].c_str();
+		const char *spider_passwd = spider_passwd_map[*spider_it].c_str();
+		for (tdbctl_it = tdbctl_ipport_map.begin(); tdbctl_it != tdbctl_ipport_map.end(); tdbctl_it++) {
+			string tdbctl_address = tdbctl_it->second;
+			ulong pos = tdbctl_address.find("#");
+			string tdbctl_host = tdbctl_address.substr(0, pos);
+
+			//tdbctl use spider's user, password to connect current spider
+			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+				spider_user, tdbctl_host.c_str(), spider_passwd);
+			sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* TO '%s'@'%s' WITH GRANT OPTION;",
+				spider_user, tdbctl_host.c_str());
+			spider_do_sql += create_sql;
+			spider_do_sql += grant_sql;
+		}
+  }
+
+	return spider_do_sql;
+}
+
+/*
+Generate internal tdbctl GRANT sql according to mysql.servers's info.
+Primary tdbctl should do [GRANT ALL PRIVILEGES] sql for all spiders, which use
+to transfer sql from spider to tdbctl. Of course, other tdbctl also need do, but MGR
+ensure to sync privileges from master tdbctl to slave, so we skip this step.
+The generate sqls only need to execute on primary tdbctl
+*/
+static string get_tdbctl_grant_sql(
+				set<string> spider_ipport_set,
+				map<string, string> spider_user_map,
+				map<string, string> spider_passwd_map,
+				map<string, string> tdbctl_ipport_map,
+				map<string, string> tdbctl_user_map,
+				map<string, string> tdbctl_passwd_map)
+{
+	string tdbctl_do_sql;
+	char create_sql[256], grant_sql[256];
+  set<string>::iterator spider_it;
+  map<string, string>::iterator tdbctl_it;
+	for (spider_it = spider_ipport_set.begin(); spider_it != spider_ipport_set.end(); spider_it++) {
+		ulong pos = (*spider_it).find("#");
+		string spider_host = (*spider_it).substr(0, pos);
+
+		for (tdbctl_it = tdbctl_ipport_map.begin(); tdbctl_it != tdbctl_ipport_map.end(); tdbctl_it++) {
+			string tdbctl_address = tdbctl_it->second;
+			ulong pos = tdbctl_address.find("#");
+			string tdbctl_host = tdbctl_address.substr(0, pos);
+			const char *tdbctl_user = tdbctl_user_map[tdbctl_address].c_str();
+			const char *tdbctl_passwd = tdbctl_passwd_map[tdbctl_address].c_str();
+
+			//spider use tdbctl's user, password to connect spider
+			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+				tdbctl_user, spider_host.c_str(), tdbctl_passwd);
+			sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* TO '%s'@'%s' WITH GRANT OPTION;",
+				tdbctl_user, spider_host.c_str());
+			tdbctl_do_sql += create_sql;
+			tdbctl_do_sql += grant_sql;
+		}
+  }
+
+	return tdbctl_do_sql;
+}
+
+/*
+Generate internal remote GRANT sql according to mysql.servers's info.
+1. remote should do [GRANT SELECT, INSERT, TRUNCATE PRIVILEGES] sql for all spiders, spider need
+privileges do DML on remote
+2. remote should do [GRANT ALL PRIVILEGES] for all tdbctls, which use to connect remote and
+do DDL. We must do this, if not, after tdbctl(MGR) failover, new primary tdbctl may access denied by remote
+The generate sqls need to execute on all remotes
+*/
+static string get_remote_grant_sql(
+				set<string> spider_ipport_set,
+				map<string, string> spider_user_map,
+				map<string, string> spider_passwd_map,
+				map<string, string> remote_ipport_map,
+			  map<string, string> remote_user_map,
+				map<string, string> remote_passwd_map,
+				map<string, string> tdbctl_ipport_map,
+				map<string, string> tdbctl_user_map,
+				map<string, string> tdbctl_passwd_map)
+{
+	string remote_do_sql;
+  set<string>::iterator spider_it;
+	map<string, string>::iterator tdbctl_it, remote_it;
+	char create_sql[256], grant_sql[256];
+
+	for (remote_it = remote_ipport_map.begin(); remote_it != remote_ipport_map.end(); remote_it++) {
+		string remote_address = remote_it->second;
+		const char *remote_user = remote_user_map[remote_address].c_str();
+		const char *remote_passwd = remote_passwd_map[remote_address].c_str();
+
+		//remote do grants for spider
+		for (spider_it = spider_ipport_set.begin(); spider_it != spider_ipport_set.end(); spider_it++) {
+			string spider_address = (*spider_it);
+			ulong pos = spider_address.find("#");
+			string spider_host = spider_address.substr(0, pos);
+
+			//spider use remote's user, password to connect remote do DML
+			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+				remote_user, spider_host.c_str(), remote_passwd);
+			sprintf(grant_sql, "GRANT SELECT, INSERT, DROP ON *.* to '%s'@'%s' WITH GRANT OPTION;",
+				remote_user, spider_host.c_str());
+			remote_do_sql += create_sql;
+			remote_do_sql += grant_sql;
+		}
+
+		//remote do grants for tdbctl
+		for (tdbctl_it = tdbctl_ipport_map.begin(); tdbctl_it != tdbctl_ipport_map.end(); tdbctl_it++) {
+			string tdbctl_address = tdbctl_it->second;
+			ulong pos = tdbctl_address.find("#");
+			string tdbctl_host = tdbctl_address.substr(0, pos);
+
+			//tdbctl use remote's user, password to connect remote do all
+			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+				remote_user, tdbctl_host.c_str(), remote_passwd);
+			sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* to '%s'@'%s' WITH GRANT OPTION;",
+				remote_user, tdbctl_host.c_str());
+			remote_do_sql += create_sql;
+			remote_do_sql += grant_sql;
+		}
+	}
+
+	return remote_do_sql;
+}
+
 
 static string dump_servers_to_sql()
 {
@@ -1316,6 +1462,134 @@ int tc_set_changed_remote_read_only()
   return result;
 }
 
+/*
+do GRANT PRIVILEGES on tdbctl, remote, spider
+@spider need simple privileges to connect any tdbctl to transfer sql; need
+INSERT, DELETE, UPDATE, DROP to connect any remote and do DML
+@tdbctl need ALL PRIVILEGES to connect spider, remote do DDL etc.
+@remote N/A
+*/
+int tc_do_grants_internal()
+{
+	int ret = 0;
+  MEM_ROOT mem_root;
+	map<string, MYSQL*> spider_conn_map;
+	map<string, string> spider_user_map;
+	map<string, string> spider_passwd_map;
+	map<string, tc_exec_info> spider_result_map;
+	string spider_do_sql;
+
+	map<string, MYSQL*> remote_conn_map;
+	map<string, string> remote_user_map;
+	map<string, string> remote_passwd_map;
+  map<string, tc_exec_info> remote_result_map;
+	string remote_do_sql;
+
+	map<string, MYSQL*> tdbctl_conn_map;
+	map<string, string> tdbctl_user_map;
+	map<string, string> tdbctl_passwd_map;
+  map<string, tc_exec_info> tdbctl_result_map;
+	MYSQL *tdbctl_primary_conn;
+	string tdbctl_do_sql;
+
+  init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	set<string>  spider_ipport_set = get_spider_ipport_set(
+			&mem_root,
+			spider_user_map,
+			spider_passwd_map,
+			TRUE);
+	map<string, string> remote_ipport_map = get_remote_ipport_map(
+			&mem_root,
+			remote_user_map,
+			remote_passwd_map);
+	map<string, string> tdbctl_ipport_map = get_tdbctl_ipport_map(
+			&mem_root,
+			tdbctl_user_map,
+			tdbctl_passwd_map);
+
+	tdbctl_do_sql = get_tdbctl_grant_sql(spider_ipport_set, spider_user_map,
+		spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+
+	spider_conn_map = tc_spider_conn_connect(ret,
+		spider_ipport_set, spider_user_map, spider_passwd_map);
+	if (ret) {
+		goto exit;
+	}
+	remote_conn_map = tc_remote_conn_connect(ret,
+		remote_ipport_map, remote_user_map, remote_passwd_map);
+	if (ret) {
+		goto exit;
+	}
+	//tdbctl_conn_map = tc_tdbctl_conn_connect(ret,
+	//	tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+	//if (ret) {
+	//	goto exit;
+	//}
+	tdbctl_primary_conn = tc_tdbctl_conn_primary(ret, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+	if (ret) {
+		goto exit;
+	}
+
+	//spider do grant
+	init_result_map(spider_result_map, spider_ipport_set);
+	//set ddl_execute_by_ctl to off on spider, only need execute on spider node
+	spider_do_sql = "set ddl_execute_by_ctl = off;";
+	spider_do_sql += get_spider_grant_sql(spider_ipport_set, spider_user_map,
+		spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+	if (tc_exec_sql_paral(spider_do_sql, spider_conn_map,
+		spider_result_map, spider_user_map, spider_passwd_map, FALSE))
+	{/* return, close conn, reconnect + retry all */
+		ret = 1;
+		goto exit;
+	}
+
+	//remote do grant
+	init_result_map2(remote_result_map, remote_ipport_map);
+	remote_do_sql = get_remote_grant_sql(spider_ipport_set, spider_user_map,
+		spider_passwd_map, remote_ipport_map, remote_user_map, remote_passwd_map,
+		tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+	if (tc_exec_sql_paral(remote_do_sql, remote_conn_map,
+		remote_result_map, remote_user_map, remote_passwd_map, FALSE))
+	{/* return, close conn, reconnect + retry all */
+		ret = 1;
+		goto exit;
+	}
+
+	//tdbctl do grant
+	init_result_map2(tdbctl_result_map, tdbctl_ipport_map);
+	tdbctl_do_sql = "set tc_admin = off;";
+	tdbctl_do_sql += get_tdbctl_grant_sql(spider_ipport_set, spider_user_map,
+		spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+	if (tc_exec_sql_up(tdbctl_primary_conn, tdbctl_do_sql, &(tdbctl_result_map.begin()->second)))
+	{
+		ret = 1;
+		goto exit;
+	}
+
+exit:
+	tc_conn_free(spider_conn_map);
+	tc_conn_free(remote_conn_map);
+	tc_conn_free(tdbctl_conn_map);
+	mysql_close(tdbctl_primary_conn);
+	spider_conn_map.clear();
+	remote_conn_map.clear();
+	tdbctl_conn_map.clear();
+	spider_ipport_set.clear();
+	remote_ipport_map.clear();
+	tdbctl_ipport_map.clear();
+	spider_user_map.clear();
+	spider_passwd_map.clear();
+	remote_user_map.clear();
+	remote_passwd_map.clear();
+	tdbctl_user_map.clear();
+	tdbctl_passwd_map.clear();
+	spider_result_map.clear();
+	remote_result_map.clear();
+	tdbctl_result_map.clear();
+	free_root(&mem_root, MYF(0));
+
+  return ret;
+}
 
 int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
   map<string, tc_exec_info>& result_map,
@@ -1409,6 +1683,8 @@ bool tc_flush_routing(LEX* lex, ulong flush_type, bool is_force)
   map<string, MYSQL*> spider_conn_map;
   map<string, string> spider_user_map;
   map<string, string> spider_passwd_map;
+
+
   set<string>::iterator its;
   map<string, tc_exec_info> result_map;
   MEM_ROOT mem_root;
@@ -1418,6 +1694,7 @@ bool tc_flush_routing(LEX* lex, ulong flush_type, bool is_force)
                                          spider_user_map, 
                                          spider_passwd_map, 
                                          FALSE);
+
   set<string> to_flush_ipport_set;
 
 
@@ -1456,12 +1733,17 @@ bool tc_flush_routing(LEX* lex, ulong flush_type, bool is_force)
   while (retry_times-- > 0)
   {
     int exec_ret = 0;
+		if (tc_do_grants_internal()) {
+			sleep(2);
+			continue;
+		}
     spider_conn_map = tc_spider_conn_connect(ret, to_flush_ipport_set, spider_user_map, spider_passwd_map);
     if (ret)
     {
       result = TRUE;
       goto finish;
     }
+
     exec_ret = tc_flush_spider_routing(spider_conn_map, result_map, spider_user_map, spider_passwd_map, is_force);
     if (exec_ret)
     {

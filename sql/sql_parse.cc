@@ -5474,6 +5474,11 @@ tcadmin_execute_command(THD* thd)
                                thd->mem_root, 
                                thd->remote_user_map, 
                                thd->remote_passwd_map);
+    thd->tdbctl_ipport_map = get_tdbctl_ipport_map(
+                               thd->mem_root,
+                               thd->tdbctl_user_map,
+                               thd->tdbctl_passwd_map);
+
     thd->spider_conn_map = tc_spider_conn_connect(
                              ret, 
                              thd->spider_ipport_set, 

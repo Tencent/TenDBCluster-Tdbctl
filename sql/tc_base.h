@@ -265,6 +265,11 @@ MYSQL* tc_spider_conn_single(
 	set<string> spider_ipport_set,
 	map<string, string> spider_user_map,
 	map<string, string> spider_passwd_map
+map<string, MYSQL*> tc_tdbctl_conn_connect(
+  int &ret,
+  map<string, string> tdbctl_ipport_map, 
+  map<string, string> tdbctl_user_map,
+  map<string, string> tdbctl_passwd_map
 );
 
 MYSQL *tc_tdbctl_conn_primary(
@@ -273,6 +278,8 @@ MYSQL *tc_tdbctl_conn_primary(
 	map<string, string> tdbctl_user_map,
 	map<string, string> tdbctl_passwd_map
 );
+
+int tc_do_grants_internal();
 
 
 set<string> get_spider_ipport_set(
@@ -331,6 +338,8 @@ bool tc_exec_sql_paral_with_result(
   bool error_retry);
 
 my_time_t string_to_timestamp(const string s);
+void init_result_map(map<string, tc_exec_info>& result_map, set<string> &ipport_set);
+void init_result_map2(map<string, tc_exec_info>& result_map, map<string, string> &ipport_map);
 
 unsigned int tc_is_running_node(char *host, ulong *port);
 int tc_is_master_tdbctl_node();

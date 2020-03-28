@@ -2232,6 +2232,44 @@ map<string, string> get_server_name_map(
 	}
 
 	return server_name_map;
+get tdbctl's ipport map
+server_name->ip#port->user, server_name->ip#port->passwd
+*/
+map<string, string> get_tdbctl_ipport_map(
+  MEM_ROOT* mem,
+  map<string, string> &tdbctl_user_map,
+  map<string, string> &tdbctl_passwd_map
+)
+{
+    map<string, string> ipport_map;
+    FOREIGN_SERVER *server, server_buffer;
+    ostringstream  sstr;
+    string server_name_pre = tdbctl_control_wrapper_prefix;
+    ulong records = get_servers_count();
+    tdbctl_user_map.clear();
+    tdbctl_passwd_map.clear();
+
+    for (ulong i = 0; i < records; i++)
+    {
+        sstr.str("");
+        sstr << i;
+        string hash_value = sstr.str();
+        string server_name = server_name_pre + hash_value;
+        if (server = get_server_by_name(mem, server_name.c_str(), &server_buffer))
+        {
+            string host = server->host;
+            string user = server->username;
+            string passwd = server->password;
+            sstr.str("");
+            sstr << server->port;
+            string ports = sstr.str();
+            string s = host + "#" + ports;
+            ipport_map.insert(pair<string, string>(server_name, s));
+            tdbctl_user_map.insert(pair<string, string>(s, user));
+            tdbctl_passwd_map.insert(pair<string, string>(s, passwd));
+        }
+    }
+    return ipport_map;
 }
 
 MYSQL* tc_conn_connect(string ipport, string user, string passwd)
@@ -2437,6 +2475,85 @@ map<string, MYSQL*> tc_remote_conn_connect(
         }
     }
     return conn_map;
+}
+
+/*
+use user#password to connect tdbctl
+@result return a map which store each tdbctl's connect
+*/
+map<string, MYSQL*> tc_tdbctl_conn_connect(
+  int &ret,
+  map<string, string> tdbctl_ipport_map,
+  map<string, string> tdbctl_user_map,
+  map<string, string> tdbctl_passwd_map
+)
+{
+    map<int, string> ipport_map;
+    map<string, MYSQL*> conn_map;
+    map<string, string>::iterator its2;
+    int read_timeout = 600;
+    int write_timeout = 600;
+    int connect_timeout = 60;
+
+    for (its2 = tdbctl_ipport_map.begin(); its2 != tdbctl_ipport_map.end(); its2++)
+    {
+        string ipport = its2->second;
+        ulong pos = ipport.find("#");
+        string hosts = ipport.substr(0, pos);
+        string ports = ipport.substr(pos + 1);
+        uint port = atoi(ports.c_str());
+        MYSQL* mysql;
+        if (mysql = tc_conn_connect(ipport, tdbctl_user_map[ipport], tdbctl_passwd_map[ipport]))
+            conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
+        else
+        {
+            /* error */
+            ret = 1;
+            my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+            break;
+        }
+    }
+    return conn_map;
+}
+
+/*
+NB: Anytime we call this, we must ensure that we are primary node
+At present, tdbctl only support single_primary_node. slave node is
+read-only and impossibility run to here and call this function 
+TODO: use MGR's strategy to get primary node may more pretty.
+*/
+MYSQL *tc_tdbctl_conn_primary(
+	int &ret,
+  map<string, string> tdbctl_ipport_map,
+	map<string, string> tdbctl_user_map,
+  map<string, string> tdbctl_passwd_map
+)
+{
+	MYSQL *conn;
+	string address;
+	if (is_group_replication_running()) {
+		/*
+		we always is primary node, because tdbctl only support single_primary_node
+		slave node is read_only in MGR and impossibility run to here
+		*/
+		address = string(report_host) + "#" + to_string(report_port);
+	}
+	else {
+		if (tdbctl_ipport_map.size() > 1) {
+			ret = 1;
+      my_error(ER_TCADMIN_MULTI_NODE_EXISTS, MYF(0));
+			return conn;
+		}
+		address = tdbctl_ipport_map.begin()->second;
+	}
+
+	conn = tc_conn_connect(address, tdbctl_user_map[address], tdbctl_passwd_map[address]);
+	if (conn == NULL) {
+		ret = 1;
+    my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
+	}
+
+	return conn;
 }
 
 
@@ -2679,19 +2796,49 @@ bool tc_exec_sql_without_result(MYSQL* mysql, string sql, tc_exec_info* exec_inf
 
 my_time_t string_to_timestamp(const string s)
 {
-  MYSQL_TIME_STATUS status;
-  MYSQL_TIME l_time;
-  long dummy_my_timezone;
-  my_bool dummy_in_dst_time_gap;
-  const char* str = s.c_str();
-  /* We require a total specification (date AND time) */
-  if (str_to_datetime(str, strlen(str), &l_time, 0, &status) ||
-    l_time.time_type != MYSQL_TIMESTAMP_DATETIME || status.warnings)
-  {
-    exit(1);
-  } 
-  return
-    my_system_gmt_sec(&l_time, &dummy_my_timezone, &dummy_in_dst_time_gap);
+	MYSQL_TIME_STATUS status;
+	MYSQL_TIME l_time;
+	long dummy_my_timezone;
+	my_bool dummy_in_dst_time_gap;
+	const char* str = s.c_str();
+	/* We require a total specification (date AND time) */
+	if (str_to_datetime(str, strlen(str), &l_time, 0, &status) ||
+		l_time.time_type != MYSQL_TIMESTAMP_DATETIME || status.warnings)
+	{
+		exit(1);
+	}
+	return
+		my_system_gmt_sec(&l_time, &dummy_my_timezone, &dummy_in_dst_time_gap);
+}
+
+void init_result_map(map<string, tc_exec_info>& result_map,
+	set<string> &ipport_set)
+{
+	set<string>::iterator its;
+	for (its = ipport_set.begin(); its != ipport_set.end(); its++)
+	{/* init for exec result: result_map */
+		string ipport = (*its);
+		tc_exec_info exec_info;
+		exec_info.err_code = 0;
+		exec_info.row_affect = 0;
+		exec_info.err_msg = "";
+		result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
+	}
+}
+
+void init_result_map2(map<string, tc_exec_info>& result_map,
+	map<string, string> &ipport_map)
+{
+	map<string, string>::iterator its;
+	for (its = ipport_map.begin(); its != ipport_map.end(); its++)
+	{/* init for exec result: result_map */
+		string ipport = its->second;
+		tc_exec_info exec_info;
+		exec_info.err_code = 0;
+		exec_info.row_affect = 0;
+		exec_info.err_msg = "";
+		result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
+	}
 }
 
 
