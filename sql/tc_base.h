@@ -286,6 +286,17 @@ bool tc_reconnect(string ipport,
 bool tc_exec_sql_up(MYSQL* mysql, string sql, tc_exec_info* exec_info);
 MYSQL_RES* tc_exec_sql_with_result(MYSQL* mysql, string sql);
 bool tc_exec_sql_without_result(MYSQL* mysql, string sql, tc_exec_info* exec_info);
+MYSQL_RES* tc_exec_sql_up_with_result(MYSQL* mysql, string sql, MYSQL_RES** res);
+MYSQL_RES* tc_exec_sql_with_result(MYSQL* mysql, string sql);
+bool tc_exec_sql_paral_with_result(
+  string exec_sql,
+  map<string, MYSQL*>& conn_map,
+  map<string, MYSQL_RES*>& result_map,
+  map<string, string>& user_map,
+  map<string, string>& passwd_map,
+  bool error_retry);
+
+my_time_t string_to_timestamp(const string s);
 
 
 #endif /* TC_BASE_INCLUDED */

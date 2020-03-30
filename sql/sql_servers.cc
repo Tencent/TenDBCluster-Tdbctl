@@ -1518,7 +1518,6 @@ void tc_check_and_repair_routing_thread()
 {
   while (1)
   {
-    ulong i = 0;
     if (tc_check_repair_routing)
     {
       if (tc_check_and_repair_routing())
@@ -1527,7 +1526,7 @@ void tc_check_and_repair_routing_thread()
       }
       else
       {
-        for (i = 0; i < tc_check_repair_trans_interval; i++)
+        for (ulong i = 0; i < tc_check_repair_routing_interval; i++)
           sleep(1);
       }
     }
