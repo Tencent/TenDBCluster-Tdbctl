@@ -146,6 +146,7 @@
 #include "item_strfunc.h"               // Item_func_uuid
 #include "handler.h"
 #include "tc_base.h"
+#include "tc_xa_repair.h"
 #include<iostream>
 #include<thread>
 
@@ -429,7 +430,7 @@ my_bool tc_check_repair_trans = TRUE;
 my_bool tc_set_changed_node_read_only  = FALSE;
 my_bool sort_when_partition_prefix_order = TRUE;
 ulong tc_check_repair_routing_interval = 300;
-ulong tc_check_repair_trans_interval = 60;
+ulong tc_max_prepared_time = 60;
 
 ulong opt_binlog_rows_event_max_size;
 const char *binlog_checksum_default= "NONE";
@@ -5310,6 +5311,7 @@ int mysqld_main(int argc, char **argv)
   create_shutdown_thread();
 #endif
   create_check_and_repaire_routing_thread();
+  create_tc_xa_repair_thread();
   start_handle_manager();
 
   create_compress_gtid_table_thread();
@@ -9440,6 +9442,7 @@ PSI_memory_key key_memory_table_share;
 PSI_memory_key key_memory_gdl;
 PSI_memory_key key_memory_table_triggers_list;
 PSI_memory_key key_memory_servers;
+PSI_memory_key key_memory_tc_repair_trans;
 PSI_memory_key key_memory_prepared_statement_map;
 PSI_memory_key key_memory_prepared_statement_main_mem_root;
 PSI_memory_key key_memory_protocol_rset_root;
@@ -9579,6 +9582,7 @@ static PSI_memory_info all_server_memory[]=
   { &key_memory_gdl, "gdl", 0},
   { &key_memory_table_triggers_list, "Table_triggers_list", 0},
   { &key_memory_servers, "servers", 0},
+  { &key_memory_tc_repair_trans, "tc_repair_trans", 0},
   { &key_memory_prepared_statement_map, "Prepared_statement_map", PSI_FLAG_THREAD},
   { &key_memory_prepared_statement_main_mem_root, "Prepared_statement::main_mem_root", PSI_FLAG_THREAD},
   { &key_memory_protocol_rset_root, "Protocol_local::m_rset_root", PSI_FLAG_THREAD},

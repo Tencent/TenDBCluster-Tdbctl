@@ -2279,7 +2279,10 @@ bool tc_conn_free(map<string, MYSQL*> &conn_map)
 }
 
 
-bool tc_exec_sql_paral(string exec_sql, map<string, MYSQL*>& conn_map,
+/* execute sql parallel without result, main for command or replace/delete/update */
+bool tc_exec_sql_paral(
+  string exec_sql, 
+  map<string, MYSQL*>& conn_map,
   map<string, tc_exec_info>& result_map,
   map<string, string> user_map,
   map<string, string> passwd_map,
@@ -2344,6 +2347,78 @@ bool tc_exec_sql_paral(string exec_sql, map<string, MYSQL*>& conn_map,
   return result;
 }
 
+
+/* execute sql parallel with result, main for select 
+   after call this function, program need to free result_map
+*/
+
+bool tc_exec_sql_paral_with_result(
+  string exec_sql, 
+  map<string, MYSQL*> &conn_map,
+  map<string, MYSQL_RES*> &result_map,
+  map<string, string> &user_map,
+  map<string, string> &passwd_map,
+  bool error_retry)
+{
+  int i = 0;
+  bool result = FALSE;
+  int count = conn_map.size();
+  thread* thread_array = new thread[count];
+
+  map<string, MYSQL*>::iterator its;
+  map<string, MYSQL_RES*>::iterator its2;
+  for (its = conn_map.begin(); its != conn_map.end(); its++)
+  {
+    string ipport = its->first;
+    MYSQL* mysql = its->second;
+    thread tmp_t(tc_exec_sql_up_with_result, mysql, exec_sql, &result_map[ipport]);
+    thread_array[i] = move(tmp_t);
+    i++;
+  }
+
+  for (int i = 0; i < count; i++)
+  {
+    if (thread_array[i].joinable())
+      thread_array[i].join();
+  }
+
+  for (its2 = result_map.begin(); its2 != result_map.end(); its2++)
+  {/* */
+    string ipport = its2->first;
+    MYSQL_RES *res = its2->second;
+    if (!res)
+    {
+      if (error_retry)
+      {
+        int retry_times = 3;
+        while (retry_times-- > 0)
+        {/* retry 3 times, 2 seconds interval */
+          sleep(2);
+          if (conn_map[ipport])
+          {
+            mysql_close(conn_map[ipport]);
+            conn_map[ipport] = NULL;
+          }
+          if (!tc_reconnect(ipport, conn_map, user_map, passwd_map))
+          {
+            if (!tc_exec_sql_up_with_result(conn_map[ipport], exec_sql, &res))
+              break;
+          }
+        }
+        if (retry_times == -1)
+        {/* error after retry, yet */
+          result = TRUE;
+        }
+      }
+      else
+        result = TRUE;
+    }
+  }
+
+  delete[] thread_array;
+  return result;
+}
+
 bool tc_reconnect(string ipport,
   map<string, MYSQL*>& spider_conn_map,
   map<string, string> spider_user_map,
@@ -2375,6 +2450,19 @@ bool tc_exec_sql_up(MYSQL* mysql, string sql, tc_exec_info* exec_info)
     exec_info->err_msg = "mysql is an null pointer";
     return TRUE;
   }
+}
+
+MYSQL_RES* tc_exec_sql_up_with_result(MYSQL* mysql, string sql, MYSQL_RES** res)
+{
+  if (mysql)
+  {
+    *res = tc_exec_sql_with_result(mysql, sql);
+  }
+  else
+  {
+    *res = NULL;
+  }
+  return *res;
 }
 
 MYSQL_RES* tc_exec_sql_with_result(MYSQL* mysql, string sql)
@@ -2410,4 +2498,21 @@ bool tc_exec_sql_without_result(MYSQL* mysql, string sql, tc_exec_info* exec_inf
     return TRUE;
   }
   return FALSE;
+}
+
+my_time_t string_to_timestamp(const string s)
+{
+  MYSQL_TIME_STATUS status;
+  MYSQL_TIME l_time;
+  long dummy_my_timezone;
+  my_bool dummy_in_dst_time_gap;
+  const char* str = s.c_str();
+  /* We require a total specification (date AND time) */
+  if (str_to_datetime(str, strlen(str), &l_time, 0, &status) ||
+    l_time.time_type != MYSQL_TIMESTAMP_DATETIME || status.warnings)
+  {
+    exit(1);
+  } 
+  return
+    my_system_gmt_sec(&l_time, &dummy_my_timezone, &dummy_in_dst_time_gap);
 }

@@ -6342,7 +6342,7 @@ static Sys_var_ulong Sys_tc_check_repair_routing_interval(
       "tc_check_repair_routing_interval",
       "The interval time of checking and reparing routing betwwen tdbctl and spiders",
       GLOBAL_VAR(tc_check_repair_routing_interval), CMD_LINE(REQUIRED_ARG),
-      VALID_RANGE(0, 65535), DEFAULT(300), BLOCK_SIZE(1));
+      VALID_RANGE(8, 65535), DEFAULT(300), BLOCK_SIZE(1));
 
 static Sys_var_mybool Sys_tc_check_repair_trans(
   "tc_check_repair_trans",
@@ -6350,11 +6350,13 @@ static Sys_var_mybool Sys_tc_check_repair_trans(
   GLOBAL_VAR(tc_check_repair_trans), CMD_LINE(OPT_ARG),
   DEFAULT(FALSE));
 
-static Sys_var_ulong Sys_tc_check_repair_trans_interval(
-  "tc_check_repair_trans_interval",
-  "The interval time of checking and reparing prepared transaction of remote data node",
-  GLOBAL_VAR(tc_check_repair_trans_interval), CMD_LINE(REQUIRED_ARG),
-  VALID_RANGE(0, 65535), DEFAULT(60), BLOCK_SIZE(1));
+static Sys_var_ulong Sys_tc_max_prepared_time(
+  "tc_max_prepared_time",
+  "The max transaction prepared time of remote data node," 
+  "if this transaction prepared time is exceeded,"  
+  "background thread processing is required",
+  GLOBAL_VAR(tc_max_prepared_time), CMD_LINE(REQUIRED_ARG),
+  VALID_RANGE(8, 604800), DEFAULT(60), BLOCK_SIZE(1));
 
 static Sys_var_charptr Sys_tc_spider_wrapper_prefix(
   "tc_spider_wrapper_prefix", "prefix of server name for SPIDER wrapper",
