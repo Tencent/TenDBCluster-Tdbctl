@@ -69,6 +69,7 @@ bool check_string_char_length(const LEX_CSTRING &str, const char *err_msg,
                               bool no_error);
 const CHARSET_INFO* merge_charset_and_collation(const CHARSET_INFO *cs,
                                                 const CHARSET_INFO *cl);
+bool lock_statement_by_name(THD* thd, const char* lock_name, enum_mdl_type lock_type);
 bool xlock_dbtb_name(THD* thd, const char* db_name, const char* tb_name);
 bool check_host_name(const LEX_CSTRING &str);
 bool mysql_test_parse_for_slave(THD *thd);

@@ -5233,6 +5233,15 @@ end_with_restore_list:
       my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
       break;
     }
+		/*
+		NB: use server_uuid as lock string here
+		we add x lock to block any DDL or flush command
+		*/
+		if (res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
+		{
+      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+      break;
+		}
     bool flush_routing_failed = tc_flush_routing(lex, lex->tc_flush_type, lex->is_tc_flush_force);
     if (flush_routing_failed)
     {
@@ -5900,6 +5909,15 @@ tcadmin_execute_command(THD* thd)
       my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
       break;
     }
+		/*
+		NB: use server_uuid as lock string here
+		we add x lock to block any DDL or flush command
+		*/
+		if (res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
+		{
+      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+			goto finish;
+		}
     bool flush_routing_failed = tc_flush_routing(lex, lex->tc_flush_type, lex->is_tc_flush_force);
     if (flush_routing_failed)
     {
@@ -5938,7 +5956,13 @@ tcadmin_execute_command(THD* thd)
 
   if (!tc_query_convert(thd, lex, &parse_result, shard_count, &spider_sql, &remote_sql_map))
   {
-    if ((res = xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str())))
+		/*
+		NB: use server_uuid as lock string here
+		we add S lock to block tdbctl flush routing(acquire X lock)
+		*/
+		if (res = lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED))
+			goto finish;
+    if (res = xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str()))
       goto finish;
     tc_append_before_query(thd, lex, before_sql_for_spider, before_sql_for_remote);
     tc_ddl_run(thd, before_sql_for_spider, before_sql_for_remote, spider_sql, remote_sql_map, &exec_result);
@@ -8266,3 +8290,24 @@ bool xlock_dbtb_name(THD* thd, const char* db_name, const char* tb_name)
   return FALSE;
 }
 
+/*
+lock MDL_STATEMENT by string
+*/
+bool lock_statement_by_name(THD* thd, const char* lock_name, enum_mdl_type lock_type)
+{
+  MDL_request_list mdl_requests;
+  MDL_request ull_request;
+  if (!lock_name)
+  {
+    return FALSE;
+  }
+
+  MDL_REQUEST_INIT(&ull_request, MDL_key::USER_LEVEL_LOCK, "",
+    lock_name, lock_type, MDL_STATEMENT);
+  mdl_requests.push_front(&ull_request);
+  if (thd->mdl_context.acquire_locks(&mdl_requests,
+    thd->variables.lock_wait_timeout))
+    return TRUE;
+
+  return FALSE;
+}
