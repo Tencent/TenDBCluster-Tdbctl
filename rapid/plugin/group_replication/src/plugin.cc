@@ -2239,6 +2239,15 @@ check_single_primary_mode(MYSQL_THD thd, SYS_VAR *var,
     DBUG_RETURN(1);
   }
 
+	if (!single_primary_mode_val)
+	{
+    my_message(ER_WRONG_VALUE_FOR_VAR,
+               "Cannot turn OFF single_primary_mode because "
+               "tdbctl only support single_primary_mode at present.",
+               MYF(0));
+    DBUG_RETURN(1);
+	}
+
   if (single_primary_mode_val && enforce_update_everywhere_checks_var)
   {
     my_message(ER_WRONG_VALUE_FOR_VAR,
@@ -2673,7 +2682,8 @@ static MYSQL_SYSVAR_STR(
 static MYSQL_SYSVAR_BOOL(
   single_primary_mode,                        /* name */
   single_primary_mode_var,                    /* var */
-  PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_NODEFAULT, /* optional var | no set default */
+	/* optional var | no set default | read only */
+  PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_NODEFAULT | PLUGIN_VAR_READONLY,
   "Instructs the group to automatically pick a single server to be "
   "the one that handles read/write workload. This server is the "
   "PRIMARY all others are SECONDARIES. Default: TRUE.",
