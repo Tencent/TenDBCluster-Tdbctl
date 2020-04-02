@@ -1334,7 +1334,7 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
 
 
 
-string tc_get_ipport_from_server(Server_options* server_options)
+string tc_get_ipport_from_server_by_wrapper(Server_options* server_options, const char* wrapper_name)
 {
   FOREIGN_SERVER* server;
   ostringstream  sstr;
@@ -1343,7 +1343,8 @@ string tc_get_ipport_from_server(Server_options* server_options)
   mysql_rwlock_rdlock(&THR_LOCK_servers);
   if ((server = (FOREIGN_SERVER*)my_hash_search(&servers_cache,
     (uchar*)server_options->m_server_name.str,
-    server_options->m_server_name.length)))
+    server_options->m_server_name.length)) 
+	&& !strcasecmp(server->scheme, wrapper_name))
   {
     string host = server->host;
     string user = server->username;
@@ -1390,7 +1391,7 @@ bool tc_flush_routing(LEX* lex, ulong flush_type, bool is_force)
     break;
   case FLUSH_ROUTING_BY_SERVER:
   {
-    string ipport = tc_get_ipport_from_server(&lex->server_options);
+	  string ipport = tc_get_ipport_from_server_by_wrapper(&lex->server_options, SPIDER_WRAPPER);
     if (!ipport.length())
     {
       result = TRUE;

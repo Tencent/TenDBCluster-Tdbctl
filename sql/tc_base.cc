@@ -2203,7 +2203,10 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
     uint connect_retry_count = 3;
     uint real_connect_option = 0;
     MYSQL* mysql;
-
+	if (user.size() == 0 && passwd.size() == 0)
+	{
+		return NULL;
+	}
     while (connect_retry_count-- > 0)
     {
         mysql = mysql_init(NULL);
