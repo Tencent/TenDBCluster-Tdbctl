@@ -148,6 +148,7 @@
 #include "tc_base.h"
 #include "tc_monitor.h"
 #include "tc_xa_repair.h"
+#include "tc_partition_admin.h"
 #include<iostream>
 #include<thread>
 
@@ -431,8 +432,11 @@ my_bool tc_check_repair_trans = TRUE;
 my_bool tc_set_changed_node_read_only  = FALSE;
 my_bool tc_check_availability = TRUE;
 my_bool sort_when_partition_prefix_order = TRUE;
+my_bool tc_partition_admin = TRUE;
 ulong tc_check_repair_routing_interval = 300;
 ulong tc_check_availability_interval = 300;
+ulong tc_partition_admin_interval = 86400;
+ulong tc_partition_admin_time = 3600;
 ulong tc_max_prepared_time = 60;
 ulong opt_binlog_rows_event_max_size;
 const char *binlog_checksum_default= "NONE";
@@ -5317,7 +5321,8 @@ int mysqld_main(int argc, char **argv)
 #endif
   create_check_and_repaire_routing_thread();
   create_tc_xa_repair_thread();
-  create_check_cluster_availability_thread();  
+  create_check_cluster_availability_thread();
+  create_partition_admin_thread();
   start_handle_manager();
 
   create_compress_gtid_table_thread();

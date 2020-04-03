@@ -89,6 +89,10 @@ CREATE TABLE IF NOT EXISTS ndb_binlog_index (Position BIGINT UNSIGNED NOT NULL, 
 --Create cluster_heartbeat for monitor
 CREATE TABLE IF NOT EXISTS cluster_heartbeat_log(id bigint(20) NOT NULL, time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, server_name  char(64)  NOT NULL DEFAULT '',  host char(64) NOT NULL DEFAULT '', code int default 0, message mediumtext DEFAULT NULL, PRIMARY KEY (id), index spt(server_name)) ENGINE=InnoDB;
 
+CREATE TABLE tc_partiton_admin_log ( uid int(11) NOT NULL AUTO_INCREMENT, db_name varchar(128) NOT NULL DEFAULT '', tb_name varchar(128) NOT NULL DEFAULT '', server_name char(64) NOT NULL DEFAULT '', host char(64) NOT NULL DEFAULT '', code int(11) DEFAULT '0', message mediumtext, updatetime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE  CURRENT_TIMESTAMP, KEY `uk_db_tb` (`db_name`,`tb_name`), PRIMARY KEY (`uid`));
+
+CREATE TABLE tc_partiton_admin_config ( db_name varchar(128) NOT NULL DEFAULT '', tb_name varchar(128) NOT NULL DEFAULT '', partition_column varchar(128) DEFAULT 'thedate', expiration_time int(11) DEFAULT NULL, partition_column_type varchar(128) NOT NULL DEFAULT 'int', interval_time int(11) DEFAULT '1' COMMENT 'interval', remote_hash_algorithm varchar(128) DEFAULT 'list', is_partitioned int(11) DEFAULT '0', updatetime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE  CURRENT_TIMESTAMP, PRIMARY KEY (`db_name`,`tb_name`)) ;
+
 SET @sql_mode_orig=@@SESSION.sql_mode;
 SET SESSION sql_mode='NO_ENGINE_SUBSTITUTION';
 

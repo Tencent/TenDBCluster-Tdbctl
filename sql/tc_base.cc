@@ -2125,6 +2125,26 @@ set<string> get_spider_ipport_set(
     return ipport_set;
 }
 
+/*
+input: 
+       remote_ipport_map       server_name--->ipport
+output:
+       remote_server_name_map  ipport-------->server_name
+*/
+map<string, string>get_remote_server_name_map(
+	map<string, string> remote_ipport_map)
+{
+	map<string, string> remote_server_name_map;
+	map<string, string>::iterator its;
+	for (its = remote_ipport_map.begin(); its != remote_ipport_map.end(); its++)
+	{
+		string server_name = its->first;
+		string ipport = its->second;
+		remote_server_name_map.insert(pair<string, string>(ipport, server_name));
+	}
+	return remote_server_name_map;
+}
+
 map<string, string> get_remote_ipport_map(
   MEM_ROOT* mem, 
   map<string, string> &remote_user_map, 
@@ -2165,8 +2185,9 @@ map<string, string> get_remote_ipport_map(
 /*
 get map for ipport->server_name
 */
-map<string, string> get_spider_server_name_map(
+map<string, string> get_server_name_map(
 	MEM_ROOT *mem,
+	const char* wrapper,
 	bool with_slave
 )
 {
@@ -2174,8 +2195,7 @@ map<string, string> get_spider_server_name_map(
 	FOREIGN_SERVER *server;
 	ostringstream  sstr;
 	list<FOREIGN_SERVER*> server_list;
-	string wrapper_name = tdbctl_spider_wrapper_prefix;
-	get_server_by_wrapper(server_list, mem, wrapper_name.c_str(), with_slave);
+	get_server_by_wrapper(server_list, mem, wrapper, with_slave);
 	list<FOREIGN_SERVER*>::iterator its;
 	for (its = server_list.begin(); its != server_list.end(); its++)
 	{
@@ -2217,7 +2237,7 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
         real_connect_option = CLIENT_INTERACTIVE | CLIENT_MULTI_STATEMENTS;
         if (!mysql_real_connect(mysql, hosts.c_str(), user.c_str(), passwd.c_str(), "", port, NULL, real_connect_option))
         {
-            sql_print_warning("tc connnect fail: error code is %d, error message: %s", mysql_errno(mysql), mysql_error(mysql));
+            sql_print_warning("tc connect fail: error code is %d, error message: %s", mysql_errno(mysql), mysql_error(mysql));
             if(mysql)
                 mysql_close(mysql);
             if (!connect_retry_count)
@@ -2239,19 +2259,28 @@ MYSQL *tc_tdbctl_conn_primary(
 {
 	MYSQL *conn = NULL;
 	string address;
-	if (is_group_replication_running()) {
+	if (is_group_replication_running()) 
+	{
 		/*
 		we always is primary node, because tdbctl only support single_primary_node
 		slave node is read_only in MGR and impossibility run to here
 		*/
 		address = string(report_host) + "#" + to_string(report_port);
 	}
-	else {
-		if (tdbctl_ipport_map.size() > 1) {
+	else 
+	{
+		if (tdbctl_ipport_map.size() > 1) 
+		{
 			ret = 1;
 			my_error(ER_TCADMIN_MULTI_NODE_EXISTS, MYF(0));
 			return conn;
 		}
+		else if (tdbctl_ipport_map.size() < 1)
+		{
+			ret = 1;
+			my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
+			return conn;
+		}	
 		address = tdbctl_ipport_map.begin()->second;
 	}
 
@@ -2358,6 +2387,9 @@ MYSQL* tc_spider_conn_single(
 	}
 	return mysql;
 }
+
+
+
 
 
 map<string, MYSQL*> tc_remote_conn_connect(

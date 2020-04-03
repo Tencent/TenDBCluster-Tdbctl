@@ -154,7 +154,7 @@ int tc_check_cluster_availability()
 		spider_user_map,
 		spider_passwd_map,
 		FALSE);
-	spider_server_name_map = get_spider_server_name_map(&mem_root, false);
+	spider_server_name_map = get_server_name_map(&mem_root, SPIDER_WRAPPER, false);
 	spider_conn_map = tc_spider_conn_connect(
 		ret,
 		spider_ipport_set,
@@ -193,7 +193,7 @@ int tc_check_cluster_availability()
 		else
 		{
 			result = 2;
-			fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
+			fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN MONITOR] "
 				"select cluster_heartbeat_log failed\n",
 				l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
 				l_time->tm_min, l_time->tm_sec);
@@ -243,9 +243,10 @@ int tc_check_cluster_availability()
 		{
 			result = 2;
 			fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN MONITOR] "
-				"log in cluster_heartbeat_log failed : %s\n",
+				"log in cluster_heartbeat_log failed :%02d %s\n",
 				l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-				l_time->tm_hour, l_time->tm_min, l_time->tm_sec, (char*)(exec_info_tdbctl.err_msg.data()));
+				l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
+				exec_info_tdbctl.err_code, (char*)(exec_info_tdbctl.err_msg.data()));
 		}
 	}
 
@@ -281,5 +282,6 @@ void tc_check_cluster_availability_thread()
 			//check available for cluster
 			tc_check_cluster_availability();
 		}
+		sleep(2);
 	}
 }

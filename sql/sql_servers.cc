@@ -1358,6 +1358,7 @@ string tc_get_ipport_from_server_by_wrapper(Server_options* server_options, cons
   return ipport;
 }
 
+
 bool tc_check_ipport_valid()
 {
   return FALSE;

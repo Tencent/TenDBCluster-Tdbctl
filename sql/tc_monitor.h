@@ -13,4 +13,4 @@ int tc_check_cluster_availability();
 void create_check_cluster_availability_thread();
 void tc_check_cluster_availability_thread();
 int tc_check_cluster_availability_init();
-#endif /* TC_BASE_INCLUDED */
+#endif /* TC_MONITOR_INCLUDED */
