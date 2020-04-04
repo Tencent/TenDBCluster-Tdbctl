@@ -12,7 +12,9 @@ using namespace std;
 
 //wrapper name map to mysql.servers's Wrapper field
 #define MYSQL_WRAPPER "mysql"
+#define MYSQL_SLAVE_WRAPPER "mysql_slave"
 #define SPIDER_WRAPPER "SPIDER"
+#define SPIDER_SLAVE_WRAPPER "SPIDER_SLAVE"
 #define TDBCTL_WRAPPER "TDBCTL"
 
 void gettype_create_filed(Create_field *cr_field, String &res);
@@ -265,6 +267,8 @@ MYSQL* tc_spider_conn_single(
 	set<string> spider_ipport_set,
 	map<string, string> spider_user_map,
 	map<string, string> spider_passwd_map
+);
+
 map<string, MYSQL*> tc_tdbctl_conn_connect(
   int &ret,
   map<string, string> tdbctl_ipport_map, 
@@ -274,9 +278,9 @@ map<string, MYSQL*> tc_tdbctl_conn_connect(
 
 MYSQL *tc_tdbctl_conn_primary(
 	int &ret,
-	map<string, string> tdbctl_ipport_map,
-	map<string, string> tdbctl_user_map,
-	map<string, string> tdbctl_passwd_map
+	map<string, string> &tdbctl_ipport_map,
+	map<string, string> &tdbctl_user_map,
+	map<string, string> &tdbctl_passwd_map
 );
 
 int tc_do_grants_internal();
@@ -337,10 +341,53 @@ bool tc_exec_sql_paral_with_result(
   map<string, string>& passwd_map,
   bool error_retry);
 
+
+string tc_get_spider_grant_sql(
+	set<string> &spider_ipport_set,
+	map<string, string> &spider_user_map,
+	map<string, string> &spider_passwd_map,
+	map<string, string> &tdbctl_ipport_map,
+	map<string, string> &tdbctl_user_map,
+	map<string, string> &tdbctl_passwd_map);
+
+string tc_get_tdbctl_grant_sql(
+	set<string> &spider_ipport_set,
+	map<string, string> &spider_user_map,
+	map<string, string> &spider_passwd_map,
+	map<string, string> &tdbctl_ipport_map,
+	map<string, string> &tdbctl_user_map,
+	map<string, string> &tdbctl_passwd_map);
+
+string tc_get_remote_grant_sql(
+	set<string> &spider_ipport_set,
+	map<string, string> &spider_user_map,
+	map<string, string> &spider_passwd_map,
+	map<string, string> &remote_ipport_map,
+	map<string, string> &remote_user_map,
+	map<string, string> &remote_passwd_map,
+	map<string, string> &tdbctl_ipport_map,
+	map<string, string> &tdbctl_user_map,
+	map<string, string> &tdbctl_passwd_map);
+
 my_time_t string_to_timestamp(const string s);
 void init_result_map(map<string, tc_exec_info>& result_map, set<string> &ipport_set);
 void init_result_map2(map<string, tc_exec_info>& result_map, map<string, string> &ipport_map);
 
 unsigned int tc_is_running_node(char *host, ulong *port);
 int tc_is_master_tdbctl_node();
+string tc_get_variable_value(MYSQL *conn, const char *variable);
+uint tc_is_running_node(std::string &host, uint *port);
+
+enum enum_ident_wrapper_check
+{
+	 IDENT_WRAPPER_OK,
+	 IDENT_WRAPPER_WRONG,
+};
+
+enum_ident_wrapper_check tc_check_wrapper_name(LEX_STRING *org_name);
+
+/* use GROUP REPLICATION's info */
+extern char *report_host;
+extern uint report_port;
+
 #endif /* TC_BASE_INCLUDED */

@@ -104,6 +104,8 @@
 #include "parse_location.h"
 #include "tc_base.h"
 #include "tc_monitor.h"
+#include "tc_node.h"
+
 #ifndef _WIN32
 #include <sys/time.h>
 #endif // !_WIN32
@@ -5225,31 +5227,131 @@ end_with_restore_list:
       my_ok(thd);
     break;
   }
+	case TC_SQLCOM_CREATE_NODE:
+  case TC_SQLCOM_ALTER_NODE:
+	case TC_SQLCOM_DROP_NODE:
   case TC_SQLCOM_FLUSH_ROUTING:
   {
-    bool reload_servers_failed = servers_reload(thd);
-    if (reload_servers_failed)
-    {
-      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-      break;
-    }
 		/*
 		NB: use server_uuid as lock string here
 		we add x lock to block any DDL or flush command
 		*/
 		if (res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
 		{
-      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-      break;
+      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "lock wait timeout");
+			goto error;
 		}
-    bool flush_routing_failed = tc_flush_routing(lex, lex->tc_flush_type, lex->is_tc_flush_force);
-    if (flush_routing_failed)
+
+		/* always do reload first */
+		if (servers_reload(thd))
+		{
+			my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "reload server failed");
+			goto error;
+		}
+
+		switch (lex->sql_command) {
+		case TC_SQLCOM_CREATE_NODE:
+		{
+			string server_name;
+			list<FOREIGN_SERVER*> server_list;
+			char path[FN_REFLEN + 1];
+			MYSQL_TIME l_time;
+			char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
+			my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
+				tmp_file_prefix, current_thd->query_start(), current_pid,
+				thd->thread_id());
+
+			DBUG_ASSERT(lex->m_sql_cmd != NULL);
+			if (!(lex->server_options.get_host() &&
+				lex->server_options.get_port() &&
+				lex->server_options.get_username() &&
+				lex->server_options.get_password()))
+			{
+				my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "USER, PASSWORD, HOST, PORT options must be specify");
+				goto error;
+			}
+
+			/* get an unique server_name by wrapper */
+			server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme(), TRUE);
+			DBUG_ASSERT(server_name.length() != 0);
+			lex->server_options.m_server_name.length = server_name.length();
+			lex->server_options.m_server_name.str =
+				strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
+
+			/* add tdbctl/remote node, only need to do create server command */
+			if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 ||
+				strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0)
+				break;
+
+			// for create spider node logic blow
+			/* get spider_list from mysql.servers, exclude slave spiders
+				 avoid to user slave spider's schema, maybe not consistent with master ?
+			*/
+			get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
+			if (server_list.empty())
+				// first spider node, no need to dump/restore schema, only add to mysql.servers
+				break;
+
+			/* dump spider's schema from first spider node.
+				 must exclude itself
+				 TODO: new add spider node's ip#port must not exists in mysql.servers;
+			*/
+			DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
+				server_list.front()->port != lex->server_options.get_port());
+			if (tc_dump_node_schema(
+				server_list.front()->host,
+				server_list.front()->port,
+				server_list.front()->username,
+				server_list.front()->password,
+				path))
+			{
+				my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+					server_list.front()->host, server_list.front()->port);
+				goto error;
+			}
+
+			if (tc_restore_node_schema(lex->server_options.get_host(),
+				lex->server_options.get_port(),
+				lex->server_options.get_username(),
+				lex->server_options.get_password(),
+				path))
+			{
+				my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
+					lex->server_options.get_host(), lex->server_options.get_port());
+				goto error;
+			}
+			break;
+		}
+		case TC_SQLCOM_ALTER_NODE:
+		case TC_SQLCOM_DROP_NODE:
+			//no nothing but execute
+			DBUG_ASSERT(lex->m_sql_cmd != NULL);
+			break;
+		case TC_SQLCOM_FLUSH_ROUTING:
+			goto flush;
+		default:
+			my_ok(thd);
+			goto finish;
+		}
+
+		if (res = lex->m_sql_cmd->execute(thd))
+			goto error;
+
+    //Reset the thread OK status before changing the outcome.
+		if (thd->get_stmt_da()->is_ok())
+		  thd->get_stmt_da()->reset_diagnostics_area();
+
+  flush:
+		/* create/alter/drop node, also need to do flush routing */
+		/* no need reload servers, m_sql_cmd->execute had update cache */
+    if (tc_flush_routing(lex))
     {
       my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-      break;
+			goto error;
     }
-    my_ok(thd);
-    break;
+
+		my_ok(thd);
+		break;
   }
   case TC_SQLCOM_MONITOR_INIT:
   {
@@ -5309,7 +5411,7 @@ finish:
        When variables are restored after "SET STATEMENT ... FOR ..." statement
        execution an update callback must be invoked for the system variables
        to save special logic if it is. set_var_base class does not contain
-       refference to variable as it is just an interface class. But only
+       reference to variable as it is just an interface class. But only
        system variables are allowed to be used in "SET STATEMENT ... FOR ..."
        statement, so cast from set_var_base* to set_var* can be used here.
     */
@@ -5445,6 +5547,25 @@ finish:
   DBUG_RETURN(res || thd->is_error());
 }
 
+
+/**
+  Execute command saved in thd and lex->sql_command.
+	tc_admin is ON will do this.
+
+  @param thd                       Thread handle
+
+  @todo
+    - Invalidate the table in the query cache if something changed
+    after unlocking when changes become visible.
+    @todo: this is workaround. right way will be move invalidating in
+    the unlock procedure.
+    - TODO: use check_change_password()
+
+  @retval
+    FALSE       OK
+  @retval
+    TRUE        Error
+*/
 
 int
 tcadmin_execute_command(THD* thd)
@@ -5901,32 +6022,138 @@ tcadmin_execute_command(THD* thd)
   case SQLCOM_SHUTDOWN:
     my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
     break;
-  case TC_SQLCOM_FLUSH_ROUTING:
-  {
-    bool reload_servers_failed = servers_reload(thd);
-    if (reload_servers_failed)
-    {
-      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-      break;
-    }
+	case TC_SQLCOM_CREATE_NODE:
+	case TC_SQLCOM_ALTER_NODE:
+	case TC_SQLCOM_DROP_NODE:
+	case TC_SQLCOM_FLUSH_ROUTING:
+	{
 		/*
-		NB: use server_uuid as lock string here
-		we add x lock to block any DDL or flush command
+		 NB: use server_uuid as lock string here
+		 we add x lock to block any DDL or flush command
 		*/
 		if (res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
 		{
-      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+			my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "lock wait timeout");
 			goto finish;
 		}
-    bool flush_routing_failed = tc_flush_routing(lex, lex->tc_flush_type, lex->is_tc_flush_force);
-    if (flush_routing_failed)
-    {
-      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-      break;
-    }
-  }
-  my_ok(thd);
-  break;
+
+		/* always do reload first */
+		if (servers_reload(thd))
+		{
+			my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+			goto finish;
+		}
+
+		switch (lex->sql_command) {
+		case TC_SQLCOM_CREATE_NODE:
+		{
+			string server_name;
+			list<FOREIGN_SERVER*> server_list;
+			char path[FN_REFLEN + 1];
+			MYSQL_TIME l_time;
+			char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
+			my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
+				tmp_file_prefix, current_thd->query_start(), current_pid,
+				thd->thread_id());
+
+			DBUG_ASSERT(lex->m_sql_cmd != NULL);
+			if (!(lex->server_options.get_host() &&
+				lex->server_options.get_port() &&
+				lex->server_options.get_username() &&
+				lex->server_options.get_password()))
+			{
+				my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "USER, PASSWORD, HOST, PORT options must be specify");
+				goto finish;
+			}
+
+			/* get an unique server_name by wrapper */
+			server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme(), TRUE);
+			DBUG_ASSERT(server_name.length() != 0);
+			lex->server_options.m_server_name.length = server_name.length();
+			lex->server_options.m_server_name.str =
+				strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
+
+			/* add tdbctl/remote node, only need to do create server command */
+			if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 ||
+				strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0)
+				break;
+
+			// for create spider node logic blow
+			/* get spider_list from mysql.servers, exclude slave spiders
+				 avoid to user slave spider's schema, maybe not consistent with master ?
+			*/
+			get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
+			if (server_list.empty())
+				// first spider node, no need to dump/restore schema, only add to mysql.servers
+				break;
+
+			/* dump spider's schema from first spider node.
+				 must exclude itself
+			*/
+			DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
+				server_list.front()->port != lex->server_options.get_port());
+			if (tc_dump_node_schema(
+				server_list.front()->host,
+				server_list.front()->port,
+				server_list.front()->username,
+				server_list.front()->password,
+				path))
+			{
+				my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+					server_list.front()->host, server_list.front()->port);
+				goto finish;
+			}
+
+			if (tc_restore_node_schema(lex->server_options.get_host(),
+				lex->server_options.get_port(),
+				lex->server_options.get_username(),
+				lex->server_options.get_password(),
+				path))
+			{
+				my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
+					lex->server_options.get_host(), lex->server_options.get_port());
+				goto finish;
+			}
+
+			break;
+		}
+		case TC_SQLCOM_ALTER_NODE:
+		case TC_SQLCOM_DROP_NODE:
+			DBUG_ASSERT(lex->m_sql_cmd != NULL);
+			break;
+		case TC_SQLCOM_FLUSH_ROUTING:
+			goto flush;
+		default:
+			my_ok(thd);
+			goto finish;
+		}
+
+		if (res = lex->m_sql_cmd->execute(thd))
+			goto finish;
+
+		//Reset the thread OK status before changing the outcome.
+		if (thd->get_stmt_da()->is_ok())
+			thd->get_stmt_da()->reset_diagnostics_area();
+
+	flush:
+		/* create/alter/drop node, also need to do flush routing */
+		/* no need reload server, m_sql_cmd->execute had update cache */
+				/* always do reload first */
+		if (servers_reload(thd))
+		{
+			my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+			goto finish;
+		}
+
+		if (tc_flush_routing(lex))
+		{
+			my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+			goto finish;
+		}
+
+		my_ok(thd);
+		goto finish;
+	}
   case TC_SQLCOM_MONITOR_INIT:
   {
 	  if (tc_check_cluster_availability_init())
@@ -5969,6 +6196,7 @@ tcadmin_execute_command(THD* thd)
     res = tc_process_all_result(thd, &parse_result, &exec_result);
   }
 
+		break;
 finish:
 
   /* Free tables. Set stage 'closing tables' */

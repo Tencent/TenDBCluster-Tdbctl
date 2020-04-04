@@ -420,6 +420,7 @@ static const SYMBOL symbols[] = {
   { SYM("NEXT",                     NEXT_SYM)},
   { SYM("NO",                       NO_SYM)},
   { SYM("NO_WAIT",                  NO_WAIT_SYM)},
+  { SYM("NODE",                     NODE_SYM)},
   { SYM("NODEGROUP",                NODEGROUP_SYM)},
   { SYM("NONE",                     NONE_SYM)},
   { SYM("NOT",                      NOT_SYM)},

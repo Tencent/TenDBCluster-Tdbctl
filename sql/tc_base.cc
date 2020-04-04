@@ -2213,7 +2213,7 @@ map<string, string> get_server_name_map(
 	bool with_slave
 )
 {
-	map<string,string> server_name_map;
+	map<string, string> server_name_map;
 	FOREIGN_SERVER *server;
 	ostringstream  sstr;
 	list<FOREIGN_SERVER*> server_list;
@@ -2228,48 +2228,10 @@ map<string, string> get_server_name_map(
 		string ports = sstr.str();
 		string s = host + "#" + ports;
 		string server_name = server->server_name;
-		server_name_map.insert(pair<string,string>(s, server_name));
+		server_name_map.insert(pair<string, string>(s, server_name));
 	}
 
 	return server_name_map;
-get tdbctl's ipport map
-server_name->ip#port->user, server_name->ip#port->passwd
-*/
-map<string, string> get_tdbctl_ipport_map(
-  MEM_ROOT* mem,
-  map<string, string> &tdbctl_user_map,
-  map<string, string> &tdbctl_passwd_map
-)
-{
-    map<string, string> ipport_map;
-    FOREIGN_SERVER *server, server_buffer;
-    ostringstream  sstr;
-    string server_name_pre = tdbctl_control_wrapper_prefix;
-    ulong records = get_servers_count();
-    tdbctl_user_map.clear();
-    tdbctl_passwd_map.clear();
-
-    for (ulong i = 0; i < records; i++)
-    {
-        sstr.str("");
-        sstr << i;
-        string hash_value = sstr.str();
-        string server_name = server_name_pre + hash_value;
-        if (server = get_server_by_name(mem, server_name.c_str(), &server_buffer))
-        {
-            string host = server->host;
-            string user = server->username;
-            string passwd = server->password;
-            sstr.str("");
-            sstr << server->port;
-            string ports = sstr.str();
-            string s = host + "#" + ports;
-            ipport_map.insert(pair<string, string>(server_name, s));
-            tdbctl_user_map.insert(pair<string, string>(s, user));
-            tdbctl_passwd_map.insert(pair<string, string>(s, passwd));
-        }
-    }
-    return ipport_map;
 }
 
 MYSQL* tc_conn_connect(string ipport, string user, string passwd)
@@ -2284,10 +2246,13 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
     uint connect_retry_count = 3;
     uint real_connect_option = 0;
     MYSQL* mysql;
-	if (user.size() == 0 && passwd.size() == 0)
-	{
-		return NULL;
-	}
+
+	  if (user.length() == 0 && passwd.length() == 0)
+	  {
+      sql_print_error("tc connect fail: username or password is empty");
+		  return NULL;
+	  }
+
     while (connect_retry_count-- > 0)
     {
         mysql = mysql_init(NULL);
@@ -2477,9 +2442,11 @@ map<string, MYSQL*> tc_remote_conn_connect(
     return conn_map;
 }
 
-/*
-use user#password to connect tdbctl
-@result return a map which store each tdbctl's connect
+/**
+ use user#password to connect tdbctl
+
+ @result
+   return a map which store each tdbctl's connect
 */
 map<string, MYSQL*> tc_tdbctl_conn_connect(
   int &ret,
@@ -2517,34 +2484,61 @@ map<string, MYSQL*> tc_tdbctl_conn_connect(
 }
 
 /*
-NB: Anytime we call this, we must ensure that we are primary node
-At present, tdbctl only support single_primary_node. slave node is
-read-only and impossibility run to here and call this function 
-TODO: use MGR's strategy to get primary node may more pretty.
+  @NOTES
+	  for MGR mode
+      single primary node, return an connect to the primary node;
+	    multi primary node, return NULL
+    for no MGR mode
+		  always return the  tdbctl_map's first key(which ordered)
+
+	@retval
+	  ret: 0 for ok, others error
 */
 MYSQL *tc_tdbctl_conn_primary(
 	int &ret,
-  map<string, string> tdbctl_ipport_map,
-	map<string, string> tdbctl_user_map,
-  map<string, string> tdbctl_passwd_map
+	map<string, string> &tdbctl_ipport_map,
+	map<string, string> &tdbctl_user_map,
+	map<string, string> &tdbctl_passwd_map
 )
 {
-	MYSQL *conn;
+	MYSQL *conn = NULL;
 	string address;
-	if (is_group_replication_running()) {
-		/*
-		we always is primary node, because tdbctl only support single_primary_node
-		slave node is read_only in MGR and impossibility run to here
-		*/
-		address = string(report_host) + "#" + to_string(report_port);
+	uint port;
+	int result;
+	std::string host = "";
+
+	if (tdbctl_ipport_map.empty())
+	{
+		ret = 1;
+		sql_print_warning("tc connect to primary node failed: map is empty");
+	  return NULL;
 	}
-	else {
-		if (tdbctl_ipport_map.size() > 1) {
+
+	result = tc_is_running_node(host, &port);
+	if (result == 1)
+	{//is single primary node, use primary node's host, port
+		address = host + "#" + to_string(port);
+		/* TODO: primary node must exists in mysql.servers ? */
+		if (std::find_if(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(),
+			[address](const std::pair<string, string> &tdbctl_ip_port) -> bool {
+			return address.compare(tdbctl_ip_port.second) == 0;}) == tdbctl_ipport_map.end())
+		{
 			ret = 1;
-      my_error(ER_TCADMIN_MULTI_NODE_EXISTS, MYF(0));
-			return conn;
+			sql_print_warning("primary node %s not exists in mysql.servers", address.c_str());
+
+			return NULL;
 		}
+	}
+	else if (result == 2)
+	{// not MGR mode
 		address = tdbctl_ipport_map.begin()->second;
+	}
+	else
+	{// error or multi primary node
+		sql_print_warning("get single primary node failed");
+		ret = 1;
+
+	  return NULL;
 	}
 
 	conn = tc_conn_connect(address, tdbctl_user_map[address], tdbctl_passwd_map[address]);
@@ -2814,47 +2808,245 @@ my_time_t string_to_timestamp(const string s)
 void init_result_map(map<string, tc_exec_info>& result_map,
 	set<string> &ipport_set)
 {
-	set<string>::iterator its;
-	for (its = ipport_set.begin(); its != ipport_set.end(); its++)
-	{/* init for exec result: result_map */
-		string ipport = (*its);
+	std::for_each(ipport_set.begin(), ipport_set.end(), [&](string ipport) {
 		tc_exec_info exec_info;
 		exec_info.err_code = 0;
 		exec_info.row_affect = 0;
 		exec_info.err_msg = "";
 		result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
-	}
+	});
 }
 
 void init_result_map2(map<string, tc_exec_info>& result_map,
 	map<string, string> &ipport_map)
 {
-	map<string, string>::iterator its;
-	for (its = ipport_map.begin(); its != ipport_map.end(); its++)
-	{/* init for exec result: result_map */
-		string ipport = its->second;
+	std::for_each(ipport_map.begin(), ipport_map.end(), [&](std::pair<string, string>its){
+		string ipport = its.second;
 		tc_exec_info exec_info;
 		exec_info.err_code = 0;
 		exec_info.row_affect = 0;
 		exec_info.err_msg = "";
 		result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
+	});
+}
+
+/*
+get mysql variable value
+*/
+string tc_get_variable_value(MYSQL *conn, const char *variable)
+{
+	MYSQL_RES* res;
+	MYSQL_ROW row = NULL;
+	char sql[256];
+	sprintf(sql, "select @@%s", variable);
+	res = tc_exec_sql_with_result(conn, sql);
+	if (res && (row = mysql_fetch_row(res)))
+	{
+		return row[0];
 	}
+
+	return NULL;
+}
+
+/**
+  check whether wrapper name is valid
+
+  @param org_name             Name of wrapper and length
+
+  @retval  IDENT_WRAPPER_OK        Identifier wrapper name is Ok (Success)
+	@retval  IDENT_WRAPPER_WRONG     Identifier wrapper name is Wrong (ER_TCADMIN_WRONG_WRAPPER_NAME)
+
+*/
+enum_ident_wrapper_check tc_check_wrapper_name(LEX_STRING *org_name)
+{
+	char *name= org_name->str;
+  size_t name_length= org_name->length;
+  enum_ident_wrapper_check ident_check_status;
+
+  if (!name_length || name_length > NAME_LEN)
+  {
+    my_error(ER_TCADMIN_WRONG_WRAPPER_NAME, MYF(0), org_name->str);
+    return IDENT_WRAPPER_WRONG;
+  }
+
+	if (strcasecmp(name, SPIDER_WRAPPER) != 0 &&
+        strcasecmp(name, TDBCTL_WRAPPER) != 0 &&
+        strcasecmp(name, MYSQL_WRAPPER) != 0 &&
+				strcasecmp(name, SPIDER_SLAVE_WRAPPER) != 0 &&
+				strcasecmp(name, MYSQL_SLAVE_WRAPPER) !=0)
+	{
+    my_error(ER_TCADMIN_WRONG_WRAPPER_NAME, MYF(0), name, "only support TDBCTL, SPIDER, SPIDER_SLAVE, mysql wrapper");
+    return IDENT_WRAPPER_WRONG;
+	}
+
+	return IDENT_WRAPPER_OK;
+}
+
+/*
+Generate internal spider GRANT sql according to mysql.servers's info.
+Each spider should do [GRANT ALL PRIVILEGES] sql for all tdbctls, which use to
+do DDL on spider. If not, after tdbctl(MGR) failover, new primary tdbctl may
+access denied by spider
+The generate sqls should execute on each spider
+*/
+string tc_get_spider_grant_sql(
+				set<string> &spider_ipport_set,
+				map<string, string> &spider_user_map,
+				map<string, string> &spider_passwd_map,
+				map<string, string> &tdbctl_ipport_map,
+				map<string, string> &tdbctl_user_map,
+				map<string, string> &tdbctl_passwd_map)
+{
+	string spider_do_sql;
+	char create_sql[FN_REFLEN], grant_sql[FN_REFLEN];
+	std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_ip_port)
+	{
+		const char *spider_user = spider_user_map[spider_ip_port].c_str();
+		const char *spider_passwd = spider_passwd_map[spider_ip_port].c_str();
+		std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
+		{
+			string tdbctl_address = tdbctl_ip_port.second;
+			ulong pos = tdbctl_address.find("#");
+			string tdbctl_host = tdbctl_address.substr(0, pos);
+
+			//tdbctl use spider's user, password to connect current spider
+			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+				spider_user, tdbctl_host.c_str(), spider_passwd);
+			sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* TO '%s'@'%s' WITH GRANT OPTION;",
+				spider_user, tdbctl_host.c_str());
+			spider_do_sql += create_sql;
+			spider_do_sql += grant_sql;
+		});
+	});
+
+	return spider_do_sql;
 }
 
 
 /*
-host: primary host port: primary port
-return value: 0, not primary node && mgr runing 
-1, mgr primary node 2, not mgr, single node
+Generate internal tdbctl GRANT sql according to mysql.servers's info.
+Primary tdbctl should do [GRANT ALL PRIVILEGES] sql for all spiders, which use
+to transfer sql from spider to tdbctl. Of course, other tdbctl also need do, but MGR
+ensure to sync privileges from master tdbctl to slave, so we skip this step.
+The generate sqls only need to execute on primary tdbctl
 */
-unsigned int tc_is_running_node(char *host, ulong *port)
+string tc_get_tdbctl_grant_sql(
+				set<string> &spider_ipport_set,
+				map<string, string> &spider_user_map,
+				map<string, string> &spider_passwd_map,
+				map<string, string> &tdbctl_ipport_map,
+				map<string, string> &tdbctl_user_map,
+				map<string, string> &tdbctl_passwd_map)
 {
-  uint ret = get_group_replication_primary_node_info(host, port);
-  if (ret == 2)
-  {/* not mgr , host#port must be local host#port */
-// TODO, fetch local ip and port
-  }
-  return ret;
+	string tdbctl_do_sql;
+	char create_sql[FN_REFLEN], grant_sql[FN_REFLEN];
+	std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_ip_port)
+	{
+		ulong pos = spider_ip_port.find("#");
+		string spider_host = spider_ip_port.substr(0, pos);
+		std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
+		{
+			string tdbctl_address = tdbctl_ip_port.second;
+			ulong pos = tdbctl_address.find("#");
+			string tdbctl_host = tdbctl_address.substr(0, pos);
+			const char *tdbctl_user = tdbctl_user_map[tdbctl_address].c_str();
+			const char *tdbctl_passwd = tdbctl_passwd_map[tdbctl_address].c_str();
+
+			//spider use tdbctl's user, password to connect spider
+			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+				tdbctl_user, spider_host.c_str(), tdbctl_passwd);
+			sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* TO '%s'@'%s' WITH GRANT OPTION;",
+				tdbctl_user, spider_host.c_str());
+			tdbctl_do_sql += create_sql;
+			tdbctl_do_sql += grant_sql;
+		});
+	});
+
+	return tdbctl_do_sql;
+}
+
+/*
+Generate internal remote GRANT sql according to mysql.servers's info.
+1. remote should do [GRANT SELECT, INSERT, TRUNCATE PRIVILEGES] sql for all spiders, spider need
+privileges do DML on remote
+2. remote should do [GRANT ALL PRIVILEGES] for all tdbctls, which use to connect remote and
+do DDL. We must do this, if not, after tdbctl(MGR) failover, new primary tdbctl may access denied by remote
+The generate sqls need to execute on all remotes
+*/
+string tc_get_remote_grant_sql(
+				set<string> &spider_ipport_set,
+				map<string, string> &spider_user_map,
+				map<string, string> &spider_passwd_map,
+				map<string, string> &remote_ipport_map,
+			  map<string, string> &remote_user_map,
+				map<string, string> &remote_passwd_map,
+				map<string, string> &tdbctl_ipport_map,
+				map<string, string> &tdbctl_user_map,
+				map<string, string> &tdbctl_passwd_map)
+{
+	string remote_do_sql;
+	char create_sql[FN_REFLEN], grant_sql[FN_REFLEN];
+
+  std::for_each(remote_ipport_map.begin(), remote_ipport_map.end(), [&](std::pair<string, string>remote_ip_port)
+	{
+		string remote_address = remote_ip_port.second;
+		const char *remote_user = remote_user_map[remote_address].c_str();
+		const char *remote_passwd = remote_passwd_map[remote_address].c_str();
+
+		//remote do grants for spider
+	  std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_address)
+		{
+			ulong pos = spider_address.find("#");
+			string spider_host = spider_address.substr(0, pos);
+
+			//spider use remote's user, password to connect remote do DML
+			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+				remote_user, spider_host.c_str(), remote_passwd);
+			sprintf(grant_sql, "GRANT SELECT, INSERT, DROP ON *.* to '%s'@'%s' WITH GRANT OPTION;",
+				remote_user, spider_host.c_str());
+			remote_do_sql += create_sql;
+			remote_do_sql += grant_sql;
+		});
+
+		//remote do grants for tdbctl
+		std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
+		{
+			string tdbctl_address = tdbctl_ip_port.second;
+			ulong pos = tdbctl_address.find("#");
+			string tdbctl_host = tdbctl_address.substr(0, pos);
+
+			//tdbctl use remote's user, password to connect remote do all
+			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+				remote_user, tdbctl_host.c_str(), remote_passwd);
+			sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* to '%s'@'%s' WITH GRANT OPTION;",
+				remote_user, tdbctl_host.c_str());
+			remote_do_sql += create_sql;
+			remote_do_sql += grant_sql;
+		});
+	});
+
+	return remote_do_sql;
+}
+
+
+/**
+  NOTES
+	 if primary mode is ON(return 1), we will memcpy primary node's host info,
+	 need to free for caller.
+
+ @param (out)
+   host: host to primary node 
+	 port: port to primary port 
+	 need_free: if true, caller need to do free(host)
+
+	@retval
+	 0: error or multi master
+	 1: mgr running with primary mode
+	 2. not mgr members
+*/
+uint tc_is_running_node(std::string &host, uint *port)
+{
+  return get_group_replication_primary_node_info(host, port);
 }
 
 
