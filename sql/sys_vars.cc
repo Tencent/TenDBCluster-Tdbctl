@@ -6338,11 +6338,23 @@ static Sys_var_mybool Sys_tc_check_repair_routing(
        GLOBAL_VAR(tc_check_repair_routing), CMD_LINE(OPT_ARG),
        DEFAULT(TRUE));
 
+static Sys_var_mybool Sys_tc_check_availability(
+	"tc_check_availability",
+	"If set to TRUE, check the availability of the cluster, and record in systerm table",
+	GLOBAL_VAR(tc_check_availability), CMD_LINE(OPT_ARG),
+	DEFAULT(TRUE));
+
 static Sys_var_ulong Sys_tc_check_repair_routing_interval(
       "tc_check_repair_routing_interval",
-      "The interval time of checking and reparing routing betwwen tdbctl and spiders",
+      "The interval time of checking and reparing routing between tdbctl and spiders",
       GLOBAL_VAR(tc_check_repair_routing_interval), CMD_LINE(REQUIRED_ARG),
       VALID_RANGE(8, 65535), DEFAULT(300), BLOCK_SIZE(1));
+
+static Sys_var_ulong Sys_tc_check_availability_interval(
+	"tc_check_availability_interval",
+	"The interval time of  check the availability of the cluster",
+	GLOBAL_VAR(tc_check_availability_interval), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(0, 65535), DEFAULT(300), BLOCK_SIZE(1));
 
 static Sys_var_mybool Sys_tc_check_repair_trans(
   "tc_check_repair_trans",
@@ -6368,6 +6380,11 @@ static Sys_var_charptr Sys_tc_mysql_wrapper_prefix(
   READ_ONLY GLOBAL_VAR(tdbctl_mysql_wrapper_prefix),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPT"));
 
+static Sys_var_charptr Sys_tc_control_wrapper_prefix(
+	"tc_control_wrapper_prefix", "prefix of server name for TDBCTL wrapper",
+	READ_ONLY GLOBAL_VAR(tdbctl_control_wrapper_prefix),
+	CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("TDBCTL"));
+
 static Sys_var_mybool Sys_tc_set_changed_node_read_only(
   "tc_set_changed_node_read_only",
   "If set to TRUE, set the old data node read only when switch error (partly failed to modify routing) ",
@@ -6379,3 +6396,9 @@ static Sys_var_mybool Sys_sort_when_partition_prefix_order(
   " using file sort when query with partition table + prefix index + order by ",
   GLOBAL_VAR(sort_when_partition_prefix_order),
   CMD_LINE(OPT_ARG), DEFAULT(TRUE));
+
+static Sys_var_ulong Sys_max__commit_logs(
+	"max_cluster_heartbeat_log",
+	"The max rows of cluster_heartbeat_log",
+	GLOBAL_VAR(max_heartbeat_log), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(10, ULONG_MAX), DEFAULT(1000000), BLOCK_SIZE(1));

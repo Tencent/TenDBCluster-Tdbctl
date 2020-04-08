@@ -146,6 +146,7 @@
 #include "item_strfunc.h"               // Item_func_uuid
 #include "handler.h"
 #include "tc_base.h"
+#include "tc_monitor.h"
 #include "tc_xa_repair.h"
 #include<iostream>
 #include<thread>
@@ -428,10 +429,11 @@ my_bool sp_automatic_privileges= 1;
 my_bool tc_check_repair_routing = TRUE;
 my_bool tc_check_repair_trans = TRUE;
 my_bool tc_set_changed_node_read_only  = FALSE;
+my_bool tc_check_availability = TRUE;
 my_bool sort_when_partition_prefix_order = TRUE;
 ulong tc_check_repair_routing_interval = 300;
+ulong tc_check_availability_interval = 300;
 ulong tc_max_prepared_time = 60;
-
 ulong opt_binlog_rows_event_max_size;
 const char *binlog_checksum_default= "NONE";
 ulong binlog_checksum_options;
@@ -457,6 +459,7 @@ uint protocol_version;
 uint lower_case_table_names;
 long tc_heuristic_recover;
 ulong back_log, connect_timeout, server_id;
+ulong max_heartbeat_log;
 ulong table_cache_size, table_def_size;
 ulong table_cache_instances;
 ulong table_cache_size_per_instance;
@@ -590,6 +593,7 @@ const char *log_error_dest;
 char glob_hostname[FN_REFLEN];
 char tdbctl_spider_wrapper_pre[FN_REFLEN];
 char tdbctl_mysql_wrapper_pre[FN_REFLEN];
+char tdbctl_control_wrapper_pre[FN_REFLEN];
 char mysql_real_data_home[FN_REFLEN],
      lc_messages_dir[FN_REFLEN], reg_ext[FN_EXTLEN],
      mysql_charsets_dir[FN_REFLEN],
@@ -612,6 +616,7 @@ char *mysql_data_home= const_cast<char*>(".");
 const char *mysql_real_data_home_ptr= mysql_real_data_home;
 const char *tdbctl_mysql_wrapper_prefix = tdbctl_mysql_wrapper_pre;
 const char *tdbctl_spider_wrapper_prefix = tdbctl_spider_wrapper_pre;
+const char *tdbctl_control_wrapper_prefix = tdbctl_control_wrapper_pre;
 char server_version[SERVER_VERSION_LENGTH];
 char *mysqld_unix_port, *opt_mysql_tmpdir;
 
@@ -5312,6 +5317,7 @@ int mysqld_main(int argc, char **argv)
 #endif
   create_check_and_repaire_routing_thread();
   create_tc_xa_repair_thread();
+  create_check_cluster_availability_thread();  
   start_handle_manager();
 
   create_compress_gtid_table_thread();

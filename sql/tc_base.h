@@ -10,6 +10,11 @@
 #include "mysql.h"
 using namespace std;
 
+//wrapper name map to mysql.servers's Wrapper field
+#define MYSQL_WRAPPER "mysql"
+#define SPIDER_WRAPPER "SPIDER"
+#define TDBCTL_WRAPPER "TDBCTL"
+
 void gettype_create_filed(Create_field *cr_field, String &res);
 bool get_createfield_default_value(Create_field *cr_field, String *def_value);
 void filed_add_zerofill_and_unsigned(String &res, bool unsigned_flag, bool zerofill);
@@ -255,6 +260,20 @@ map<string, MYSQL*> tc_spider_conn_connect(
   map<string, string> spider_passwd_map
 );
 
+MYSQL* tc_spider_conn_single(
+	int &ret,
+	set<string> spider_ipport_set,
+	map<string, string> spider_user_map,
+	map<string, string> spider_passwd_map
+);
+
+MYSQL *tc_tdbctl_conn_primary(
+	int &ret,
+	map<string, string> tdbctl_ipport_map,
+	map<string, string> tdbctl_user_map,
+	map<string, string> tdbctl_passwd_map
+);
+
 
 set<string> get_spider_ipport_set(
   MEM_ROOT *mem, 
@@ -268,6 +287,18 @@ map<string, string> get_remote_ipport_map(
   map<string, string> &remote_user_map, 
   map<string, string> &remote_passwd_map
 );
+
+map<string, string> get_spider_server_name_map(
+	MEM_ROOT *mem,
+	bool with_slave
+);
+
+map<string, string> get_tdbctl_ipport_map(
+	MEM_ROOT *mem,
+	map<string, string> &tdbctl_user_map,
+	map<string, string> &tdbctl_passwd_map
+);
+
 
 bool tc_conn_free( map<string, MYSQL*> &conn_map);
 int tc_mysql_next_result(MYSQL* mysql);

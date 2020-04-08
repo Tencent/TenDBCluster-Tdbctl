@@ -194,6 +194,7 @@ enum enum_sql_command {
   TC_SQLCOM_CREATE_TABLE_LIKE,
   TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY,
   TC_SQLCOM_ALTER_TABLE_UNSUPPORT,
+  TC_SQLCOM_MONITOR_INIT,
   /* This should be the last !!! */
   SQLCOM_END
 };

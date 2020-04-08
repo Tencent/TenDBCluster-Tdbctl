@@ -7841,6 +7841,12 @@ ER_TCADMIN_EXECUTE_ERROR
 
 ER_TCADMIN_FLUSH_ROUTING_ERROR
   eng "failed to flush routing"
+
+ER_TCADMIN_MULTI_NODE_EXISTS
+  eng "MULTI NODES: mulit tdbctl exists in mysql.servers without MGR configured"
+
+ER_TCADMIN_INIT_MONITOR_ERROR
+  eng "failed to init monitor"
 #
 # End of MyRocks specific messages
 #
