@@ -8,6 +8,7 @@
 #include "m_string.h"
 #include "handler.h"
 #include "log.h"
+#include "rpl_group_replication.h"
 #include <string.h>
 #include <iostream>
 #include <string>
@@ -2515,4 +2516,20 @@ my_time_t string_to_timestamp(const string s)
   } 
   return
     my_system_gmt_sec(&l_time, &dummy_my_timezone, &dummy_in_dst_time_gap);
+}
+
+
+/*
+host: primary host port: primary port
+return value: 0, not primary node && mgr runing 
+1, mgr primary node 2, not mgr, signle node
+*/
+unsigned int tc_is_running_node(char *host, ulong *port)
+{
+  uint ret = get_group_replication_primary_node_info(host, port);
+  if (ret == 2)
+  {/* not mgr , host#port must be local host#port */
+// TODO, fetch local ip and port
+  }
+  return ret;
 }

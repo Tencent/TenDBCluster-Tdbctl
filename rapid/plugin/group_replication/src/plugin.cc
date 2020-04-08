@@ -287,6 +287,7 @@ struct st_mysql_group_replication group_replication_descriptor=
   plugin_get_group_members,
   plugin_get_group_member_stats,
   plugin_get_group_members_number,
+  plugin_get_primary_node_info,
 };
 
 bool
@@ -314,6 +315,53 @@ uint plugin_get_group_members_number()
   return group_member_mgr == NULL? 1 :
                                     (uint)group_member_mgr
                                                       ->get_number_of_members();
+}
+
+
+/*
+get the primary member details:
+host: primary host;  port: primary port
+return value: 0, not primary node && mgr runing ; 
+1, mgr primary node ; 2, not mgr, signle node
+*/
+uint plugin_get_primary_node_info(char* host, ulong* port)
+{
+  if (!(group_member_mgr && single_primary_mode_var &&
+    plugin_is_group_replication_running()))
+  { /* not mgr */
+    return 2;
+  }
+
+  if (local_member_info->in_primary_mode())
+  {// single primary mode
+    if (local_member_info->get_role() == Group_member_info::MEMBER_ROLE_PRIMARY)
+    {// local member is primary node
+      memcpy(host, local_member_info->get_hostname().c_str(), local_member_info->get_hostname().length());
+      *port = local_member_info->get_port();
+      return 1;
+    }
+    else if (local_member_info->get_role() == Group_member_info::MEMBER_ROLE_SECONDARY)
+    {
+      std::string primary_member_uuid;
+      group_member_mgr->get_primary_member_uuid(primary_member_uuid);
+      Group_member_info* primary_member_info =
+        group_member_mgr->get_group_member_info(primary_member_uuid);
+      if (primary_member_info != NULL)
+      {
+        memcpy(host, local_member_info->get_hostname().c_str(), local_member_info->get_hostname().length());
+        *port = local_member_info->get_port();
+      }
+      return 1;
+    }
+    else
+    {// error
+      return 0;
+    }
+  }
+  else
+  {// multi primary, unsupport
+    return 0;
+  }
 }
 
 bool
