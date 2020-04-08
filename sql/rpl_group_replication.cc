@@ -115,6 +115,13 @@ unsigned int Group_replication_handler::get_members_number_info()
   return 0;
 }
 
+unsigned int Group_replication_handler::get_primary_node_info(char* host, ulong* port)
+{
+  if (plugin_handle)
+    return plugin_handle->get_primary_node_info(host, port);
+  return 0;
+}
+
 int Group_replication_handler::plugin_init()
 {
   plugin= my_plugin_lock_by_name(0, to_lex_cstring(plugin_name.c_str()),
@@ -301,12 +308,30 @@ bool get_group_replication_group_member_stats_info(
   return true;
 }
 
+
+/*
+return value:
+2 mean not mgr
+*/
+unsigned int get_group_replication_primary_node_info(char *host, ulong *port)
+{
+  mysql_mutex_lock(&LOCK_group_replication_handler);
+  if (is_group_replication_plugin_loaded())
+  {
+    unsigned int ret= group_replication_handler->get_primary_node_info(host, port);
+    mysql_mutex_unlock(&LOCK_group_replication_handler);
+    return ret;
+  }
+  mysql_mutex_unlock(&LOCK_group_replication_handler);
+  return 2;
+}
+
 unsigned int get_group_replication_members_number_info()
 {
   mysql_mutex_lock(&LOCK_group_replication_handler);
   if (is_group_replication_plugin_loaded())
   {
-    unsigned int ret= group_replication_handler->get_members_number_info();
+    unsigned int ret = group_replication_handler->get_members_number_info();
     mysql_mutex_unlock(&LOCK_group_replication_handler);
     return ret;
   }

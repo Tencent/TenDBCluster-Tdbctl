@@ -104,6 +104,7 @@ bool plugin_get_group_members(
 bool plugin_get_group_member_stats(
     const GROUP_REPLICATION_GROUP_MEMBER_STATS_CALLBACKS& callbacks);
 uint plugin_get_group_members_number();
+uint plugin_get_primary_node_info(char* host, ulong* port);
 /**
   Method to set retrieved certification info from a recovery channel extracted
   from a given View_change event
