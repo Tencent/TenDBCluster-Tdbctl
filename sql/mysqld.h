@@ -180,6 +180,7 @@ extern my_bool sort_when_partition_prefix_order;
 extern my_bool tc_partition_admin;
 extern ulong tc_check_repair_routing_interval;
 extern ulong tc_check_availability_interval;
+extern ulong tc_check_availability_connect;
 extern ulong tc_partition_admin_interval;
 extern ulong tc_partition_admin_time;
 extern ulong tc_max_prepared_time;

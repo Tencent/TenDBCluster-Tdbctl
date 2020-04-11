@@ -69,7 +69,11 @@ int tc_partition_admin_worker()
 	tc_remote_admin_partition(tdbctl_primary_conn, remote_conn_map, remote_server_name_map, 1);
 finish:
 	tc_conn_free(remote_conn_map);
-	mysql_close(tdbctl_primary_conn);
+	if (tdbctl_primary_conn)
+	{
+		mysql_close(tdbctl_primary_conn);
+		tdbctl_primary_conn = NULL;
+	}
 	tdbctl_ipport_map.clear();
 	tdbctl_user_map.clear();
 	tdbctl_passwd_map.clear();
@@ -87,7 +91,7 @@ finish:
 
 
 /*
- admin partition for remote from  mysql.tc_partiton_admin_config
+ admin partition for remote from  cluster_admin.tc_partiton_admin_config
 
  input:
       tdbctl_primary_conn    : conn of the primary tdbctl
@@ -112,7 +116,7 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 	/*
 	init for update sql in tdbctl
 	*/
-	string update_sql_cur = "update mysql.tc_partiton_admin_config set "
+	string update_sql_cur = "update cluster_admin.tc_partiton_admin_config set "
 		" is_partitioned = 1 where db_name =";
 	string update_config_sql = "";
 	string quotation = "\"";
@@ -129,7 +133,7 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 		*/
 		get_partition_sql = "select db_name, "
 			" tb_name,partition_column,expiration_time,partition_column_type,interval_time, "
-			" remote_hash_algorithm from mysql.tc_partiton_admin_config where is_partitioned<>1 ";
+			" remote_hash_algorithm from cluster_admin.tc_partiton_admin_config where is_partitioned<>1 ";
 	}
 	else if (step == 1)
 	{
@@ -139,7 +143,7 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 		*/
 		get_partition_sql = "select db_name, "
 			" tb_name,partition_column,expiration_time,partition_column_type,interval_time, "
-			" remote_hash_algorithm from mysql.tc_partiton_admin_config where is_partitioned=1 ";
+			" remote_hash_algorithm from cluster_admin.tc_partiton_admin_config where is_partitioned=1 ";
 	}
 
 	MYSQL_RES* res = tc_exec_sql_with_result(tdbctl_primary_conn, get_partition_sql);
@@ -203,7 +207,7 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 				if (tc_exec_sql_without_result(tdbctl_primary_conn, update_config_sql, &exec_info))
 				{
 					fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN PARTITION_ADMIN] "
-						"fail to  update  in  mysql.tc_partiton_admin_config : %02d %s \n",
+						"fail to  update  in  cluster_admin.tc_partiton_admin_config : %02d %s \n",
 						l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
 						l_time->tm_min, l_time->tm_sec, exec_info.err_code, exec_info.err_msg.c_str());
 					exec_info.err_code = 0;
@@ -217,7 +221,7 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 	{
 		result = 2;
 		fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN PARTITION_ADMIN] "
-			"fail to select mysql.tc_partiton_admin_config \n",
+			"fail to select cluster_admin.tc_partiton_admin_config \n",
 			l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
 			l_time->tm_min, l_time->tm_sec);
 	}
@@ -374,7 +378,7 @@ int get_time_diff(string str)
 }
 
 /*
-add and delete partition for remote from  mysql.tc_partiton_admin_config
+add and delete partition for remote from  cluster_admin.tc_partiton_admin_config
 */
 int tc_remote_add_del_partition(MYSQL* mysql, MYSQL* tdbctl_primary_conn,
 	string remote_db, string tb_name, string  db_partition_columnname,
@@ -659,7 +663,7 @@ int tc_partiton_log(MYSQL* tdbctl_primary_conn, tc_exec_info* exec_info, string 
 	struct tm lt;
 	struct tm* l_time = localtime_r(&to_tm_time, &lt);
 
-	string log_sql = "insert into mysql.tc_partiton_admin_log( "
+	string log_sql = "insert into cluster_admin.tc_partiton_admin_log( "
 		" db_name,tb_name,server_name,host,code,message) values(";
 	string quotation = "\"";
 
@@ -674,7 +678,7 @@ int tc_partiton_log(MYSQL* tdbctl_primary_conn, tc_exec_info* exec_info, string 
 	{
 		result = 2;
 		fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN PARTITION_ADMIN] "
-			"fail to log in  mysql.tc_partiton_admin_log :%02d %s\n",
+			"fail to log in  cluster_admin.tc_partiton_admin_log :%02d %s\n",
 			l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
 			l_time->tm_min, l_time->tm_sec, exec_info->err_code, exec_info->err_msg.c_str());
 	}
@@ -682,7 +686,7 @@ int tc_partiton_log(MYSQL* tdbctl_primary_conn, tc_exec_info* exec_info, string 
 }
 
 /*
-init partition for remote from  mysql.tc_partiton_admin_config
+init partition for remote from  cluster_admin.tc_partiton_admin_config
 */
 int tc_remote_new_partition(MYSQL* mysql, MYSQL* tdbctl_primary_conn,
 	string remote_db, string tb_name, string  db_partition_columnname,
@@ -849,7 +853,9 @@ int check_table_is_partitioned(MYSQL* mysql, string remote_db, string tb_name,
 	return result;
 }
 
-
+/*
+do tc_partition_admin_worker if current time equals to  tc_partition_admin_time
+*/
 bool get_time_flag()
 {
 	bool flag = false;
@@ -875,17 +881,23 @@ admin partition for remote
 */
 void tc_partition_admin_thread()
 {
-	time_t to_tm_time = (time_t)time((time_t*)0);
-	struct tm lt;
-	struct tm* l_time = localtime_r(&to_tm_time, &lt);
-	ulong time = (l_time->tm_hour) * 3600 + (l_time->tm_min) * 60 + l_time->tm_sec;
+	char* host = NULL;
+	ulong port = 0;
+
 	while (1)
 	{
-		if (tc_partition_admin)
+		/*
+	    TODO:get tc_tdbctl_conn_primary by host and port
+	    */
+		if (tc_partition_admin && tc_is_running_node(host, &port))
 		{
 			for (ulong i = 0; i <= tc_partition_admin_interval; ++i)
 			{
-				if (get_time_flag() || i == tc_partition_admin_interval) 
+				/*
+				do tc_partition_admin_worker if current time equals to  tc_partition_admin_time
+				or wait time to tc_partition_admin_interval
+				*/
+				if (i == tc_partition_admin_interval || get_time_flag())
 				{
 					//admin partition for cluster
 					tc_partition_admin_worker();

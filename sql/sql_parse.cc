@@ -5905,6 +5905,16 @@ tcadmin_execute_command(THD* thd)
   }
   my_ok(thd);
   break;
+  case TC_SQLCOM_MONITOR_INIT:
+  {
+	  if (tc_check_cluster_availability_init())
+	  {
+		  my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
+		  break;
+	  }
+	  my_ok(thd);
+	  break;
+  }
     /* 5. other may be supported int the future */
   case SQLCOM_UNLOCK_TABLES:
   case SQLCOM_LOCK_TABLES:

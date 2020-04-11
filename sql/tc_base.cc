@@ -20,7 +20,6 @@
 #include <regex>
 #include <thread>
 #include <mutex>
-#include "rpl_group_replication.h"
 #include "rpl_slave.h"
 
 using namespace std;
@@ -753,8 +752,8 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
     int is_key_part = 0; 
     int level = 0;  
     /* 
-    first part of the common key，level is 1;  
-    first part of the unique key，level is 2; 
+    first part of the common key,level is 1;  
+    first part of the unique key,level is 2; 
     first part of the primary key, level is 3 */
     *is_unique_key = FALSE; // do not have unique key
 
@@ -801,7 +800,11 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
         {
 
             if (has_shard_key)
-            {/* 存在shard_key, 可以是多个唯一键的共同部分; 如果不在某个唯一键中，则报错 */
+            {
+				/*
+				if exist shard_key,allow it is the common part of multi unique_key;
+				if not the common part of multi unique_key,print error 
+				*/
                 int has_flag = 0;
                 Key_part_spec *tmp_column;
                 cols.rewind();
@@ -814,7 +817,8 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
                     }
                 }
                 if (!has_flag)
-                {/* 如果不是某个唯一键的一部分 */
+                {
+					/* if not a part of any unique_key*/
                     snprintf(result, buf_len, "ERROR: %s as TSpider key, but not in some unique key", key_name);
                     strcpy(key_name, "");
                     return TRUE;
@@ -823,7 +827,10 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
             else
             {
                 if (level > 1 && strcmp(key_name, column->field_name.str))
-                {// 多个unique, 如果前缀不同则报错
+                {
+					/*
+					if prefix of  multi unique_key not the same,then print error
+					*/
                     snprintf(result, buf_len, "%s", "ERROR: too more unique key with the different pre key");
                     strcpy(key_name, "");
                     return 1;
@@ -838,13 +845,19 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
         case keytype::KEYTYPE_MULTIPLE:
         {
             if (!has_shard_key && level < 1)
-            {/* 不存在指定的shard key，且前面无unique，则在key中取一个做为partition key */
+            {	
+				/*
+				if not specify shard key,and no  unique key,then get the first common key  as partition key
+				*/
                 strcpy(key_name, column->field_name.str);
                 level = 1;
             }
 
             if (has_shard_key)
-            {/* 存在shard_key, 是不是普通索引的一部分 */
+            {				
+				/*
+				if exist shard_key,whether is the part of common index
+				*/
                 Key_part_spec *tmp_column;
                 cols.rewind();
                 while ((tmp_column = cols++))
@@ -876,23 +889,32 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
         }
     }
 
-    /* 如果只有普通key，且没有显示指定shard key， 却key个数大于1，报错 */
+	/*
+	if only exist multi common key,and not specify shard key , then print error
+	*/
     if (!has_shard_key && level == 1 && lex->alter_info.key_list.elements > 1)
     {
-        //strcpy(key_name, "");  // key_name为第一个key
+        //strcpy(key_name, "");  // key_name is the first key
         snprintf(result, buf_len, "%s", "ERROR: too many key more than 1, but without unique key or set shard key");
         return TRUE;
     }
 
     if (has_shard_key && level <= 1 && is_key_part == 0)
-    {/* 指定shard key,不存在唯一键，但shard_key却不是普通索引的一部分 */
+    {
+		/*
+		specify shard key,no unique key,but shard_key is not a part of common index
+		*/
         snprintf(result, buf_len, "%s", "ERROR: shard_key must be part of key");
         return TRUE;
     }
 
     it_field.rewind();
     while ((has_shard_key || level == 1 || level == 2) && !!(field = it_field++))
-    {/* key对应的字段必须指定为not null, 主键默认是not null的，因此不需要考虑； flag记录的只是建表语句中的option信息 */
+    {
+		/*
+		the column which specified as key must be not null.because of primary key default not null,so need consider it.
+		flag stores the option information of create table sql
+		*/
         uint flags = field->flags;
         if (!strcmp(field->field_name, key_name) && !(flags & NOT_NULL_FLAG))
         {
@@ -902,7 +924,7 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
     }
 
 
-    // 指定了shard_key或者包含索引
+	//specify shard_key or contains index
     if (has_shard_key || level > 0)
         return FALSE;
 
@@ -2682,7 +2704,7 @@ my_time_t string_to_timestamp(const string s)
 /*
 host: primary host port: primary port
 return value: 0, not primary node && mgr runing 
-1, mgr primary node 2, not mgr, signle node
+1, mgr primary node 2, not mgr, single node
 */
 unsigned int tc_is_running_node(char *host, ulong *port)
 {

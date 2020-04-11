@@ -535,7 +535,10 @@ bool Server_options::insert_into_cache() const
 
   /* set to 0 if not specified */
   server->port= m_port != PORT_NOT_SET ? m_port : 0;
+  /* if not do this, while we get port from server_caches, may core dump */
+  server->sport = strdup_root(&mem, std::to_string(server->port).c_str());
   server->version = 0;
+  global_modify_server_version++;
 
   if (!(server->socket= m_socket.str ?
         strdup_root(&mem, m_socket.str) : unset_ptr))
@@ -902,8 +905,11 @@ bool Sql_cmd_drop_server::execute(THD *thd)
         (FOREIGN_SERVER *)my_hash_search(&servers_cache,
                                          (uchar*) m_server_name.str,
                                          m_server_name.length);
-      if (server)
-        my_hash_delete(&servers_cache, (uchar*) server);
+	  if (server)
+	  {
+		  my_hash_delete(&servers_cache, (uchar*)server);
+		  global_modify_server_version++;
+	  }
       else if (!m_if_exists)
       {
         my_error(ER_FOREIGN_SERVER_DOESNT_EXIST, MYF(0),  m_server_name.str);
@@ -1045,14 +1051,14 @@ ulong get_servers_count_by_wrapper(const char* wrapper_name, bool with_slave)
 	ulong ret = 0;
 	FOREIGN_SERVER* server = NULL;
 	string wrapper_slave = wrapper_name;
-	mysql_rwlock_rdlock(&THR_LOCK_servers);
-	ulong records = servers_cache.records;
-	if(records == 0)
-		goto finish;
 	if (with_slave)
 	{
 		wrapper_slave += "_SLAVE";
 	}
+	mysql_rwlock_rdlock(&THR_LOCK_servers);
+	ulong records = servers_cache.records;
+	if(records == 0)
+		goto finish;
 	for (ulong i = 0; i < records; i++)
 	{
 		if (!(server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
@@ -1801,6 +1807,11 @@ bool update_server_version(bool* version_updated)
   FOREIGN_SERVER* server_bak;
   FOREIGN_SERVER* server;
   ulong share_records = servers_cache.records;
+  ulong share_records_bak = servers_cache_bak.records;
+  if (share_records != share_records_bak)
+  {
+	  *version_updated = TRUE;
+  }
   DBUG_ENTER("replace_server_version");
   for (ulong i = 0; i < share_records; i++)
   {/* foreach share */

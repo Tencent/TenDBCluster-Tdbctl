@@ -332,5 +332,6 @@ bool tc_exec_sql_paral_with_result(
 
 my_time_t string_to_timestamp(const string s);
 
+unsigned int tc_is_running_node(char *host, ulong *port);
 
 #endif /* TC_BASE_INCLUDED */
