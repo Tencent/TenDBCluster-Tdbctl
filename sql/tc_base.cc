@@ -2485,11 +2485,10 @@ map<string, MYSQL*> tc_tdbctl_conn_connect(
 
 /*
   @NOTES
-	  for MGR mode
-      single primary node, return an connect to the primary node;
-	    multi primary node, return NULL
-    for no MGR mode
-		  always return the  tdbctl_map's first key(which ordered)
+	  for MGR on Single-Primary
+      eturn an connect to the primary member;
+    for no MGR mode or Multi-Primary
+		  always use the  tdbctl_map's first key(which default ordered) to connect
 
 	@retval
 	  ret: 0 for ok, others error
@@ -2516,25 +2515,24 @@ MYSQL *tc_tdbctl_conn_primary(
 
 	result = tc_is_running_node(host, &port);
 	if (result == 1)
-	{//is single primary node, use primary node's host, port
+	{//mgr running with single-primary, use primary member's host, port
 		address = host + "#" + to_string(port);
-		/* TODO: primary node must exists in mysql.servers ? */
+		/* NOTE: primary member must exist in mysql.servers */
 		if (std::find_if(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(),
 			[address](const std::pair<string, string> &tdbctl_ip_port) -> bool {
 			return address.compare(tdbctl_ip_port.second) == 0;}) == tdbctl_ipport_map.end())
 		{
 			ret = 1;
-			sql_print_warning("primary node %s not exists in mysql.servers", address.c_str());
-
+			sql_print_warning("primary member %s not exist in mysql.servers", address.c_str());
 			return NULL;
 		}
 	}
 	else if (result == 2)
-	{// not MGR mode
+	{// mgr not running or in multi-primary, just use first map's element
 		address = tdbctl_ipport_map.begin()->second;
 	}
 	else
-	{// error or multi primary node
+	{//error happened, such as network partitioning
 		sql_print_warning("get single primary node failed");
 		ret = 1;
 
@@ -3030,19 +3028,17 @@ string tc_get_remote_grant_sql(
 
 
 /**
-  NOTES
-	 if primary mode is ON(return 1), we will memcpy primary node's host info,
-	 need to free for caller.
-
  @param (out)
-   host: host to primary node 
-	 port: port to primary port 
-	 need_free: if true, caller need to do free(host)
+   host: host to primary member
+	 port: port to primary member
 
 	@retval
-	 0: error or multi master
-	 1: mgr running with primary mode
-	 2. not mgr members
+	 0: error
+	 1: mgr  running with single-primary.
+	 2. not mgr or multi-primary
+
+	 @Note
+	 only when return 1, host and port[out] with value
 */
 uint tc_is_running_node(std::string &host, uint *port)
 {

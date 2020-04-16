@@ -115,7 +115,7 @@ unsigned int Group_replication_handler::get_members_number_info()
   return 0;
 }
 
-unsigned int Group_replication_handler::get_primary_node_info(char* host, ulong* port)
+unsigned int Group_replication_handler::get_primary_node_info(std::string &host, unsigned int* port)
 {
   if (plugin_handle)
     return plugin_handle->get_primary_node_info(host, port);
@@ -309,11 +309,14 @@ bool get_group_replication_group_member_stats_info(
 }
 
 
-/*
-return value:
-2 mean not mgr
+/**
+ @retval
+   0: error
+	 1: mgr running on single-primary
+	 2. not mgr or mgr running with multi-primary
+
 */
-unsigned int get_group_replication_primary_node_info(char *host, ulong *port)
+unsigned int get_group_replication_primary_node_info(std::string &host, unsigned int* port)
 {
   mysql_mutex_lock(&LOCK_group_replication_handler);
   if (is_group_replication_plugin_loaded())

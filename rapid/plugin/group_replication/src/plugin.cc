@@ -318,28 +318,44 @@ uint plugin_get_group_members_number()
 }
 
 
-/*
-get the primary member details:
-host: primary host;  port: primary port
-return value: 0, not primary node && mgr runing ; 
-1, mgr primary node ; 2, not mgr, signle node
+/**
+ get the primary member details:
+ host: primary host;  port: primary port
+
+ @param
+   host: host to primary member
+	 port: port to primary member
+
+ @retval
+  0: error
+	1: mgr running with single-primary
+	2. not mgr or multi-primary
 */
-uint plugin_get_primary_node_info(char* host, ulong* port)
+uint plugin_get_primary_node_info(std::string &host, uint* port)
 {
   if (!(group_member_mgr && single_primary_mode_var &&
     plugin_is_group_replication_running()))
-  { /* not mgr */
+  { /* not mgr or multi */
+		/* for multi primary, caller can fetch anyone tdbctl to use */
     return 2;
   }
 
+	/* mgr must running and on Single-Primary */
+	if (group_partition_handler != NULL && group_partition_handler->is_member_on_partition())
+	{
+		log_message(MY_WARNING_LEVEL, "current member is network partition, skip working");
+		return 0;
+	}
+
+	DBUG_ASSERT(host.empty());
   if (local_member_info->in_primary_mode())
   {// single primary mode
     if (local_member_info->get_role() == Group_member_info::MEMBER_ROLE_PRIMARY)
-    {// local member is primary node
-      memcpy(host, local_member_info->get_hostname().c_str(), local_member_info->get_hostname().length());
-      *port = local_member_info->get_port();
-      return 1;
-    }
+		{// local member is primary node
+			host = local_member_info->get_hostname();
+			*port = local_member_info->get_port();
+			return 1;
+		}
     else if (local_member_info->get_role() == Group_member_info::MEMBER_ROLE_SECONDARY)
     {
       std::string primary_member_uuid;
@@ -348,18 +364,20 @@ uint plugin_get_primary_node_info(char* host, ulong* port)
         group_member_mgr->get_group_member_info(primary_member_uuid);
       if (primary_member_info != NULL)
       {
-        memcpy(host, local_member_info->get_hostname().c_str(), local_member_info->get_hostname().length());
+				host = local_member_info->get_hostname();
         *port = local_member_info->get_port();
       }
       return 1;
     }
     else
     {// error
+		  log_message(MY_WARNING_LEVEL, "local member get role failed");
       return 0;
     }
   }
   else
-  {// multi primary, unsupport
+  {// error happened.
+		log_message(MY_WARNING_LEVEL, "local member get primary-mode failed");
     return 0;
   }
 }
