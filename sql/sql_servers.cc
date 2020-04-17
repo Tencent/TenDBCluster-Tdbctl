@@ -1236,10 +1236,22 @@ const char *get_wrapper_prefix_by_wrapper(
 		return wrapper_name;
 }
 
+/**
+get server info from mysql.servers and generate SQL statement
+
+  @Note
+	for Tdbctl node, not dump all tdbctl nodes info, we only chose one.
+	MGR scenario:
+	   Multi-Primary: use first member(store to map, use map's order)
+		 Single-Primary: use Primary member
+	None-MGR scenario:
+	   always use first member
+*/
 static string dump_servers_to_sql()
 {
   ulong records = 0;
   FOREIGN_SERVER* server;
+	map<string, string> tdbctl_sql_map;
   mysql_rwlock_rdlock(&THR_LOCK_servers);
   records = servers_cache.records;
   string replace_sql_all = "replace into mysql.servers"
@@ -1247,17 +1259,19 @@ static string dump_servers_to_sql()
   stringstream ss;
   string quotation = "\"";
   string comma = ",";
+
   if (records == 0)
   {
     mysql_rwlock_unlock(&THR_LOCK_servers);
     return "";
   }
+
   for (ulong i = 0; i < records; i++)
   {
-    string replace_sql_cur = "(";
     server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i);
     if (server)
     {
+      string replace_sql_cur = "(";
       string name = quotation + server->server_name + quotation + comma;
       string host = quotation + server->host + quotation + comma;
       string db = quotation + server->db + quotation + comma;
@@ -1273,9 +1287,50 @@ static string dump_servers_to_sql()
       replace_sql_cur = replace_sql_cur + name + host + db + username
         + password + port_s + socket + wrapper + owner;
       replace_sql_cur += "),";
+			/* for tdbctl node, need special deal subsequent */
+			if (strcasecmp(server->scheme, TDBCTL_WRAPPER) == 0)
+			{
+				/* NOTE: at present, ip#port must be unique for tdbctl */
+				string ip_port = string(server->host) + "#" + ss.str();
+				tdbctl_sql_map.insert(pair<string, string>(ip_port, replace_sql_cur));
+				continue;
+			}
+      replace_sql_all += replace_sql_cur;
     }
-    replace_sql_all += replace_sql_cur;
   }
+
+	if (!tdbctl_sql_map.empty())
+	{
+		string ip_port;
+		string primary_host = "";
+		uint primary_port;
+		int	ret = tc_is_running_node(primary_host, &primary_port);
+		if (ret == 1)
+		{// mgr running on Single-Primary node, user primary member's connect info
+			ss.str("");
+			ss << primary_port;
+			ip_port = primary_host + "#" + ss.str();
+
+			if (tdbctl_sql_map.count(ip_port) == 1)
+				replace_sql_all += tdbctl_sql_map[ip_port];
+			else {
+				sql_print_warning("primary node not in mysql.servers, return null sql");
+				mysql_rwlock_unlock(&THR_LOCK_servers);
+				return "";
+			}
+		}
+		else if (ret == 2)
+		{// none mgr or mgr running on Multi-Primary node, always use first one(ordered)
+			replace_sql_all += tdbctl_sql_map.begin()->second;
+		}
+		else
+		{// unknown error, such as network partition.
+			sql_print_warning("get primary node info failed");
+			mysql_rwlock_unlock(&THR_LOCK_servers);
+			return "";
+		}
+	}
+
   replace_sql_all.erase(replace_sql_all.end() - 1);
   mysql_rwlock_unlock(&THR_LOCK_servers);
   return replace_sql_all;
@@ -1570,7 +1625,6 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
   string set_interactive_timeout_sql = "set wait_timeout = 180";
   string set_option_sql = set_mdl_timeout_sql + ";" + set_interactive_timeout_sql;
   string unlock_sql = "unlock tables";
-  string del_sql = "delete from mysql.servers";
   string replace_sql = dump_servers_to_sql();
 
 
