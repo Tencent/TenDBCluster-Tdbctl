@@ -5255,7 +5255,6 @@ end_with_restore_list:
 			string server_name;
 			list<FOREIGN_SERVER*> server_list;
 			char path[FN_REFLEN + 1];
-			MYSQL_TIME l_time;
 			char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
 			my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
 				tmp_file_prefix, current_thd->query_start(), current_pid,
@@ -5287,12 +5286,16 @@ end_with_restore_list:
 			/* get spider_list from mysql.servers, exclude slave spiders
 				 avoid to user slave spider's schema, maybe not consistent with master ?
 			*/
+			DBUG_ASSERT((
+				(strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
+				(strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)));
+
 			get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
 			if (server_list.empty())
 				// first spider node, no need to dump/restore schema, only add to mysql.servers
 				break;
 
-			/* dump spider's schema from first spider node.
+			/* dump spider's schema from first spider(master) node.
 				 must exclude itself
 				 TODO: new add spider node's ip#port must not exists in mysql.servers;
 			*/
@@ -5323,6 +5326,52 @@ end_with_restore_list:
 			break;
 		}
 		case TC_SQLCOM_ALTER_NODE:
+		{
+			FOREIGN_SERVER *server =
+				get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
+			//at present, only spider node need to dump/restore, other WRAPPER not support.
+			if (server && (strcasecmp(server->scheme, SPIDER_WRAPPER) == 0 ||
+				strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) == 0))
+			{
+				Server_options options = lex->server_options;
+				/* host#port had changed, need dump/restore schema */
+				if ((options.get_port() != -1 && options.get_port() != server->port) ||
+					(options.get_host() && strcasecmp(options.get_host(), server->host) != 0))
+				{
+					const char *new_host = options.get_host() ? options.get_host() : server->host;
+					//PORT_NOT_SET
+					const long new_port = (options.get_port() != -1) ? options.get_port() : server->port;
+					const char *new_user = options.get_username() ? options.get_username() : server->username;
+					const char *new_password = options.get_password() ? options.get_password() : server->password;
+
+					char path[FN_REFLEN + 1];
+					char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
+					my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
+						tmp_file_prefix, current_thd->query_start(), current_pid,
+						thd->thread_id());
+
+					//dump schema from old spider node
+					if (tc_dump_node_schema(
+						server->host,
+						server->port,
+						server->username,
+						server->password,
+						path))
+					{
+						my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+							server->host, server->port);
+						goto error;
+					}
+
+					if (tc_restore_node_schema(new_host, new_port, new_user, new_password, path))
+					{
+						my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), new_host, new_port);
+						goto error;
+					}
+				}
+			}
+			break;
+		}
 		case TC_SQLCOM_DROP_NODE:
 			//no nothing but execute
 			DBUG_ASSERT(lex->m_sql_cmd != NULL);
@@ -6118,6 +6167,54 @@ tcadmin_execute_command(THD* thd)
 			break;
 		}
 		case TC_SQLCOM_ALTER_NODE:
+		{
+			FOREIGN_SERVER * server =
+				get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
+			/* At present, only spider node need to dump/restore schema, other WRAPPER not support.
+			Anytime if tdbctl need to support, configure replication also need after schema restored.
+			*/
+			if (server && (strcasecmp(server->scheme, SPIDER_WRAPPER) == 0 ||
+				strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) == 0))
+			{
+				Server_options options = lex->server_options;
+				/* host#port had changed, need dump/restore schema */
+				if ((options.get_port() != -1 && options.get_port() != server->port) ||
+					(options.get_host() && strcasecmp(options.get_host(), server->host) != 0))
+				{
+					const char *new_host = options.get_host() ? options.get_host() : server->host;
+					//PORT_NOT_SET
+					const long new_port = (options.get_port() != -1) ? options.get_port() : server->port;
+					const char *new_user = options.get_username() ? options.get_username() : server->username;
+					const char *new_password = options.get_password() ? options.get_password() : server->password;
+
+					char path[FN_REFLEN + 1];
+					char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
+					my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
+						tmp_file_prefix, current_thd->query_start(), current_pid,
+						thd->thread_id());
+
+					//dump schema from old spider node
+					if (tc_dump_node_schema(
+						server->host,
+						server->port,
+						server->username,
+						server->password,
+						path))
+					{
+						my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+							server->host, server->port);
+						goto finish;
+					}
+
+					if (tc_restore_node_schema(new_host, new_port, new_user, new_password, path))
+					{
+						my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), new_host, new_port);
+						goto finish;
+					}
+				}
+			}
+			break;
+		}
 		case TC_SQLCOM_DROP_NODE:
 			DBUG_ASSERT(lex->m_sql_cmd != NULL);
 			break;
