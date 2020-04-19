@@ -5252,7 +5252,7 @@ end_with_restore_list:
 		switch (lex->sql_command) {
 		case TC_SQLCOM_CREATE_NODE:
 		{
-			string server_name;
+			string server_name, add_address;
 			list<FOREIGN_SERVER*> server_list;
 			char path[FN_REFLEN + 1];
 			char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
@@ -5283,13 +5283,13 @@ end_with_restore_list:
 				break;
 
 			// for create spider node logic blow
-			/* get spider_list from mysql.servers, exclude slave spiders
-				 avoid to user slave spider's schema, maybe not consistent with master ?
-			*/
 			DBUG_ASSERT((
 				(strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
 				(strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)));
 
+			/* get spider_list from mysql.servers, exclude slave spiders
+				 avoid to use slave spider's schema, maybe not consistent with master ?
+			*/
 			get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
 			if (server_list.empty())
 				// first spider node, no need to dump/restore schema, only add to mysql.servers
@@ -5301,6 +5301,21 @@ end_with_restore_list:
 			*/
 			DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
 				server_list.front()->port != lex->server_options.get_port());
+
+			add_address = string(lex->server_options.get_host()) + "#" +
+				to_string(lex->server_options.get_port());
+			/* create spider node must node exist in mysql.servers. */
+			if (std::find_if_not(server_list.begin(), server_list.end(),
+				[&](FOREIGN_SERVER *server) -> bool {
+				string current_address = string(server->host) + "#" + to_string(server->port);
+				//at present, only consider SPIDER(master) wrapper.
+				DBUG_ASSERT((strcasecmp(server->scheme, SPIDER_WRAPPER) == 0));
+				return add_address.compare(current_address) != 0; }) == server_list.end())
+			{
+				my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
+				goto error;
+			}
+
 			if (tc_dump_node_schema(
 				server_list.front()->host,
 				server_list.front()->port,
@@ -6096,10 +6111,9 @@ tcadmin_execute_command(THD* thd)
 		switch (lex->sql_command) {
 		case TC_SQLCOM_CREATE_NODE:
 		{
-			string server_name;
+			string server_name, add_address;
 			list<FOREIGN_SERVER*> server_list;
 			char path[FN_REFLEN + 1];
-			MYSQL_TIME l_time;
 			char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
 			my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
 				tmp_file_prefix, current_thd->query_start(), current_pid,
@@ -6127,7 +6141,11 @@ tcadmin_execute_command(THD* thd)
 				strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0)
 				break;
 
-			// for create spider node logic blow
+			/* for create spider node logic blow */
+			DBUG_ASSERT((
+				(strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
+				(strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)));
+
 			/* get spider_list from mysql.servers, exclude slave spiders
 				 avoid to user slave spider's schema, maybe not consistent with master ?
 			*/
@@ -6141,6 +6159,21 @@ tcadmin_execute_command(THD* thd)
 			*/
 			DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
 				server_list.front()->port != lex->server_options.get_port());
+
+			add_address = string(lex->server_options.get_host()) + "#" +
+				to_string(lex->server_options.get_port());
+			/* create spider node must node exist in mysql.servers. */
+			if (std::find_if_not(server_list.begin(), server_list.end(),
+				[&](FOREIGN_SERVER *server) -> bool {
+				string current_address = string(server->host) + "#" + to_string(server->port);
+				//at present, only consider SPIDER(master) wrapper.
+				DBUG_ASSERT((strcasecmp(server->scheme, SPIDER_WRAPPER) == 0));
+				return add_address.compare(current_address) != 0; }) == server_list.end())
+			{
+				my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
+				goto finish;
+			}
+
 			if (tc_dump_node_schema(
 				server_list.front()->host,
 				server_list.front()->port,
