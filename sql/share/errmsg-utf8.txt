@@ -7847,6 +7847,9 @@ ER_TCADMIN_MULTI_NODE_EXISTS
 
 ER_TCADMIN_INIT_MONITOR_ERROR
   eng "failed to init monitor"
+
+ER_TCADMIN_NOT_SPIDER
+  eng "EXECUTE ERROR: must be the spider in the cluster when tc_admin=1"
 #
 # End of MyRocks specific messages
 #
