@@ -129,6 +129,17 @@ public:
                                               std::string& gtid_executed,
                                               int timeout= 0);
 
+	/**
+    Internal method to tdbctl flush mysql.servers routing.
+
+    @param sql_interface the server session interface for query execution
+
+    @return error code during execution of the sql query.
+       @retval 0  - success
+       @retval >0 - failure
+
+	*/
+  long internal_tdbctl_flush_routing(Sql_service_interface *sql_interface);
 };
 
 struct st_session_method
@@ -305,6 +316,15 @@ public:
       @retval >0 - failure
   */
   long reset_read_only();
+
+  /**
+    Method to tdbctl flush routing on the server.
+
+    @return error code during execution of the sql query.
+      @retval 0  -  success
+      @retval >0 - failure
+  */
+  long tdbctl_flush_routing();
 
   /**
     Method to return the server gtid_executed by executing the corresponding
