@@ -22,7 +22,7 @@
 #include "tc_monitor.h"
 
 
-static PSI_memory_key key_memory_servers;
+static PSI_memory_key key_memory_monitor;
 map<string, MYSQL*> spider_conn_map;
 map<string, string> spider_server_name_map;
 map<string, string> spider_user_map;
@@ -63,7 +63,7 @@ int tc_init_connect(ulong& server_version)
 	struct tm* l_time = localtime_r(&to_tm_time, &lt);
 	tc_free_connect();
 
-	init_sql_alloc(key_memory_servers, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	init_sql_alloc(key_memory_monitor, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
 	spider_ipport_set = get_spider_ipport_set(
 		&mem_root,
 		spider_user_map,
@@ -126,7 +126,7 @@ int tc_check_cluster_availability_init()
 	map<string, string> spider_passwd_map;
 	set<string>  spider_ipport_set;
 	MYSQL* spider_single_conn = NULL;
-	init_sql_alloc(key_memory_servers, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	init_sql_alloc(key_memory_monitor, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
 
 	//init for sql
 	string sql = "set ddl_execute_by_ctl = on";

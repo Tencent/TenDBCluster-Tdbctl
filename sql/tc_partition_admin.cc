@@ -21,7 +21,7 @@
 #include <mutex>
 #include "tc_partition_admin.h"
 
-static PSI_memory_key key_memory_servers;
+static PSI_memory_key key_memory_partition;
 void create_partition_admin_thread()
 {
 	std::thread t(tc_partition_admin_thread);
@@ -45,7 +45,7 @@ int tc_partition_admin_worker()
 	MYSQL *tdbctl_primary_conn = NULL;
 	MEM_ROOT mem_root;
 
-	init_sql_alloc(key_memory_servers, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	init_sql_alloc(key_memory_partition, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
 	tdbctl_ipport_map = get_tdbctl_ipport_map(
 		&mem_root,
 		tdbctl_user_map,
