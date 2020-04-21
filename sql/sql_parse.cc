@@ -5584,11 +5584,10 @@ tcadmin_execute_command(THD* thd)
   case SQLCOM_START_GROUP_REPLICATION:
   case SQLCOM_STOP_GROUP_REPLICATION:
   case SQLCOM_UNLOCK_BINLOG:
-    my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-    goto finish;
   case SQLCOM_SELECT:
-    my_ok(thd);
-    goto finish;
+	if (!thd->is_error())
+		 my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
+      goto finish;
   case SQLCOM_SET_OPTION:
   {
     List<set_var_base>* lex_var_list = &lex->var_list;
