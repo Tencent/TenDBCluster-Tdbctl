@@ -2291,13 +2291,7 @@ MYSQL *tc_tdbctl_conn_primary(
 	}
 	else 
 	{
-		if (tdbctl_ipport_map.size() > 1) 
-		{
-			ret = 1;
-			my_error(ER_TCADMIN_MULTI_NODE_EXISTS, MYF(0));
-			return conn;
-		}
-		else if (tdbctl_ipport_map.size() < 1)
+		if (tdbctl_ipport_map.size() < 1)
 		{
 			ret = 1;
 			my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
@@ -2714,4 +2708,107 @@ unsigned int tc_is_running_node(char *host, ulong *port)
 // TODO, fetch local ip and port
   }
   return ret;
+}
+
+
+
+/*
+host: primary host
+port: primary port
+return value:
+-1, error
+0, not primary node
+1, primary node
+*/
+int tc_is_master_tdbctl_node()
+{
+	int ret = 0;
+	bool flag = true;
+	MYSQL *conn = NULL;
+	MYSQL_RES* res;
+	MYSQL_ROW row = NULL;
+	string uuid;
+	string host;
+	ulong port = 0;
+	string address;
+	string user;
+	string passwd;
+	MEM_ROOT mem_root;
+	list<FOREIGN_SERVER*> server_list;
+	string sql = "show variables like  'server_uuid'";
+	init_sql_alloc(key_memory_for_tdbctl, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
+	if (server_list.size() < 1)
+	{
+		ret = -1;
+		goto finish;
+	}	
+	ret = tc_is_running_node((char*)(host.data()), &port);
+	//mgr running with single-primary
+	if (ret == 1)
+	{
+		//mgr running with single-primary, use primary members host,port
+		address = host + "#" + to_string(port);
+		/*NOTE: primary member must exist in mysql.servers*/
+		for(auto&server:server_list)
+		{
+			if (!strcasecmp(server->host, host.c_str()) &&
+				server->port == port) 
+			{
+				flag = false;
+				user = server->username;
+				passwd = server->password;
+				break;
+			}
+		}
+		if (flag)
+		{
+			ret = -1;
+			goto finish;
+		}
+	}
+	else if (ret == 2)
+	{
+		host = server_list.front()->host;
+		port = server_list.front()->port;
+		user = server_list.front()->username;
+		passwd = server_list.front()->password;
+		address = host + "#" + to_string(port);		
+	}
+	else
+	{
+		ret = -1;
+		goto finish;
+	}
+	conn = tc_conn_connect(address, user, passwd);
+	if (conn == NULL) {
+		ret = -1;
+		my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
+		goto finish;
+	}
+	res = tc_exec_sql_with_result(conn, sql);
+	if (res && (row = mysql_fetch_row(res)))
+	{
+		uuid = row[1];
+	}
+	else
+	{
+		ret = -1;
+		goto finish;
+	}
+	if (!strcasecmp(uuid.c_str(), server_uuid))
+	{
+		ret = 1;
+	}
+	else
+	{
+		ret = 0;
+	}
+finish:
+	if (conn)
+	{
+		mysql_close(conn);
+		conn = NULL;
+	}
+	return ret;
 }

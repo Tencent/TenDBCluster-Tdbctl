@@ -516,7 +516,7 @@ bool table_definition_cache_specified= false;
 ulong locked_account_connection_count= 0;
 
 ulonglong denied_connections= 0;
-
+int32 Tdbctl_is_master = -1;
 /**
   Limit of the total number of prepared statements in the server.
   Is necessary to protect the server against out-of-memory attacks.
@@ -7114,6 +7114,7 @@ SHOW_VAR status_vars[]= {
   {"Handler_savepoint_rollback",(char*) offsetof(STATUS_VAR, ha_savepoint_rollback_count), SHOW_LONGLONG_STATUS, SHOW_SCOPE_ALL},
   {"Handler_update",           (char*) offsetof(STATUS_VAR, ha_update_count),         SHOW_LONGLONG_STATUS,    SHOW_SCOPE_ALL},
   {"Handler_write",            (char*) offsetof(STATUS_VAR, ha_write_count),          SHOW_LONGLONG_STATUS,    SHOW_SCOPE_ALL},
+  {"Tdbctl_is_master",         (char*) &Tdbctl_is_master,                             SHOW_SIGNED_INT,         SHOW_SCOPE_GLOBAL },
   {"Key_blocks_not_flushed",   (char*) offsetof(KEY_CACHE, global_blocks_changed),    SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},
   {"Key_blocks_unused",        (char*) offsetof(KEY_CACHE, blocks_unused),            SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},
   {"Key_blocks_used",          (char*) offsetof(KEY_CACHE, blocks_used),              SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},
@@ -9454,7 +9455,7 @@ PSI_memory_key key_memory_table_share;
 PSI_memory_key key_memory_gdl;
 PSI_memory_key key_memory_table_triggers_list;
 PSI_memory_key key_memory_servers;
-PSI_memory_key key_memory_tc_repair_trans;
+PSI_memory_key key_memory_for_tdbctl;
 PSI_memory_key key_memory_prepared_statement_map;
 PSI_memory_key key_memory_prepared_statement_main_mem_root;
 PSI_memory_key key_memory_protocol_rset_root;
@@ -9594,7 +9595,7 @@ static PSI_memory_info all_server_memory[]=
   { &key_memory_gdl, "gdl", 0},
   { &key_memory_table_triggers_list, "Table_triggers_list", 0},
   { &key_memory_servers, "servers", 0},
-  { &key_memory_tc_repair_trans, "tc_repair_trans", 0},
+  { &key_memory_for_tdbctl, "tc_for_tdbctl", 0},
   { &key_memory_prepared_statement_map, "Prepared_statement_map", PSI_FLAG_THREAD},
   { &key_memory_prepared_statement_main_mem_root, "Prepared_statement::main_mem_root", PSI_FLAG_THREAD},
   { &key_memory_protocol_rset_root, "Protocol_local::m_rset_root", PSI_FLAG_THREAD},

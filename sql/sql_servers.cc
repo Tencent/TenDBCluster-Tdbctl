@@ -60,7 +60,13 @@ static list<string> to_delete_servername_list;
 static MEM_ROOT tc_mem;
 static HASH servers_cache_bak;
 static MEM_ROOT mem_bak;
+/*
+global_modify_server_version_old start from 1,
+because global_modify_server_version++ when init mysqld, 
+but global_modify_server_version_old++ at the next time
+*/
 ulong global_modify_server_version = 0;
+ulong global_modify_server_version_old = 1;
 
 static HASH servers_cache;
 static MEM_ROOT mem;
@@ -315,6 +321,16 @@ bool servers_reload(THD *thd)
 end:
   DBUG_PRINT("info", ("unlocking servers_cache"));
   mysql_rwlock_unlock(&THR_LOCK_servers);
+  /*
+  when init mysqld, global_modify_server_version=1, 
+  it is not ok to get tc_is_master_tdbctl_node, because mysqld is not serving
+   */
+  if (global_modify_server_version != 1 &&
+	  global_modify_server_version_old != global_modify_server_version)
+  {
+	  Tdbctl_is_master = tc_is_master_tdbctl_node();
+	  global_modify_server_version_old = global_modify_server_version;
+  }
   delete_redundant_routings();
   DBUG_RETURN(return_val);
 }
@@ -1080,6 +1096,19 @@ finish:
 	return ret;
 }
 
+bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second)
+{
+	int ret = strcmp(first->server_name, second->server_name);
+	if (ret < 0)
+	{
+		return TRUE;
+	}
+	else
+	{
+		return FALSE;
+	}
+}
+
 void get_server_by_wrapper(
   list<FOREIGN_SERVER*>& server_list, 
   MEM_ROOT* mem, 
@@ -1114,6 +1143,7 @@ void get_server_by_wrapper(
     }
   }
   mysql_rwlock_unlock(&THR_LOCK_servers);
+  server_list.sort(server_compare);
 }
 
 
@@ -1466,19 +1496,6 @@ finish:
   return result;
 }
 
-
-bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second)
-{
-  int ret = strcmp(first->server_name, second->server_name);
-  if (ret < 0)
-  {
-    return TRUE;
-  }
-  else
-  {
-    return FALSE;
-  }
-}
 
 
 bool compare_server_list(list<FOREIGN_SERVER*>& first, list<FOREIGN_SERVER*>& second)

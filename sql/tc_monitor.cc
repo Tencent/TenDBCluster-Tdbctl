@@ -322,8 +322,6 @@ tc_check_cluster_availability do check work and log in cluster_admin.cluster_hea
 */
 void tc_check_cluster_availability_thread()
 {
-	char* host = NULL;
-	ulong port = 0;
 	/*
 	flag of whether need to re-init connect
 	0 means not re-init
@@ -347,13 +345,17 @@ void tc_check_cluster_availability_thread()
 	*/
 	ulong j = 0;
 	ulong server_version = -1;
+	/*
+	init Tdbctl_is_master in background thread
+	*/
+	Tdbctl_is_master = tc_is_master_tdbctl_node();
 	while (1)
 	{
 		/*
 		if tc_check_availability=1 and is primary tdbctl
 		TODO:get tc_tdbctl_conn_primary by host and port
 		*/
-		if (tc_check_availability && tc_is_running_node(host, &port))
+		if (tc_check_availability)
 		{
 			/*
 			if first time do check

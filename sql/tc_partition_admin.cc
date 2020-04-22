@@ -881,15 +881,12 @@ admin partition for remote
 */
 void tc_partition_admin_thread()
 {
-	char* host = NULL;
-	ulong port = 0;
-
 	while (1)
 	{
 		/*
 	    TODO:get tc_tdbctl_conn_primary by host and port
 	    */
-		if (tc_partition_admin && tc_is_running_node(host, &port))
+		if (tc_partition_admin && Tdbctl_is_master > 0)
 		{
 			for (ulong i = 0; i <= tc_partition_admin_interval; ++i)
 			{

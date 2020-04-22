@@ -287,6 +287,7 @@ extern uint32 gtid_executed_compression_period;
 extern my_bool binlog_gtid_simple_recovery;
 extern ulong binlog_error_action;
 extern ulong locked_account_connection_count;
+extern int Tdbctl_is_master;
 enum enum_binlog_error_action
 {
   /// Ignore the error and let server continue without binlogging
@@ -557,7 +558,7 @@ extern PSI_memory_key key_memory_frm;
 extern PSI_memory_key key_memory_table_share;
 extern PSI_memory_key key_memory_gdl;
 extern PSI_memory_key key_memory_table_triggers_list;
-extern PSI_memory_key key_memory_tc_repair_trans;
+extern PSI_memory_key key_memory_for_tdbctl;
 extern PSI_memory_key key_memory_prepared_statement_map;
 extern PSI_memory_key key_memory_prepared_statement_main_mem_root;
 extern PSI_memory_key key_memory_protocol_rset_root;
