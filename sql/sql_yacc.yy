@@ -2324,6 +2324,14 @@ tdbctl:
             Lex->do_grants = FALSE;
 			Lex->tc_flush_type = FLUSH_ALL_ROUTING;
           }
+        | TDBCTL_SYM SHOW opt_server opt_full PROCESSLIST_SYM
+          {
+            Lex->sql_command = TC_SQLCOM_SHOW_PROCESSLIST;
+          }
+        | TDBCTL_SYM SHOW opt_server opt_var_type VARIABLES opt_show
+          {
+            Lex->sql_command = TC_SQLCOM_SHOW_VARIABLES;
+          }
           ;
 
           
@@ -2348,6 +2356,26 @@ opt_force:
           Lex->is_tc_flush_force = TRUE;
         }
         ;
+
+opt_server:
+         /* empty */ { Lex->server_name =  NULL; }
+        |TEXT_STRING
+        {
+          Lex->server_name = $1.str;
+        }
+        ;
+
+opt_show:
+         /* empty */ { Lex->server_name =  NULL; }
+        |LIKE TEXT_STRING_sys
+        {
+		  Lex->wild= new (YYTHD->mem_root) String($2.str, $2.length,
+                                                    system_charset_info);
+          if (Lex->wild == NULL)
+            MYSQL_YYABORT;
+        }
+        ;
+
 
 /* create a table */
 

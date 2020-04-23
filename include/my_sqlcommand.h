@@ -198,6 +198,8 @@ enum enum_sql_command {
   TC_SQLCOM_CREATE_NODE,
 	TC_SQLCOM_ALTER_NODE,
 	TC_SQLCOM_DROP_NODE,
+	TC_SQLCOM_SHOW_PROCESSLIST,
+	TC_SQLCOM_SHOW_VARIABLES,
   /* This should be the last !!! */
   SQLCOM_END
 };

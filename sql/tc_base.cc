@@ -24,6 +24,8 @@
 
 using namespace std;
 
+static PSI_memory_key key_memory_nodes;
+
 mutex remote_exec_mtx;
 mutex spider_exec_mtx;
 
@@ -2859,7 +2861,6 @@ enum_ident_wrapper_check tc_check_wrapper_name(LEX_STRING *org_name)
 {
 	char *name= org_name->str;
   size_t name_length= org_name->length;
-  enum_ident_wrapper_check ident_check_status;
 
   if (!name_length || name_length > NAME_LEN)
   {
@@ -3046,7 +3047,6 @@ uint tc_is_running_node(std::string &host, uint *port)
 }
 
 
-
 /*
 host: primary host
 port: primary port
@@ -3077,7 +3077,7 @@ int tc_is_master_tdbctl_node()
 	{
 		ret = -1;
 		goto finish;
-	}	
+	}
 	ret = tc_is_running_node((char*)(host.data()), &port);
 	//mgr running with single-primary
 	if (ret == 1)
@@ -3085,10 +3085,10 @@ int tc_is_master_tdbctl_node()
 		//mgr running with single-primary, use primary members host,port
 		address = host + "#" + to_string(port);
 		/*NOTE: primary member must exist in mysql.servers*/
-		for(auto&server:server_list)
+		for (auto&server : server_list)
 		{
 			if (!strcasecmp(server->host, host.c_str()) &&
-				server->port == port) 
+				server->port == port)
 			{
 				flag = false;
 				user = server->username;
@@ -3108,7 +3108,7 @@ int tc_is_master_tdbctl_node()
 		port = server_list.front()->port;
 		user = server_list.front()->username;
 		passwd = server_list.front()->password;
-		address = host + "#" + to_string(port);		
+		address = host + "#" + to_string(port);
 	}
 	else
 	{
@@ -3146,4 +3146,99 @@ finish:
 		conn = NULL;
 	}
 	return ret;
+}
+
+/**
+  get server_list according to wrapper_name.
+	connect each server and parallel execute sql.
+
+	@param
+	  exec_sql: sql to execute
+		wraper_name: wrapper_name
+		with_slave: whether diffuse to slave
+
+	@retval
+	  map for result
+		key:Server_name for mysql.servers
+		value: execute result
+*/
+map<string, MYSQL_RES*> tc_exec_sql_paral_by_wrapper(
+			string exec_sql, string wrapper_name, bool with_slave)
+{
+	map<string, MYSQL_RES*> result_map;
+  MEM_ROOT mem_root;
+	list<FOREIGN_SERVER*> server_list;
+	list<thread> thread_list;
+
+	init_sql_alloc(key_memory_nodes, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	get_server_by_wrapper(server_list, &mem_root, wrapper_name.c_str(), with_slave);
+
+	/*
+	  create thread for work
+	  each thread do connect, and execute sql
+	*/
+	for (auto & server: server_list)
+	{
+		thread tmp_t([&]{
+			MYSQL* mysql;
+		  MYSQL_RES *res;
+			string ipport = string(server->host) + "#" + to_string(server->port);
+			if (!(mysql = tc_conn_connect(ipport, server->username, server->password)))
+			{
+				/* error */
+				my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+				return;
+			}
+			//use shared_ptr to release mysql
+			MYSQL_GUARD(mysql);
+			res = tc_exec_sql_with_result(mysql, exec_sql);
+		  result_map.insert(pair<string, MYSQL_RES *>(server->server_name, std::move(res)));
+		});
+		thread_list.push_back(std::move(tmp_t));
+	}
+
+	/* wait all thread complete */
+	for (auto &td : thread_list) {
+		if (td.joinable())
+			td.join();
+	}
+
+	free_root(&mem_root, MYF(0));
+	return result_map;
+}
+
+/**
+  get server by server_name and then connect
+	to server and execute sql.
+
+	@param
+	  exec_sql: sql to execute
+		server_name: Server_name in mysql.servers.
+*/
+MYSQL_RES* tc_exec_sql_by_server(
+	string exec_sql, const char *server_name)
+{
+	MEM_ROOT mem_root;
+	MYSQL* mysql;
+	MYSQL_RES *res;
+	FOREIGN_SERVER *server;
+
+	init_sql_alloc(key_memory_nodes, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	server = get_server_by_name(&mem_root, server_name, NULL);
+	if (server == NULL)
+		return NULL;
+
+	string ipport = string(server->host) + "#" + to_string(server->port);
+	if (!(mysql = tc_conn_connect(ipport, server->username, server->password)))
+	{
+		/* error */
+		my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+		return NULL;
+	}
+	//use shared_ptr to release mysql
+	MYSQL_GUARD(mysql);
+	res = tc_exec_sql_with_result(mysql, exec_sql);
+
+	free_root(&mem_root, MYF(0));
+	return res;
 }

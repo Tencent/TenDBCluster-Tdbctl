@@ -1129,6 +1129,9 @@ bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second)
 	}
 }
 
+/*
+if wraper_name is NULL_WRAPPER, return all servers
+*/
 void get_server_by_wrapper(
   list<FOREIGN_SERVER*>& server_list, 
   MEM_ROOT* mem, 
@@ -1136,6 +1139,7 @@ void get_server_by_wrapper(
   bool with_slave
 )
 {
+	DBUG_ASSERT(wrapper_name);
   ulong records = 0;
   FOREIGN_SERVER* server;
   string wrapper_slave = wrapper_name;
@@ -1154,7 +1158,8 @@ void get_server_by_wrapper(
     }
     else
     {
-      if (!strcasecmp(server->scheme, wrapper_name) || 
+      if (!strcasecmp(wrapper_name, NULL_WRAPPER) ||
+				!strcasecmp(server->scheme, wrapper_name) ||
 	      !strcasecmp(server->scheme, wrapper_slave.c_str()))
       {
         server = clone_server(mem, server, NULL);

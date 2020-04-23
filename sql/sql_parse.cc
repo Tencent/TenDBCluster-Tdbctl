@@ -105,6 +105,7 @@
 #include "tc_base.h"
 #include "tc_monitor.h"
 #include "tc_node.h"
+#include "tc_show.h"
 
 #ifndef _WIN32
 #include <sys/time.h>
@@ -3801,6 +3802,15 @@ end_with_restore_list:
         thd->security_context()->priv_user().str),
       lex->verbose);
     break;
+	case TC_SQLCOM_SHOW_PROCESSLIST:
+    if (!thd->security_context()->priv_user().str[0] &&
+        check_global_access(thd,PROCESS_ACL))
+      break;
+		tc_show_processlist(thd, lex->verbose, lex->server_name);
+    break;
+	case TC_SQLCOM_SHOW_VARIABLES:
+		tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
+		break;
   case SQLCOM_SHOW_PRIVILEGES:
     res= mysqld_show_privileges(thd);
     break;
@@ -6294,8 +6304,16 @@ tcadmin_execute_command(THD* thd)
 	  my_ok(thd);
 	  break;
   }
-    /* 5. other may be supported int the future */
-  case SQLCOM_UNLOCK_TABLES:
+	case TC_SQLCOM_SHOW_PROCESSLIST:
+	{
+		if (!thd->security_context()->priv_user().str[0] &&
+			check_global_access(thd, PROCESS_ACL))
+			break;
+		tc_show_processlist(thd, lex->verbose, lex->server_name);
+		break;
+	}
+	/* 5. other may be supported int the future */
+	case SQLCOM_UNLOCK_TABLES:
   case SQLCOM_LOCK_TABLES:
   case SQLCOM_BEGIN:
   case SQLCOM_COMMIT:

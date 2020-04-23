@@ -5,6 +5,9 @@ Add for node's control
 #include "sql_base.h"         // open_tables, open_and_lock_tables,
 #include "log.h"
 #include "tc_base.h"
+#include <thread>
+
+static PSI_memory_key key_memory_nodes;
 
 /*
 use mysqldump to backup node's schema

@@ -3023,6 +3023,7 @@ public:
   char *help_arg;
   char* to_log;                                 /* For PURGE MASTER LOGS TO */
   char* x509_subject,*x509_issuer,*ssl_cipher;
+	const char* server_name;
   String *wild;
   sql_exchange *exchange;
   Query_result *result;

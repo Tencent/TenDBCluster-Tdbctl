@@ -16,6 +16,14 @@ using namespace std;
 #define SPIDER_WRAPPER "SPIDER"
 #define SPIDER_SLAVE_WRAPPER "SPIDER_SLAVE"
 #define TDBCTL_WRAPPER "TDBCTL"
+#define NULL_WRAPPER ""
+
+//mysql guard to free mysql connection
+#define MYSQL_GUARD(p) std::shared_ptr<MYSQL> p##p(p, \
+[](MYSQL *p) {mysql_close(p);});
+//mysql_res guard to free mysql_result
+#define MYSQL_RES_GUARD(p) std::shared_ptr<MYSQL_RES> p##p(p, \
+[](MYSQL_RES *p) {mysql_free_result(p);});
 
 void gettype_create_filed(Create_field *cr_field, String &res);
 bool get_createfield_default_value(Create_field *cr_field, String *def_value);
@@ -377,6 +385,8 @@ unsigned int tc_is_running_node(char *host, ulong *port);
 int tc_is_master_tdbctl_node();
 string tc_get_variable_value(MYSQL *conn, const char *variable);
 uint tc_is_running_node(std::string &host, uint *port);
+map<string, MYSQL_RES*> tc_exec_sql_paral_by_wrapper(string exec_sql, string wrapper_name, bool with_slave);
+MYSQL_RES* tc_exec_sql_by_server(string exec_sql, const char *server_name);
 
 enum enum_ident_wrapper_check
 {
