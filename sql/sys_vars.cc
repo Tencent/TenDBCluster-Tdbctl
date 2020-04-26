@@ -6340,13 +6340,13 @@ static Sys_var_mybool Sys_tc_check_repair_routing(
 
 static Sys_var_mybool Sys_tc_check_availability(
 	"tc_check_availability",
-	"If set to TRUE, check the availability of the cluster, and record in systerm table",
+	"If set to TRUE, check the availability of the cluster, and record in system table",
 	GLOBAL_VAR(tc_check_availability), CMD_LINE(OPT_ARG),
 	DEFAULT(TRUE));
 
 static Sys_var_ulong Sys_tc_check_repair_routing_interval(
       "tc_check_repair_routing_interval",
-      "The interval time of checking and reparing routing between tdbctl and spiders",
+      "The interval time of checking and repairing routing between tdbctl and spiders",
       GLOBAL_VAR(tc_check_repair_routing_interval), CMD_LINE(REQUIRED_ARG),
       VALID_RANGE(8, 65535), DEFAULT(300), BLOCK_SIZE(1));
 
@@ -6354,7 +6354,13 @@ static Sys_var_ulong Sys_tc_check_availability_interval(
 	"tc_check_availability_interval",
 	"The interval time of  check the availability of the cluster",
 	GLOBAL_VAR(tc_check_availability_interval), CMD_LINE(REQUIRED_ARG),
-	VALID_RANGE(0, 65535), DEFAULT(300), BLOCK_SIZE(1));
+	VALID_RANGE(0, 65535), DEFAULT(10), BLOCK_SIZE(1));
+
+static Sys_var_ulong Sys_tc_check_availability_connect(
+	"tc_check_availability_connect",
+	"The time of  check the availability connect",
+	GLOBAL_VAR(tc_check_availability_connect), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(0, 65535), DEFAULT(1800), BLOCK_SIZE(1));
 
 static Sys_var_mybool Sys_tc_check_repair_trans(
   "tc_check_repair_trans",
@@ -6402,3 +6408,21 @@ static Sys_var_ulong Sys_max__commit_logs(
 	"The max rows of cluster_heartbeat_log",
 	GLOBAL_VAR(max_heartbeat_log), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(10, ULONG_MAX), DEFAULT(1000000), BLOCK_SIZE(1));
+
+static Sys_var_mybool Sys_tc_partition_admin(
+	"tc_partition_admin",
+	"If set to TRUE, admin partition of  the cluster, and record in system table",
+	GLOBAL_VAR(tc_partition_admin), CMD_LINE(OPT_ARG),
+	DEFAULT(TRUE));
+
+static Sys_var_ulong Sys_tc_partition_admin_interval(
+	"tc_partition_admin_interval",
+	"The interval time of  admin partition of the cluster",
+	GLOBAL_VAR(tc_partition_admin_interval), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(0, 86400), DEFAULT(86400), BLOCK_SIZE(1));
+
+static Sys_var_ulong Sys_tc_partition_admin_time(
+	"tc_partition_admin_time",
+	"The time of  admin partition of the cluster",
+	GLOBAL_VAR(tc_partition_admin_time), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(0, 86400), DEFAULT(3600), BLOCK_SIZE(1));

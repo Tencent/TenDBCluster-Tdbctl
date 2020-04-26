@@ -37,7 +37,7 @@ void tc_check_and_repair_trans()
   std::map<std::string, std::string> remote_ipport_map;
   MEM_ROOT mem_root;
   int ret = 0;
-  init_sql_alloc(key_memory_tc_repair_trans, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+  init_sql_alloc(key_memory_for_tdbctl, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
 
   remote_ipport_map = get_remote_ipport_map(&mem_root,
     remote_user_map, remote_passwd_map);

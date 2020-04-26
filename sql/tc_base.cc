@@ -20,7 +20,6 @@
 #include <regex>
 #include <thread>
 #include <mutex>
-#include "rpl_group_replication.h"
 #include "rpl_slave.h"
 
 using namespace std;
@@ -753,8 +752,8 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
     int is_key_part = 0; 
     int level = 0;  
     /* 
-    first part of the common key，level is 1;  
-    first part of the unique key，level is 2; 
+    first part of the common key,level is 1;  
+    first part of the unique key,level is 2; 
     first part of the primary key, level is 3 */
     *is_unique_key = FALSE; // do not have unique key
 
@@ -801,7 +800,11 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
         {
 
             if (has_shard_key)
-            {/* 存在shard_key, 可以是多个唯一键的共同部分; 如果不在某个唯一键中，则报错 */
+            {
+				/*
+				if exist shard_key,allow it is the common part of multi unique_key;
+				if not the common part of multi unique_key,print error 
+				*/
                 int has_flag = 0;
                 Key_part_spec *tmp_column;
                 cols.rewind();
@@ -814,7 +817,8 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
                     }
                 }
                 if (!has_flag)
-                {/* 如果不是某个唯一键的一部分 */
+                {
+					/* if not a part of any unique_key*/
                     snprintf(result, buf_len, "ERROR: %s as TSpider key, but not in some unique key", key_name);
                     strcpy(key_name, "");
                     return TRUE;
@@ -823,7 +827,10 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
             else
             {
                 if (level > 1 && strcmp(key_name, column->field_name.str))
-                {// 多个unique, 如果前缀不同则报错
+                {
+					/*
+					if prefix of  multi unique_key not the same,then print error
+					*/
                     snprintf(result, buf_len, "%s", "ERROR: too more unique key with the different pre key");
                     strcpy(key_name, "");
                     return 1;
@@ -838,13 +845,19 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
         case keytype::KEYTYPE_MULTIPLE:
         {
             if (!has_shard_key && level < 1)
-            {/* 不存在指定的shard key，且前面无unique，则在key中取一个做为partition key */
+            {	
+				/*
+				if not specify shard key,and no  unique key,then get the first common key  as partition key
+				*/
                 strcpy(key_name, column->field_name.str);
                 level = 1;
             }
 
             if (has_shard_key)
-            {/* 存在shard_key, 是不是普通索引的一部分 */
+            {				
+				/*
+				if exist shard_key,whether is the part of common index
+				*/
                 Key_part_spec *tmp_column;
                 cols.rewind();
                 while ((tmp_column = cols++))
@@ -876,23 +889,32 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
         }
     }
 
-    /* 如果只有普通key，且没有显示指定shard key， 却key个数大于1，报错 */
+	/*
+	if only exist multi common key,and not specify shard key , then print error
+	*/
     if (!has_shard_key && level == 1 && lex->alter_info.key_list.elements > 1)
     {
-        //strcpy(key_name, "");  // key_name为第一个key
+        //strcpy(key_name, "");  // key_name is the first key
         snprintf(result, buf_len, "%s", "ERROR: too many key more than 1, but without unique key or set shard key");
         return TRUE;
     }
 
     if (has_shard_key && level <= 1 && is_key_part == 0)
-    {/* 指定shard key,不存在唯一键，但shard_key却不是普通索引的一部分 */
+    {
+		/*
+		specify shard key,no unique key,but shard_key is not a part of common index
+		*/
         snprintf(result, buf_len, "%s", "ERROR: shard_key must be part of key");
         return TRUE;
     }
 
     it_field.rewind();
     while ((has_shard_key || level == 1 || level == 2) && !!(field = it_field++))
-    {/* key对应的字段必须指定为not null, 主键默认是not null的，因此不需要考虑； flag记录的只是建表语句中的option信息 */
+    {
+		/*
+		the column which specified as key must be not null.because of primary key default not null,so need consider it.
+		flag stores the option information of create table sql
+		*/
         uint flags = field->flags;
         if (!strcmp(field->field_name, key_name) && !(flags & NOT_NULL_FLAG))
         {
@@ -902,7 +924,7 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
     }
 
 
-    // 指定了shard_key或者包含索引
+	//specify shard_key or contains index
     if (has_shard_key || level > 0)
         return FALSE;
 
@@ -2125,6 +2147,26 @@ set<string> get_spider_ipport_set(
     return ipport_set;
 }
 
+/*
+input: 
+       remote_ipport_map       server_name--->ipport
+output:
+       remote_server_name_map  ipport-------->server_name
+*/
+map<string, string>get_remote_server_name_map(
+	map<string, string> remote_ipport_map)
+{
+	map<string, string> remote_server_name_map;
+	map<string, string>::iterator its;
+	for (its = remote_ipport_map.begin(); its != remote_ipport_map.end(); its++)
+	{
+		string server_name = its->first;
+		string ipport = its->second;
+		remote_server_name_map.insert(pair<string, string>(ipport, server_name));
+	}
+	return remote_server_name_map;
+}
+
 map<string, string> get_remote_ipport_map(
   MEM_ROOT* mem, 
   map<string, string> &remote_user_map, 
@@ -2165,8 +2207,9 @@ map<string, string> get_remote_ipport_map(
 /*
 get map for ipport->server_name
 */
-map<string, string> get_spider_server_name_map(
+map<string, string> get_server_name_map(
 	MEM_ROOT *mem,
+	const char* wrapper,
 	bool with_slave
 )
 {
@@ -2174,8 +2217,7 @@ map<string, string> get_spider_server_name_map(
 	FOREIGN_SERVER *server;
 	ostringstream  sstr;
 	list<FOREIGN_SERVER*> server_list;
-	string wrapper_name = tdbctl_spider_wrapper_prefix;
-	get_server_by_wrapper(server_list, mem, wrapper_name.c_str(), with_slave);
+	get_server_by_wrapper(server_list, mem, wrapper, with_slave);
 	list<FOREIGN_SERVER*>::iterator its;
 	for (its = server_list.begin(); its != server_list.end(); its++)
 	{
@@ -2217,7 +2259,7 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
         real_connect_option = CLIENT_INTERACTIVE | CLIENT_MULTI_STATEMENTS;
         if (!mysql_real_connect(mysql, hosts.c_str(), user.c_str(), passwd.c_str(), "", port, NULL, real_connect_option))
         {
-            sql_print_warning("tc connnect fail: error code is %d, error message: %s", mysql_errno(mysql), mysql_error(mysql));
+            sql_print_warning("tc connect fail: error code is %d, error message: %s", mysql_errno(mysql), mysql_error(mysql));
             if(mysql)
                 mysql_close(mysql);
             if (!connect_retry_count)
@@ -2239,19 +2281,22 @@ MYSQL *tc_tdbctl_conn_primary(
 {
 	MYSQL *conn = NULL;
 	string address;
-	if (is_group_replication_running()) {
+	if (is_group_replication_running()) 
+	{
 		/*
 		we always is primary node, because tdbctl only support single_primary_node
 		slave node is read_only in MGR and impossibility run to here
 		*/
 		address = string(report_host) + "#" + to_string(report_port);
 	}
-	else {
-		if (tdbctl_ipport_map.size() > 1) {
+	else 
+	{
+		if (tdbctl_ipport_map.size() < 1)
+		{
 			ret = 1;
-			my_error(ER_TCADMIN_MULTI_NODE_EXISTS, MYF(0));
+			my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
 			return conn;
-		}
+		}	
 		address = tdbctl_ipport_map.begin()->second;
 	}
 
@@ -2358,6 +2403,9 @@ MYSQL* tc_spider_conn_single(
 	}
 	return mysql;
 }
+
+
+
 
 
 map<string, MYSQL*> tc_remote_conn_connect(
@@ -2650,7 +2698,7 @@ my_time_t string_to_timestamp(const string s)
 /*
 host: primary host port: primary port
 return value: 0, not primary node && mgr runing 
-1, mgr primary node 2, not mgr, signle node
+1, mgr primary node 2, not mgr, single node
 */
 unsigned int tc_is_running_node(char *host, ulong *port)
 {
@@ -2660,4 +2708,107 @@ unsigned int tc_is_running_node(char *host, ulong *port)
 // TODO, fetch local ip and port
   }
   return ret;
+}
+
+
+
+/*
+host: primary host
+port: primary port
+return value:
+-1, error
+0, not primary node
+1, primary node
+*/
+int tc_is_master_tdbctl_node()
+{
+	int ret = 0;
+	bool flag = true;
+	MYSQL *conn = NULL;
+	MYSQL_RES* res;
+	MYSQL_ROW row = NULL;
+	string uuid;
+	string host;
+	ulong port = 0;
+	string address;
+	string user;
+	string passwd;
+	MEM_ROOT mem_root;
+	list<FOREIGN_SERVER*> server_list;
+	string sql = "show variables like  'server_uuid'";
+	init_sql_alloc(key_memory_for_tdbctl, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
+	if (server_list.size() < 1)
+	{
+		ret = -1;
+		goto finish;
+	}	
+	ret = tc_is_running_node((char*)(host.data()), &port);
+	//mgr running with single-primary
+	if (ret == 1)
+	{
+		//mgr running with single-primary, use primary members host,port
+		address = host + "#" + to_string(port);
+		/*NOTE: primary member must exist in mysql.servers*/
+		for(auto&server:server_list)
+		{
+			if (!strcasecmp(server->host, host.c_str()) &&
+				server->port == port) 
+			{
+				flag = false;
+				user = server->username;
+				passwd = server->password;
+				break;
+			}
+		}
+		if (flag)
+		{
+			ret = -1;
+			goto finish;
+		}
+	}
+	else if (ret == 2)
+	{
+		host = server_list.front()->host;
+		port = server_list.front()->port;
+		user = server_list.front()->username;
+		passwd = server_list.front()->password;
+		address = host + "#" + to_string(port);		
+	}
+	else
+	{
+		ret = -1;
+		goto finish;
+	}
+	conn = tc_conn_connect(address, user, passwd);
+	if (conn == NULL) {
+		ret = -1;
+		my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
+		goto finish;
+	}
+	res = tc_exec_sql_with_result(conn, sql);
+	if (res && (row = mysql_fetch_row(res)))
+	{
+		uuid = row[1];
+	}
+	else
+	{
+		ret = -1;
+		goto finish;
+	}
+	if (!strcasecmp(uuid.c_str(), server_uuid))
+	{
+		ret = 1;
+	}
+	else
+	{
+		ret = 0;
+	}
+finish:
+	if (conn)
+	{
+		mysql_close(conn);
+		conn = NULL;
+	}
+	return ret;
 }

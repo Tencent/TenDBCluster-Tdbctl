@@ -288,8 +288,9 @@ map<string, string> get_remote_ipport_map(
   map<string, string> &remote_passwd_map
 );
 
-map<string, string> get_spider_server_name_map(
+map<string, string> get_server_name_map(
 	MEM_ROOT *mem,
+	const char *wrapper,
 	bool with_slave
 );
 
@@ -299,6 +300,8 @@ map<string, string> get_tdbctl_ipport_map(
 	map<string, string> &tdbctl_passwd_map
 );
 
+map<string, string>get_remote_server_name_map(
+	map<string, string> remote_ipport_map);
 
 bool tc_conn_free( map<string, MYSQL*> &conn_map);
 int tc_mysql_next_result(MYSQL* mysql);
@@ -329,5 +332,6 @@ bool tc_exec_sql_paral_with_result(
 
 my_time_t string_to_timestamp(const string s);
 
-
+unsigned int tc_is_running_node(char *host, ulong *port);
+int tc_is_master_tdbctl_node();
 #endif /* TC_BASE_INCLUDED */

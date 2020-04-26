@@ -60,7 +60,13 @@ static list<string> to_delete_servername_list;
 static MEM_ROOT tc_mem;
 static HASH servers_cache_bak;
 static MEM_ROOT mem_bak;
+/*
+global_modify_server_version_old start from 1,
+because global_modify_server_version++ when init mysqld, 
+but global_modify_server_version_old++ at the next time
+*/
 ulong global_modify_server_version = 0;
+ulong global_modify_server_version_old = 1;
 
 static HASH servers_cache;
 static MEM_ROOT mem;
@@ -315,6 +321,16 @@ bool servers_reload(THD *thd)
 end:
   DBUG_PRINT("info", ("unlocking servers_cache"));
   mysql_rwlock_unlock(&THR_LOCK_servers);
+  /*
+  when init mysqld, global_modify_server_version=1, 
+  it is not ok to get tc_is_master_tdbctl_node, because mysqld is not serving
+   */
+  if (global_modify_server_version != 1 &&
+	  global_modify_server_version_old != global_modify_server_version)
+  {
+	  Tdbctl_is_master = tc_is_master_tdbctl_node();
+	  global_modify_server_version_old = global_modify_server_version;
+  }
   delete_redundant_routings();
   DBUG_RETURN(return_val);
 }
@@ -535,7 +551,10 @@ bool Server_options::insert_into_cache() const
 
   /* set to 0 if not specified */
   server->port= m_port != PORT_NOT_SET ? m_port : 0;
+  /* if not do this, while we get port from server_caches, may core dump */
+  server->sport = strdup_root(&mem, std::to_string(server->port).c_str());
   server->version = 0;
+  global_modify_server_version++;
 
   if (!(server->socket= m_socket.str ?
         strdup_root(&mem, m_socket.str) : unset_ptr))
@@ -902,8 +921,11 @@ bool Sql_cmd_drop_server::execute(THD *thd)
         (FOREIGN_SERVER *)my_hash_search(&servers_cache,
                                          (uchar*) m_server_name.str,
                                          m_server_name.length);
-      if (server)
-        my_hash_delete(&servers_cache, (uchar*) server);
+	  if (server)
+	  {
+		  my_hash_delete(&servers_cache, (uchar*)server);
+		  global_modify_server_version++;
+	  }
       else if (!m_if_exists)
       {
         my_error(ER_FOREIGN_SERVER_DOESNT_EXIST, MYF(0),  m_server_name.str);
@@ -1045,14 +1067,14 @@ ulong get_servers_count_by_wrapper(const char* wrapper_name, bool with_slave)
 	ulong ret = 0;
 	FOREIGN_SERVER* server = NULL;
 	string wrapper_slave = wrapper_name;
-	mysql_rwlock_rdlock(&THR_LOCK_servers);
-	ulong records = servers_cache.records;
-	if(records == 0)
-		goto finish;
 	if (with_slave)
 	{
 		wrapper_slave += "_SLAVE";
 	}
+	mysql_rwlock_rdlock(&THR_LOCK_servers);
+	ulong records = servers_cache.records;
+	if(records == 0)
+		goto finish;
 	for (ulong i = 0; i < records; i++)
 	{
 		if (!(server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
@@ -1072,6 +1094,19 @@ ulong get_servers_count_by_wrapper(const char* wrapper_name, bool with_slave)
 finish:
 	mysql_rwlock_unlock(&THR_LOCK_servers);
 	return ret;
+}
+
+bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second)
+{
+	int ret = strcmp(first->server_name, second->server_name);
+	if (ret < 0)
+	{
+		return TRUE;
+	}
+	else
+	{
+		return FALSE;
+	}
 }
 
 void get_server_by_wrapper(
@@ -1108,6 +1143,7 @@ void get_server_by_wrapper(
     }
   }
   mysql_rwlock_unlock(&THR_LOCK_servers);
+  server_list.sort(server_compare);
 }
 
 
@@ -1358,6 +1394,7 @@ string tc_get_ipport_from_server_by_wrapper(Server_options* server_options, cons
   return ipport;
 }
 
+
 bool tc_check_ipport_valid()
 {
   return FALSE;
@@ -1459,19 +1496,6 @@ finish:
   return result;
 }
 
-
-bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second)
-{
-  int ret = strcmp(first->server_name, second->server_name);
-  if (ret < 0)
-  {
-    return TRUE;
-  }
-  else
-  {
-    return FALSE;
-  }
-}
 
 
 bool compare_server_list(list<FOREIGN_SERVER*>& first, list<FOREIGN_SERVER*>& second)
@@ -1800,6 +1824,11 @@ bool update_server_version(bool* version_updated)
   FOREIGN_SERVER* server_bak;
   FOREIGN_SERVER* server;
   ulong share_records = servers_cache.records;
+  ulong share_records_bak = servers_cache_bak.records;
+  if (share_records != share_records_bak)
+  {
+	  *version_updated = TRUE;
+  }
   DBUG_ENTER("replace_server_version");
   for (ulong i = 0; i < share_records; i++)
   {/* foreach share */

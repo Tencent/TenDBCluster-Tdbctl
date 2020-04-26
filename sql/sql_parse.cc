@@ -5584,11 +5584,10 @@ tcadmin_execute_command(THD* thd)
   case SQLCOM_START_GROUP_REPLICATION:
   case SQLCOM_STOP_GROUP_REPLICATION:
   case SQLCOM_UNLOCK_BINLOG:
-    my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-    goto finish;
   case SQLCOM_SELECT:
-    my_ok(thd);
-    goto finish;
+	if (!thd->is_error())
+		 my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
+      goto finish;
   case SQLCOM_SET_OPTION:
   {
     List<set_var_base>* lex_var_list = &lex->var_list;
@@ -5905,6 +5904,16 @@ tcadmin_execute_command(THD* thd)
   }
   my_ok(thd);
   break;
+  case TC_SQLCOM_MONITOR_INIT:
+  {
+	  if (tc_check_cluster_availability_init())
+	  {
+		  my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
+		  break;
+	  }
+	  my_ok(thd);
+	  break;
+  }
     /* 5. other may be supported int the future */
   case SQLCOM_UNLOCK_TABLES:
   case SQLCOM_LOCK_TABLES:
@@ -6197,6 +6206,34 @@ void THD::reset_for_next_command()
   DBUG_VOID_RETURN;
 }
 
+bool tc_is_spider_node(THD* thd) 
+{
+	bool res = false;
+	string user = thd->m_security_ctx->user().str;
+	string ip = thd->m_security_ctx->ip().str;
+	string host = thd->m_security_ctx->host().str;
+	map<string, string>::iterator its;
+	thd->spider_ipport_set = get_spider_ipport_set(
+		thd->mem_root,
+		thd->spider_user_map,
+		thd->spider_passwd_map,
+		TRUE);
+	for (its = thd->spider_user_map.begin(); its != thd->spider_user_map.end(); its++)
+	{
+		string ipport = its->first;
+		ulong pos = ipport.find("#");
+		string hosts = ipport.substr(0, pos);
+		string users = its->second;
+		if ((!(strcasecmp((char *)(hosts.data()), (char *)(host.data())))
+			|| !strcasecmp((char *)(hosts.data()), (char *)(ip.data())))
+			&& !strcasecmp((char *)(users.data()), (char *)(user.data())))
+		{
+			res = true;
+			return res;
+		}
+	}
+	return res;
+}
 
 /**
   Create a select to return the same output as 'SELECT @@var_name'.
@@ -6437,9 +6474,13 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
           }
           else
           {
-            if (thd->variables.tc_admin)
+			  if (thd->variables.tc_admin && !tc_is_spider_node(thd))
+			  {
+				  my_error(ER_TCADMIN_NOT_SPIDER, MYF(0));
+			  }
+			 else if(thd->variables.tc_admin)
               error = tcadmin_execute_command(thd);
-            else
+             else
               error = mysql_execute_command(thd, true);
           }
 

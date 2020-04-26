@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS func (  name char(64) binary DEFAULT '' NOT NULL, ret
 CREATE TABLE IF NOT EXISTS plugin ( name varchar(64) DEFAULT '' NOT NULL, dl varchar(128) DEFAULT '' NOT NULL, PRIMARY KEY (name) ) engine=InnoDB STATS_PERSISTENT=0 CHARACTER SET utf8 COLLATE utf8_general_ci comment='MySQL plugins';
 
 
-CREATE TABLE IF NOT EXISTS servers ( Server_name char(64) NOT NULL DEFAULT '', Host char(64) NOT NULL DEFAULT '', Db char(64) NOT NULL DEFAULT '', Username char(64) NOT NULL DEFAULT '', Password char(64) NOT NULL DEFAULT '', Port INT(4) NOT NULL DEFAULT '0', Socket char(64) NOT NULL DEFAULT '', Wrapper char(64) NOT NULL DEFAULT '', Owner char(64) NOT NULL DEFAULT '', PRIMARY KEY (Server_name)) engine=InnoDB STATS_PERSISTENT=0 CHARACTER SET utf8 comment='MySQL Foreign Servers table';
+CREATE TABLE IF NOT EXISTS servers ( Server_name char(64) NOT NULL DEFAULT '', Host char(64) NOT NULL DEFAULT '', Db char(64) NOT NULL DEFAULT '', Username char(64) NOT NULL, Password char(64) NOT NULL, Port INT(4) NOT NULL DEFAULT '0', Socket char(64) NOT NULL DEFAULT '', Wrapper char(64) NOT NULL DEFAULT '', Owner char(64) NOT NULL DEFAULT '', PRIMARY KEY (Server_name)) engine=InnoDB STATS_PERSISTENT=0 CHARACTER SET utf8 comment='MySQL Foreign Servers table';
 
 
 CREATE TABLE IF NOT EXISTS tables_priv ( Host char(60) binary DEFAULT '' NOT NULL, Db char(64) binary DEFAULT '' NOT NULL, User char(32) binary DEFAULT '' NOT NULL, Table_name char(64) binary DEFAULT '' NOT NULL, Grantor char(93) DEFAULT '' NOT NULL, Timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, Table_priv set('Select','Insert','Update','Delete','Create','Drop','Grant','References','Index','Alter','Create View','Show view','Trigger') COLLATE utf8_general_ci DEFAULT '' NOT NULL, Column_priv set('Select','Insert','Update','References') COLLATE utf8_general_ci DEFAULT '' NOT NULL, PRIMARY KEY (Host,Db,User,Table_name), KEY Grantor (Grantor) ) engine=MyISAM CHARACTER SET utf8 COLLATE utf8_bin   comment='Table privileges';
@@ -86,8 +86,13 @@ CREATE TABLE IF NOT EXISTS event ( db char(64) CHARACTER SET utf8 COLLATE utf8_b
 
 CREATE TABLE IF NOT EXISTS ndb_binlog_index (Position BIGINT UNSIGNED NOT NULL, File VARCHAR(255) NOT NULL, epoch BIGINT UNSIGNED NOT NULL, inserts INT UNSIGNED NOT NULL, updates INT UNSIGNED NOT NULL, deletes INT UNSIGNED NOT NULL, schemaops INT UNSIGNED NOT NULL, orig_server_id INT UNSIGNED NOT NULL, orig_epoch BIGINT UNSIGNED NOT NULL, gci INT UNSIGNED NOT NULL, next_position BIGINT UNSIGNED NOT NULL, next_file VARCHAR(255) NOT NULL, PRIMARY KEY(epoch, orig_server_id, orig_epoch)) ENGINE=MYISAM;
 
---Create cluster_heartbeat for monitor
-CREATE TABLE IF NOT EXISTS cluster_heartbeat_log(id bigint(20) NOT NULL, time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, server_name  char(64)  NOT NULL DEFAULT '',  host char(64) NOT NULL DEFAULT '', code int default 0, message mediumtext DEFAULT NULL, PRIMARY KEY (id), index spt(server_name)) ENGINE=InnoDB;
+--Create  for cluster admin
+CREATE DATABASE IF NOT EXISTS cluster_admin;
+CREATE TABLE IF NOT EXISTS cluster_admin.cluster_heartbeat_log(id bigint(20) NOT NULL, time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, server_name  char(64)  NOT NULL DEFAULT '',  host char(64) NOT NULL DEFAULT '', code int default 0, message mediumtext DEFAULT NULL, PRIMARY KEY (id), index spt(server_name)) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS cluster_admin.tc_partiton_admin_log ( uid int(11) NOT NULL AUTO_INCREMENT, db_name varchar(128) NOT NULL DEFAULT '', tb_name varchar(128) NOT NULL DEFAULT '', server_name char(64) NOT NULL DEFAULT '', host char(64) NOT NULL DEFAULT '', code int(11) DEFAULT '0', message mediumtext, updatetime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE  CURRENT_TIMESTAMP, KEY `uk_db_tb` (`db_name`,`tb_name`), PRIMARY KEY (`uid`));
+
+CREATE TABLE IF NOT EXISTS cluster_admin.tc_partiton_admin_config ( db_name varchar(128) NOT NULL DEFAULT '', tb_name varchar(128) NOT NULL DEFAULT '', partition_column varchar(128) DEFAULT 'thedate', expiration_time int(11) DEFAULT NULL, partition_column_type varchar(128) NOT NULL DEFAULT 'int', interval_time int(11) DEFAULT '1' COMMENT 'interval', remote_hash_algorithm varchar(128) DEFAULT 'list', is_partitioned int(11) DEFAULT '0', updatetime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE  CURRENT_TIMESTAMP, PRIMARY KEY (`db_name`,`tb_name`)) ;
 
 SET @sql_mode_orig=@@SESSION.sql_mode;
 SET SESSION sql_mode='NO_ENGINE_SUBSTITUTION';

@@ -200,6 +200,7 @@ SET(SQL_SHARED_SOURCES
   sql_parse.cc
   tc_base.cc
   tc_monitor.cc
+  tc_partition_admin.cc
   tc_xa_repair.cc 
   sql_partition.cc
   sql_partition_admin.cc
@@ -316,6 +317,7 @@ INCLUDE(${MYSQL_CMAKE_SCRIPT_DIR}/compile_flags.cmake)
 ADD_COMPILE_FLAGS(
    tc_base.cc
    tc_monitor.cc
+   tc_partition_admin.cc
    tc_xa_repair.cc   
    sql_parse.cc
    sql_connect.cc
