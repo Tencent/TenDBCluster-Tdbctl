@@ -146,7 +146,7 @@ struct st_mysql_group_replication
     Get number of group replication members.
   */
   unsigned int (*get_members_number_info)();
-  unsigned int (*get_primary_node_info)(char *host, ulong *port);
+  unsigned int (*get_primary_node_info)(std::string &host, unsigned int* port);
 };
 
 #endif

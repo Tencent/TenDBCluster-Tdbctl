@@ -292,6 +292,47 @@ internal_reset_read_only(Sql_service_interface *sql_interface)
   DBUG_RETURN(srv_err);
 }
 
+long Sql_service_command_interface::tdbctl_flush_routing()
+{
+  DBUG_ENTER("Sql_service_command_interface::tdbctl_flush_routing");
+  long error=0;
+
+  if (connection_thread_isolation != PSESSION_DEDICATED_THREAD)
+  {
+    error= sql_service_commands.internal_tdbctl_flush_routing(m_server_interface);
+  }
+  else
+  {
+    m_plugin_session_thread->
+      queue_new_method_for_application(&Sql_service_commands::internal_tdbctl_flush_routing);
+    error= m_plugin_session_thread->wait_for_method_execution();
+  }
+
+  DBUG_RETURN(error);
+}
+
+long Sql_service_commands::
+internal_tdbctl_flush_routing(Sql_service_interface *sql_interface)
+{
+  DBUG_ENTER("Sql_service_commands::internal_tdbctl_flush_routing");
+
+  DBUG_ASSERT(sql_interface != NULL);
+
+  Sql_resultset rset;
+
+  const char* query= "tdbctl flush routing";
+  long srv_err= sql_interface->execute_query(query);
+
+  if (srv_err)
+  {
+
+    log_message(MY_ERROR_LEVEL, "tdbctl flush routing execution "
+      "resulted in failure. errno: %d", srv_err); /* purecov: inspected */
+  }
+
+  DBUG_RETURN(srv_err);
+}
+
 long Sql_service_command_interface::kill_session(uint32_t session_id,
                                        MYSQL_SESSION session)
 {

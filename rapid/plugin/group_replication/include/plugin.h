@@ -46,6 +46,7 @@ struct st_mysql_sys_var
 };
 typedef st_mysql_sys_var SYS_VAR;
 
+
 //Plugin variables
 extern const char *group_replication_plugin_name;
 extern char *group_name_var;
@@ -104,7 +105,7 @@ bool plugin_get_group_members(
 bool plugin_get_group_member_stats(
     const GROUP_REPLICATION_GROUP_MEMBER_STATS_CALLBACKS& callbacks);
 uint plugin_get_group_members_number();
-uint plugin_get_primary_node_info(char* host, ulong* port);
+uint plugin_get_primary_node_info(std::string &host, uint* port);
 /**
   Method to set retrieved certification info from a recovery channel extracted
   from a given View_change event

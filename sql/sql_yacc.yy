@@ -76,6 +76,7 @@ Note: YYTHD is passed as an argument to yyparse(), and subsequently to yylex().
 #include "item_json_func.h"
 #include "sql_plugin.h"                      // plugin_is_ready
 #include "parse_tree_hints.h"
+#include "tc_base.h"
 
 /* this is to get the bison compilation windows warnings out */
 #ifdef _MSC_VER
@@ -847,6 +848,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 %token  NEVER_SYM
 %token  NEW_SYM                       /* SQL-2003-R */
 %token  NEXT_SYM                      /* SQL-2003-N */
+%token  NODE_SYM
 %token  NODEGROUP_SYM
 %token  NONE_SYM                      /* SQL-2003-R */
 %token  NOT2_SYM
@@ -2286,6 +2288,49 @@ tdbctl:
 	  |TDBCTL_SYM    MONITOR_SYM  INIT_SYM
           {
             Lex->sql_command = TC_SQLCOM_MONITOR_INIT;
+            Lex->sql_command = TC_SQLCOM_FLUSH_ROUTING;
+            Lex->do_grants = TRUE;
+          }
+        | TDBCTL_SYM CREATE NODE_SYM WRAPPER_SYM
+          ident_or_text OPTIONS_SYM '(' server_options_list ')'
+          {
+            Lex->sql_command = TC_SQLCOM_CREATE_NODE;
+			LEX_STRING wrapper_str = $5;
+            if (wrapper_str.str &&
+                (tc_check_wrapper_name(&wrapper_str) != IDENT_WRAPPER_OK))
+              MYSQL_YYABORT;
+
+            Lex->server_options.set_scheme($5);
+            Lex->m_sql_cmd=
+              new (YYTHD->mem_root) Sql_cmd_create_server(&Lex->server_options);
+            Lex->do_grants = TRUE;
+			Lex->tc_flush_type = FLUSH_ALL_ROUTING;
+          }
+        | TDBCTL_SYM ALTER NODE_SYM ident_or_text OPTIONS_SYM '(' server_options_list ')'
+          {
+            LEX *lex= Lex;
+            lex->sql_command= TC_SQLCOM_ALTER_NODE;
+            lex->server_options.m_server_name= $4;
+            lex->m_sql_cmd=
+              new (YYTHD->mem_root) Sql_cmd_alter_server(&Lex->server_options);
+            Lex->do_grants = TRUE;
+			Lex->tc_flush_type = FLUSH_ALL_ROUTING;
+          }
+        | TDBCTL_SYM DROP NODE_SYM if_exists ident_or_text
+          {
+            Lex->sql_command = TC_SQLCOM_DROP_NODE;
+            Lex->m_sql_cmd=
+              new (YYTHD->mem_root) Sql_cmd_drop_server($5, $4);
+            Lex->do_grants = FALSE;
+			Lex->tc_flush_type = FLUSH_ALL_ROUTING;
+          }
+        | TDBCTL_SYM SHOW opt_server opt_full PROCESSLIST_SYM
+          {
+            Lex->sql_command = TC_SQLCOM_SHOW_PROCESSLIST;
+          }
+        | TDBCTL_SYM SHOW opt_server opt_var_type VARIABLES opt_show
+          {
+            Lex->sql_command = TC_SQLCOM_SHOW_VARIABLES;
           }
           ;
 
@@ -2311,6 +2356,26 @@ opt_force:
           Lex->is_tc_flush_force = TRUE;
         }
         ;
+
+opt_server:
+         /* empty */ { Lex->server_name =  NULL; }
+        |TEXT_STRING
+        {
+          Lex->server_name = $1.str;
+        }
+        ;
+
+opt_show:
+         /* empty */ { Lex->server_name =  NULL; }
+        |LIKE TEXT_STRING_sys
+        {
+		  Lex->wild= new (YYTHD->mem_root) String($2.str, $2.length,
+                                                    system_charset_info);
+          if (Lex->wild == NULL)
+            MYSQL_YYABORT;
+        }
+        ;
+
 
 /* create a table */
 
@@ -13610,6 +13675,7 @@ keyword:
         | LANGUAGE_SYM          {}
 	| MONITOR_SYM           {}
         | NO_SYM                {}
+        | NODE_SYM              {}
         | OPEN_SYM              {}
         | OPTIONS_SYM           {}
         | OWNER_SYM             {}

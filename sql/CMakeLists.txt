@@ -202,6 +202,8 @@ SET(SQL_SHARED_SOURCES
   tc_monitor.cc
   tc_partition_admin.cc
   tc_xa_repair.cc 
+  tc_node.cc
+  tc_show.cc
   sql_partition.cc
   sql_partition_admin.cc
   sql_planner.cc
@@ -319,10 +321,13 @@ ADD_COMPILE_FLAGS(
    tc_monitor.cc
    tc_partition_admin.cc
    tc_xa_repair.cc   
+   tc_node.cc
+   tc_show.cc
    sql_parse.cc
    sql_connect.cc
    sql_error.cc
    sql_servers.cc
+   sql_yacc.cc
    conn_handler/connection_handler_per_thread.cc
    mysqld.cc
    COMPILE_FLAGS "-std=c++11"

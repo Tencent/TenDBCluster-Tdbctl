@@ -6387,9 +6387,9 @@ static Sys_var_charptr Sys_tc_mysql_wrapper_prefix(
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPT"));
 
 static Sys_var_charptr Sys_tc_control_wrapper_prefix(
-	"tc_control_wrapper_prefix", "prefix of server name for TDBCTL wrapper",
-	READ_ONLY GLOBAL_VAR(tdbctl_control_wrapper_prefix),
-	CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("TDBCTL"));
+  "tc_control_wrapper_prefix", "prefix of server name for TDBCTL wrapper",
+  READ_ONLY GLOBAL_VAR(tdbctl_control_wrapper_prefix),
+  CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("TDBCTL"));
 
 static Sys_var_mybool Sys_tc_set_changed_node_read_only(
   "tc_set_changed_node_read_only",

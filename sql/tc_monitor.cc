@@ -348,7 +348,7 @@ void tc_check_cluster_availability_thread()
 	/*
 	init Tdbctl_is_master in background thread
 	*/
-	Tdbctl_is_master = tc_is_master_tdbctl_node();
+	tdbctl_is_primary = tc_is_primary_tdbctl_node();
 	while (1)
 	{
 		/*

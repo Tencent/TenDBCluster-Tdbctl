@@ -21,6 +21,7 @@
 #include "sql_string.h"
 #include "sql_alloc.h"
 #include <list>
+#include <string>
 
 class THD;
 struct LEX;
@@ -56,6 +57,15 @@ FOREIGN_SERVER* get_server_by_name(
   FOREIGN_SERVER *server_buffer
 );
 
+std::string get_new_server_name_by_wrapper(
+		const char* wrapper_name,
+		bool with_slave
+);
+
+const char *get_wrapper_prefix_by_wrapper(
+	const char *wrapper_name
+);
+
 ulong get_servers_count();
 ulong get_modify_server_version();
 ulong get_server_version_by_name(const char* server_name);
@@ -79,10 +89,9 @@ void get_server_by_wrapper(
 ulong get_servers_count_by_wrapper(
 	const char* wrapper_name, 
 	bool with_slave);
-bool tc_flush_routing(LEX *lex, ulong flush_type, bool is_force);
+bool tc_flush_routing(LEX *lex);
 int tc_check_and_repair_routing();
 void create_check_and_repaire_routing_thread();
-
 
 /**
    This class represent server options as set by the parser.
@@ -289,5 +298,7 @@ public:
   */
   bool execute(THD *thd);
 };
+
+bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second);
 
 #endif /* SQL_SERVERS_INCLUDED */

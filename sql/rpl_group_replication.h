@@ -45,7 +45,7 @@ public:
   bool get_group_member_stats_info(
       const GROUP_REPLICATION_GROUP_MEMBER_STATS_CALLBACKS& callbacks);
   unsigned int get_members_number_info();
-  unsigned int get_primary_node_info(char* host, ulong* port);
+  unsigned int get_primary_node_info(std::string &host, unsigned int* port);
 
 private:
   std::string plugin_name;
@@ -74,7 +74,7 @@ bool get_group_replication_group_members_info(
 bool get_group_replication_group_member_stats_info(
     const GROUP_REPLICATION_GROUP_MEMBER_STATS_CALLBACKS& callbacks);
 unsigned int get_group_replication_members_number_info();
-unsigned int get_group_replication_primary_node_info(char* host, ulong* port);
+unsigned int get_group_replication_primary_node_info(std::string &host, unsigned int* port);
 
 
 #endif /* RPL_GROUP_REPLICATION_INCLUDED */

@@ -3023,6 +3023,7 @@ public:
   char *help_arg;
   char* to_log;                                 /* For PURGE MASTER LOGS TO */
   char* x509_subject,*x509_issuer,*ssl_cipher;
+	const char* server_name;
   String *wild;
   sql_exchange *exchange;
   Query_result *result;
@@ -3244,6 +3245,10 @@ public:
   bool safe_to_cache_query;
   bool subqueries;
   my_bool is_tc_flush_force;
+	/*
+	whether need do grants when flush routing, for tdbctl statement
+	*/
+	my_bool do_grants;
   ulong tc_flush_type;
 private:
   bool ignore;
