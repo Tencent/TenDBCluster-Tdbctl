@@ -299,4 +299,6 @@ public:
   bool execute(THD *thd);
 };
 
+bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second);
+
 #endif /* SQL_SERVERS_INCLUDED */

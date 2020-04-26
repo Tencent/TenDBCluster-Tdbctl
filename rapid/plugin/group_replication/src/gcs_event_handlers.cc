@@ -774,6 +774,8 @@ void Plugin_gcs_events_handler::handle_leader_election_if_needed() const
 
       if (has_primary_changed)
       {
+        // Set local node to primary for tdbctl logic.
+        tdbctl_is_primary = is_primary_local ? 1 : 0;
         /*
           A new primary was elected, inform certifier to enable conflict
           detection until the new primary apply all relay logs.

@@ -24,7 +24,7 @@
 
 using namespace std;
 
-static PSI_memory_key key_memory_nodes;
+static PSI_memory_key key_memory_bases;
 
 mutex remote_exec_mtx;
 mutex spider_exec_mtx;
@@ -2216,14 +2216,12 @@ map<string, string> get_server_name_map(
 )
 {
 	map<string, string> server_name_map;
-	FOREIGN_SERVER *server;
 	ostringstream  sstr;
 	list<FOREIGN_SERVER*> server_list;
+
 	get_server_by_wrapper(server_list, mem, wrapper, with_slave);
-	list<FOREIGN_SERVER*>::iterator its;
-	for (its = server_list.begin(); its != server_list.end(); its++)
+	for (auto &server : server_list)
 	{
-		server = *its;
 		string host = server->host;
 		sstr.str("");
 		sstr << server->port;
@@ -2275,46 +2273,6 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
     }
     return mysql;
 }
-
-
-MYSQL *tc_tdbctl_conn_primary(
-	int &ret,
-	map<string, string> tdbctl_ipport_map,
-	map<string, string> tdbctl_user_map,
-	map<string, string> tdbctl_passwd_map
-)
-{
-	MYSQL *conn = NULL;
-	string address;
-	if (is_group_replication_running()) 
-	{
-		/*
-		we always is primary node, because tdbctl only support single_primary_node
-		slave node is read_only in MGR and impossibility run to here
-		*/
-		address = string(report_host) + "#" + to_string(report_port);
-	}
-	else 
-	{
-		if (tdbctl_ipport_map.size() < 1)
-		{
-			ret = 1;
-			my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
-			return conn;
-		}	
-		address = tdbctl_ipport_map.begin()->second;
-	}
-
-	conn = tc_conn_connect(address, tdbctl_user_map[address], tdbctl_passwd_map[address]);
-	if (conn == NULL) {
-		ret = 1;
-		my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
-	}
-
-	return conn;
-}
-
-
 
 /*
 get tdbctl's ipport map
@@ -2503,10 +2461,8 @@ MYSQL *tc_tdbctl_conn_primary(
 )
 {
 	MYSQL *conn = NULL;
-	string address;
+	string address, host;
 	uint port;
-	int result;
-	std::string host = "";
 
 	if (tdbctl_ipport_map.empty())
 	{
@@ -2515,27 +2471,22 @@ MYSQL *tc_tdbctl_conn_primary(
 	  return NULL;
 	}
 
-	result = tc_is_running_node(host, &port);
-	if (result == 1)
-	{//mgr running with single-primary, use primary member's host, port
+	if (tc_get_primary_node(host, &port))
+	{
 		address = host + "#" + to_string(port);
 		/* NOTE: primary member must exist in mysql.servers */
 		if (std::find_if(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(),
 			[address](const std::pair<string, string> &tdbctl_ip_port) -> bool {
-			return address.compare(tdbctl_ip_port.second) == 0;}) == tdbctl_ipport_map.end())
+			return address.compare(tdbctl_ip_port.second) == 0; }) == tdbctl_ipport_map.end())
 		{
 			ret = 1;
 			sql_print_warning("primary member %s not exist in mysql.servers", address.c_str());
 			return NULL;
 		}
 	}
-	else if (result == 2)
-	{// mgr not running or in multi-primary, just use first map's element
-		address = tdbctl_ipport_map.begin()->second;
-	}
 	else
 	{//error happened, such as network partitioning
-		sql_print_warning("get single primary node failed");
+		sql_print_warning("get single-Primary node failed");
 		ret = 1;
 
 	  return NULL;
@@ -3027,9 +2978,8 @@ string tc_get_remote_grant_sql(
 	return remote_do_sql;
 }
 
-
 /**
- @param (out)
+  @param (out)
    host: host to primary member
 	 port: port to primary member
 
@@ -3038,12 +2988,34 @@ string tc_get_remote_grant_sql(
 	 1: mgr  running with single-primary.
 	 2. not mgr or multi-primary
 
-	 @Note
+  @Note
 	 only when return 1, host and port[out] with value
 */
-uint tc_is_running_node(std::string &host, uint *port)
+uint tc_get_primary_node(std::string &host, uint *port)
 {
-  return get_group_replication_primary_node_info(host, port);
+	int ret = 0;
+	ret = get_group_replication_primary_node_info(host, port);
+
+	if (ret == 2)
+	{//not mgr or multi-Primary
+		MEM_ROOT mem_root;
+		list<FOREIGN_SERVER*> server_list;
+
+		init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+		MEM_ROOT_GUARD(mem_root)
+		get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
+
+		//empty, error happened
+		if (server_list.empty())
+			return 0;
+
+		//always user fist Server_name
+		server_list.sort(server_compare);
+		host = server_list.front()->host;
+		*port = server_list.front()->port;
+	}
+
+	return ret;
 }
 
 
@@ -3055,96 +3027,58 @@ return value:
 0, not primary node
 1, primary node
 */
-int tc_is_master_tdbctl_node()
+int tc_is_primary_tdbctl_node()
 {
 	int ret = 0;
-	bool flag = true;
-	MYSQL *conn = NULL;
-	MYSQL_RES* res;
-	MYSQL_ROW row = NULL;
-	string uuid;
 	string host;
-	ulong port = 0;
-	string address;
-	string user;
-	string passwd;
-	MEM_ROOT mem_root;
-	list<FOREIGN_SERVER*> server_list;
-	string sql = "show variables like  'server_uuid'";
-	init_sql_alloc(key_memory_for_tdbctl, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-	get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
-	if (server_list.size() < 1)
-	{
-		ret = -1;
-		goto finish;
-	}
-	ret = tc_is_running_node((char*)(host.data()), &port);
+	uint port = 0;
+
+	ret = tc_get_primary_node(host, &port);
 	//mgr running with single-primary
 	if (ret == 1)
-	{
-		//mgr running with single-primary, use primary members host,port
-		address = host + "#" + to_string(port);
-		/*NOTE: primary member must exist in mysql.servers*/
-		for (auto&server : server_list)
-		{
-			if (!strcasecmp(server->host, host.c_str()) &&
-				server->port == port)
-			{
-				flag = false;
-				user = server->username;
-				passwd = server->password;
-				break;
-			}
-		}
-		if (flag)
-		{
-			ret = -1;
-			goto finish;
-		}
-	}
-	else if (ret == 2)
-	{
+		return tdbctl_is_primary;
+
+	if (ret == 2)
+	{//not mgr or multi-Primary
+		MYSQL *conn;
+		MYSQL_RES* res;
+		MYSQL_ROW row;
+		MEM_ROOT mem_root;
+		list<FOREIGN_SERVER*> server_list;
+		string uuid, user, passwd, address;
+		uint port = 0;
+
+		string sql = "show variables like  'server_uuid'";
+		init_sql_alloc(key_memory_for_tdbctl, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+		MEM_ROOT_GUARD(mem_root);
+		get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
+
+		//error
+		if (server_list.empty())
+			return -1;
+
+		//list had been sorted, use first Server_name directly.
 		host = server_list.front()->host;
 		port = server_list.front()->port;
 		user = server_list.front()->username;
 		passwd = server_list.front()->password;
 		address = host + "#" + to_string(port);
+		conn = tc_conn_connect(address, user, passwd);
+		if (conn == NULL) {
+			my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
+			return -1;
+		}
+
+		MYSQL_GUARD(conn);
+		res = tc_exec_sql_with_result(conn, sql);
+		if (res && (row = mysql_fetch_row(res)))
+			uuid = row[1];
+		else
+			return -1;
+
+		ret = (strcasecmp(uuid.c_str(), server_uuid) == 0) ? 1 : 0;
 	}
-	else
-	{
-		ret = -1;
-		goto finish;
-	}
-	conn = tc_conn_connect(address, user, passwd);
-	if (conn == NULL) {
-		ret = -1;
-		my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
-		goto finish;
-	}
-	res = tc_exec_sql_with_result(conn, sql);
-	if (res && (row = mysql_fetch_row(res)))
-	{
-		uuid = row[1];
-	}
-	else
-	{
-		ret = -1;
-		goto finish;
-	}
-	if (!strcasecmp(uuid.c_str(), server_uuid))
-	{
-		ret = 1;
-	}
-	else
-	{
-		ret = 0;
-	}
-finish:
-	if (conn)
-	{
-		mysql_close(conn);
-		conn = NULL;
-	}
+
 	return ret;
 }
 
@@ -3170,7 +3104,8 @@ map<string, MYSQL_RES*> tc_exec_sql_paral_by_wrapper(
 	list<FOREIGN_SERVER*> server_list;
 	list<thread> thread_list;
 
-	init_sql_alloc(key_memory_nodes, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	MEM_ROOT_GUARD(mem_root);
 	get_server_by_wrapper(server_list, &mem_root, wrapper_name.c_str(), with_slave);
 
 	/*
@@ -3203,7 +3138,6 @@ map<string, MYSQL_RES*> tc_exec_sql_paral_by_wrapper(
 			td.join();
 	}
 
-	free_root(&mem_root, MYF(0));
 	return result_map;
 }
 
@@ -3223,7 +3157,9 @@ MYSQL_RES* tc_exec_sql_by_server(
 	MYSQL_RES *res;
 	FOREIGN_SERVER *server;
 
-	init_sql_alloc(key_memory_nodes, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	MEM_ROOT_GUARD(mem_root);
+
 	server = get_server_by_name(&mem_root, server_name, NULL);
 	if (server == NULL)
 		return NULL;
@@ -3239,6 +3175,5 @@ MYSQL_RES* tc_exec_sql_by_server(
 	MYSQL_GUARD(mysql);
 	res = tc_exec_sql_with_result(mysql, exec_sql);
 
-	free_root(&mem_root, MYF(0));
 	return res;
 }

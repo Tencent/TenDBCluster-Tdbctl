@@ -26,7 +26,7 @@ static void protocol_store_field(Protocol *protocol, MYSQL_FIELD field, const ch
 		protocol->store(row, get_charset(field.charsetnr, MYF(MY_WME)));
 		break;
 	case MYSQL_TYPE_LONG:
-		protocol->store(atol(row));
+		protocol->store_long(atol(row));
 		break;
 	default:
 		protocol->store(row, get_charset(field.charsetnr, MYF(MY_WME)));

@@ -328,7 +328,7 @@ end:
   if (global_modify_server_version != 1 &&
 	  global_modify_server_version_old != global_modify_server_version)
   {
-	  Tdbctl_is_master = tc_is_master_tdbctl_node();
+	  tdbctl_is_primary = tc_is_primary_tdbctl_node();
 	  global_modify_server_version_old = global_modify_server_version;
   }
   delete_redundant_routings();
@@ -1309,24 +1309,21 @@ static string dump_servers_to_sql()
 		string ip_port;
 		string primary_host = "";
 		uint primary_port;
-		int	ret = tc_is_running_node(primary_host, &primary_port);
-		if (ret == 1)
-		{// mgr running on Single-Primary node, user primary member's connect info
+		int	ret = tc_get_primary_node(primary_host, &primary_port);
+		if (ret != -1)
+		{
 			ss.str("");
 			ss << primary_port;
 			ip_port = primary_host + "#" + ss.str();
 
 			if (tdbctl_sql_map.count(ip_port) == 1)
+				//add tdbctl insert sql
 				replace_sql_all += tdbctl_sql_map[ip_port];
 			else {
 				sql_print_warning("primary node not in mysql.servers, return null sql");
 				mysql_rwlock_unlock(&THR_LOCK_servers);
 				return "";
 			}
-		}
-		else if (ret == 2)
-		{// none mgr or mgr running on Multi-Primary node, always use first one(ordered)
-			replace_sql_all += tdbctl_sql_map.begin()->second;
 		}
 		else
 		{// unknown error, such as network partition.

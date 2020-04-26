@@ -6347,7 +6347,6 @@ tcadmin_execute_command(THD* thd)
     res = tc_process_all_result(thd, &parse_result, &exec_result);
   }
 
-		break;
 finish:
 
   /* Free tables. Set stage 'closing tables' */

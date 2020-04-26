@@ -516,7 +516,7 @@ bool table_definition_cache_specified= false;
 ulong locked_account_connection_count= 0;
 
 ulonglong denied_connections= 0;
-int32 Tdbctl_is_master = -1;
+int32 tdbctl_is_primary = -1;
 /**
   Limit of the total number of prepared statements in the server.
   Is necessary to protect the server against out-of-memory attacks.
@@ -7114,7 +7114,7 @@ SHOW_VAR status_vars[]= {
   {"Handler_savepoint_rollback",(char*) offsetof(STATUS_VAR, ha_savepoint_rollback_count), SHOW_LONGLONG_STATUS, SHOW_SCOPE_ALL},
   {"Handler_update",           (char*) offsetof(STATUS_VAR, ha_update_count),         SHOW_LONGLONG_STATUS,    SHOW_SCOPE_ALL},
   {"Handler_write",            (char*) offsetof(STATUS_VAR, ha_write_count),          SHOW_LONGLONG_STATUS,    SHOW_SCOPE_ALL},
-  {"Tdbctl_is_master",         (char*) &Tdbctl_is_master,                             SHOW_SIGNED_INT,         SHOW_SCOPE_GLOBAL },
+  {"Tdbctl_is_master",         (char*) &tdbctl_is_primary,                             SHOW_SIGNED_INT,         SHOW_SCOPE_GLOBAL },
   {"Key_blocks_not_flushed",   (char*) offsetof(KEY_CACHE, global_blocks_changed),    SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},
   {"Key_blocks_unused",        (char*) offsetof(KEY_CACHE, blocks_unused),            SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},
   {"Key_blocks_used",          (char*) offsetof(KEY_CACHE, blocks_used),              SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},

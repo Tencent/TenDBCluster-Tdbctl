@@ -24,9 +24,12 @@ using namespace std;
 //mysql_res guard to free mysql_result
 #define MYSQL_RES_GUARD(p) std::shared_ptr<MYSQL_RES> p##p(p, \
 [](MYSQL_RES *p) {mysql_free_result(p);});
+#define MEM_ROOT_GUARD(p) std::shared_ptr<MEM_ROOT> p##p(&p, \
+[](MEM_ROOT *p) {free_root(p, MYF(0));});
+
+
 
 void gettype_create_filed(Create_field *cr_field, String &res);
-bool get_createfield_default_value(Create_field *cr_field, String *def_value);
 void filed_add_zerofill_and_unsigned(String &res, bool unsigned_flag, bool zerofill);
 int parse_get_shard_key_for_spider(
     const char*		table_comment,
@@ -381,10 +384,9 @@ my_time_t string_to_timestamp(const string s);
 void init_result_map(map<string, tc_exec_info>& result_map, set<string> &ipport_set);
 void init_result_map2(map<string, tc_exec_info>& result_map, map<string, string> &ipport_map);
 
-unsigned int tc_is_running_node(char *host, ulong *port);
-int tc_is_master_tdbctl_node();
+uint tc_get_primary_node(std::string &host, uint *port);
+int tc_is_primary_tdbctl_node();
 string tc_get_variable_value(MYSQL *conn, const char *variable);
-uint tc_is_running_node(std::string &host, uint *port);
 map<string, MYSQL_RES*> tc_exec_sql_paral_by_wrapper(string exec_sql, string wrapper_name, bool with_slave);
 MYSQL_RES* tc_exec_sql_by_server(string exec_sql, const char *server_name);
 
