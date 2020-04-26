@@ -6312,6 +6312,9 @@ tcadmin_execute_command(THD* thd)
 		tc_show_processlist(thd, lex->verbose, lex->server_name);
 		break;
 	}
+	case TC_SQLCOM_SHOW_VARIABLES:
+		tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
+		break;
 	/* 5. other may be supported int the future */
 	case SQLCOM_UNLOCK_TABLES:
   case SQLCOM_LOCK_TABLES:
