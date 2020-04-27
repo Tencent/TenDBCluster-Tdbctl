@@ -2288,8 +2288,6 @@ tdbctl:
 	  |TDBCTL_SYM    MONITOR_SYM  INIT_SYM
           {
             Lex->sql_command = TC_SQLCOM_MONITOR_INIT;
-            Lex->sql_command = TC_SQLCOM_FLUSH_ROUTING;
-            Lex->do_grants = TRUE;
           }
         | TDBCTL_SYM CREATE NODE_SYM WRAPPER_SYM
           ident_or_text OPTIONS_SYM '(' server_options_list ')'

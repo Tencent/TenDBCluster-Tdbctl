@@ -437,7 +437,6 @@ my_bool sort_when_partition_prefix_order = TRUE;
 my_bool tc_partition_admin = TRUE;
 ulong tc_check_repair_routing_interval = 300;
 ulong tc_check_availability_interval = 10;
-ulong tc_check_availability_connect = 1800;
 ulong tc_partition_admin_interval = 86400;
 ulong tc_partition_admin_time = 3600;
 ulong tc_max_prepared_time = 60;
@@ -7116,7 +7115,7 @@ SHOW_VAR status_vars[]= {
   {"Handler_savepoint_rollback",(char*) offsetof(STATUS_VAR, ha_savepoint_rollback_count), SHOW_LONGLONG_STATUS, SHOW_SCOPE_ALL},
   {"Handler_update",           (char*) offsetof(STATUS_VAR, ha_update_count),         SHOW_LONGLONG_STATUS,    SHOW_SCOPE_ALL},
   {"Handler_write",            (char*) offsetof(STATUS_VAR, ha_write_count),          SHOW_LONGLONG_STATUS,    SHOW_SCOPE_ALL},
-  {"Tdbctl_is_master",         (char*) &tdbctl_is_primary,                             SHOW_SIGNED_INT,         SHOW_SCOPE_GLOBAL },
+  {"Tdbctl_is_primary",        (char*) &tdbctl_is_primary,                            SHOW_SIGNED_INT,         SHOW_SCOPE_GLOBAL },
   {"Key_blocks_not_flushed",   (char*) offsetof(KEY_CACHE, global_blocks_changed),    SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},
   {"Key_blocks_unused",        (char*) offsetof(KEY_CACHE, blocks_unused),            SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},
   {"Key_blocks_used",          (char*) offsetof(KEY_CACHE, blocks_used),              SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},

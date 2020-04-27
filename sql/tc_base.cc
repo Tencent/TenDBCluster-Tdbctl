@@ -2132,25 +2132,6 @@ set<string> get_spider_ipport_set(
     return ipport_set;
 }
 
-/*
-input: 
-       remote_ipport_map       server_name--->ipport
-output:
-       remote_server_name_map  ipport-------->server_name
-*/
-map<string, string>get_remote_server_name_map(
-	map<string, string> remote_ipport_map)
-{
-	map<string, string> remote_server_name_map;
-	map<string, string>::iterator its;
-	for (its = remote_ipport_map.begin(); its != remote_ipport_map.end(); its++)
-	{
-		string server_name = its->first;
-		string ipport = its->second;
-		remote_server_name_map.insert(pair<string, string>(ipport, server_name));
-	}
-	return remote_server_name_map;
-}
 
 map<string, string> get_remote_ipport_map(
   MEM_ROOT* mem, 
@@ -2215,6 +2196,85 @@ map<string, string> get_server_name_map(
   }
 
   return server_name_map;
+}
+
+/*
+output:
+server_uuid_map  server_uuid-------->server_name
+*/
+map<string, string> get_server_uuid_map(
+	int &ret,
+	MEM_ROOT *mem,
+	const char* wrapper,
+	bool with_slave
+)
+{
+	ret = 0;
+	MYSQL_RES* res;
+	MYSQL_ROW row = NULL;
+	map<string, string> server_uuid_map;
+	FOREIGN_SERVER *server;
+	list<FOREIGN_SERVER*> server_list;
+	get_server_by_wrapper(server_list, mem, wrapper, with_slave);
+	list<FOREIGN_SERVER*>::iterator its;
+	MYSQL *conn = NULL;
+	string sql = "show variables like  'server_uuid'";
+	string uuid;
+	for (its = server_list.begin(); its != server_list.end(); its++)
+	{
+		server = *its;
+		string host = server->host;
+		long port = server->port;
+		string server_name = server->server_name;
+		string user = server->username;
+		string passwd = server->password;
+		string address = host + "#" + to_string(port);
+		conn = tc_conn_connect(address, user, passwd);
+		if (conn == NULL) {
+			ret = 1;
+			my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
+			goto finish;
+		}
+		MYSQL_GUARD(conn);
+		res = tc_exec_sql_with_result(conn, sql);
+		if (res && (row = mysql_fetch_row(res)))
+		{
+			uuid = row[1];
+		}
+		else
+		{
+			ret = 1;
+			goto finish;
+		}
+		server_uuid_map.insert(pair<string, string>(uuid, server_name));
+	}
+finish:
+	return server_uuid_map;
+}
+
+string tc_get_server_name(
+	int &ret,
+	MEM_ROOT *mem,
+	const char* wrapper,
+	bool with_slave) 
+{
+	ret = 0;
+	string server_name;
+	map<string, string> tdbctl_server_uuid_map = get_server_uuid_map(ret, mem, TDBCTL_WRAPPER, with_slave);
+	if (ret)
+	{
+		goto finish;
+	}
+	server_name = tdbctl_server_uuid_map[server_uuid];
+	if (server_name.size() == 0) 
+	{
+		ret = 1;
+		goto finish;
+	}
+	return server_name;
+finish:
+	tdbctl_server_uuid_map.clear();
+	return server_name;
 }
 
 MYSQL* tc_conn_connect(string ipport, string user, string passwd)
@@ -2990,9 +3050,6 @@ uint tc_get_primary_node(std::string &host, uint *port)
 
 
 /*
-  host: primary host
-  port: primary port
-
   return value:
     -1, error
     0, not primary node

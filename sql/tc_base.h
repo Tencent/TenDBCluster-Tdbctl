@@ -18,6 +18,9 @@ using namespace std;
 #define TDBCTL_WRAPPER "TDBCTL"
 #define NULL_WRAPPER ""
 
+//value of server_name in cluster_monitor.cluster_heartbeat
+#define CLUSTER_FLAG "cluster"
+
 //mysql guard to free mysql connection
 #define MYSQL_GUARD(p) std::shared_ptr<MYSQL> p##p(p, \
 [](MYSQL *p) {mysql_close(p);});
@@ -25,11 +28,7 @@ using namespace std;
 #define MYSQL_RES_GUARD(p) std::shared_ptr<MYSQL_RES> p##p(p, \
 [](MYSQL_RES *p) {mysql_free_result(p);});
 #define MEM_ROOT_GUARD(p) std::shared_ptr<MEM_ROOT> p##p(&p, \
-[](MEM_ROOT *p) {free_root(p, MYF(0));});
-
-
-
-void gettype_create_filed(Create_field *cr_field, String &res);
+[](MEM_ROOT *p) {free_root(p, MYF(0));});void gettype_create_filed(Create_field *cr_field, String &res);
 void filed_add_zerofill_and_unsigned(String &res, bool unsigned_flag, bool zerofill);
 int parse_get_shard_key_for_spider(
     const char*		table_comment,
@@ -322,8 +321,6 @@ map<string, string> get_tdbctl_ipport_map(
 	map<string, string> &tdbctl_passwd_map
 );
 
-map<string, string>get_remote_server_name_map(
-	map<string, string> remote_ipport_map);
 
 bool tc_conn_free( map<string, MYSQL*> &conn_map);
 int tc_mysql_next_result(MYSQL* mysql);
@@ -351,6 +348,17 @@ bool tc_exec_sql_paral_with_result(
   map<string, string>& user_map,
   map<string, string>& passwd_map,
   bool error_retry);
+map<string, string> get_server_uuid_map(
+	int &ret,
+	MEM_ROOT *mem,
+	const char* wrapper,
+	bool with_slave
+);
+string tc_get_server_name(
+	int &ret,
+	MEM_ROOT *mem,
+	const char* wrapper,
+	bool with_slave);
 
 
 string tc_get_spider_grant_sql(
@@ -384,8 +392,6 @@ my_time_t string_to_timestamp(const string s);
 void init_result_map(map<string, tc_exec_info>& result_map, set<string> &ipport_set);
 void init_result_map2(map<string, tc_exec_info>& result_map, map<string, string> &ipport_map);
 
-uint tc_get_primary_node(std::string &host, uint *port);
-int tc_is_primary_tdbctl_node();
 string tc_get_variable_value(MYSQL *conn, const char *variable);
 map<string, MYSQL_RES*> tc_exec_sql_paral_by_wrapper(string exec_sql, string wrapper_name, bool with_slave);
 MYSQL_RES* tc_exec_sql_by_server(string exec_sql, const char *server_name);
@@ -402,4 +408,6 @@ enum_ident_wrapper_check tc_check_wrapper_name(LEX_STRING *org_name);
 extern char *report_host;
 extern uint report_port;
 
+int tc_is_primary_tdbctl_node();
+uint tc_get_primary_node(std::string &host, uint *port);
 #endif /* TC_BASE_INCLUDED */

@@ -6354,13 +6354,7 @@ static Sys_var_ulong Sys_tc_check_availability_interval(
 	"tc_check_availability_interval",
 	"The interval time of  check the availability of the cluster",
 	GLOBAL_VAR(tc_check_availability_interval), CMD_LINE(REQUIRED_ARG),
-	VALID_RANGE(0, 65535), DEFAULT(10), BLOCK_SIZE(1));
-
-static Sys_var_ulong Sys_tc_check_availability_connect(
-	"tc_check_availability_connect",
-	"The time of  check the availability connect",
-	GLOBAL_VAR(tc_check_availability_connect), CMD_LINE(REQUIRED_ARG),
-	VALID_RANGE(0, 65535), DEFAULT(1800), BLOCK_SIZE(1));
+	VALID_RANGE(3, 65535), DEFAULT(10), BLOCK_SIZE(1));
 
 static Sys_var_mybool Sys_tc_check_repair_trans(
   "tc_check_repair_trans",
