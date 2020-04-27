@@ -8670,6 +8670,9 @@ bool xlock_dbtb_name(THD* thd, const char* db_name, const char* tb_name)
 
 /*
 lock MDL_STATEMENT by string
+
+  @retval FALSE  Success
+  @retval TRUE   Failure
 */
 bool lock_statement_by_name(THD* thd, const char* lock_name, enum_mdl_type lock_type)
 {

@@ -1905,6 +1905,8 @@ int tc_check_and_repair_routing()
 {
   int ret = 0;
   int result = 0;
+	THD *thd;
+	bool locked = false;
   map<string, MYSQL*> spider_conn_map;
   map<string, string> spider_user_map;
   map<string, string> spider_passwd_map;
@@ -1918,11 +1920,17 @@ int tc_check_and_repair_routing()
   FOREIGN_SERVER* server;
   list<FOREIGN_SERVER*> all_list;
   ulong records;
-  MEM_ROOT mem_root;
   tc_exec_info exec_info;
-  init_sql_alloc(key_memory_servers, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-  set<string>  spider_ipport_set = get_spider_ipport_set(
-                                      &mem_root, 
+	set<string>  spider_ipport_set;
+
+  if (!(thd = new THD))
+	{
+		result = 1;
+		goto finish;
+	}
+
+  spider_ipport_set = get_spider_ipport_set(
+                                      thd->mem_root,
                                       spider_user_map, 
                                       spider_passwd_map,
                                       FALSE);
@@ -1933,7 +1941,7 @@ int tc_check_and_repair_routing()
   {
     if ((server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
     {
-      FOREIGN_SERVER* cur_server = clone_server(&mem_root, server, NULL);
+      FOREIGN_SERVER* cur_server = clone_server(thd->mem_root, server, NULL);
       all_list.push_back(cur_server);
     }
   }
@@ -1979,7 +1987,7 @@ int tc_check_and_repair_routing()
         tmp_server.socket = row[6];
         tmp_server.scheme = row[7];
         tmp_server.owner = row[8];
-        cur_server = clone_server(&mem_root, &tmp_server, NULL);
+        cur_server = clone_server(thd->mem_root, &tmp_server, NULL);
         li.push_back(cur_server);
       }
       li.sort(server_compare);
@@ -1989,6 +1997,13 @@ int tc_check_and_repair_routing()
           "ipport is %s, routing mismatch\n",
           l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, 
           l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+				if (!locked)
+				{
+					if (lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
+						fprintf(stderr, "lock for repair routing timeout\n");
+					else
+						locked = true;
+				}
         if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
         {
           fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
@@ -2041,7 +2056,7 @@ finish:
   spider_user_map.clear();
   spider_passwd_map.clear();
   all_list.clear();
-  free_root(&mem_root, MYF(0));
+	delete thd;
   return result;
 }
 
