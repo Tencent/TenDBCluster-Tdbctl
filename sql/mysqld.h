@@ -183,6 +183,7 @@ extern my_bool tc_partition_admin;
 extern ulong tc_check_repair_routing_interval;
 extern ulong tc_check_availability_interval;
 extern ulong tc_partition_admin_interval;
+extern ulong tc_partition_init_interval;
 extern ulong tc_partition_admin_time;
 extern ulong tc_max_prepared_time;
 extern my_bool opt_old_style_user_limits, trust_function_creators;

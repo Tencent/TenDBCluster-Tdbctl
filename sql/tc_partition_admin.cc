@@ -28,7 +28,14 @@ void create_partition_admin_thread()
 	t.detach();
 }
 
-int tc_partition_admin_worker()
+
+/**
+ADMIN partition for remote
+
+@input
+    step   0 for init ,1 for init ,add and delete
+*/
+int tc_partition_admin_worker(int step)
 {
 	int ret = 0;
 	int result = 0;
@@ -66,7 +73,10 @@ int tc_partition_admin_worker()
 		remote_user_map, remote_passwd_map);
 	remote_server_name_map = get_server_name_map(&mem_root, MYSQL_WRAPPER, false);
 	tc_remote_admin_partition(tdbctl_primary_conn, remote_conn_map, remote_server_name_map, 0);
-	tc_remote_admin_partition(tdbctl_primary_conn, remote_conn_map, remote_server_name_map, 1);
+	if (step)
+	{
+		tc_remote_admin_partition(tdbctl_primary_conn, remote_conn_map, remote_server_name_map, 1);
+	}
 finish:
 	tc_conn_free(remote_conn_map);
 	if (tdbctl_primary_conn)
@@ -91,10 +101,10 @@ finish:
 
 
 /*
- admin partition for remote from  cluster_admin.tc_partiton_admin_config
+ ADMIN partition for remote from  cluster_admin.tc_partiton_admin_config
 
  input:
-      tdbctl_primary_conn    : conn of the primary tdbctl
+      tdbctl_primary_conn    : conn of the primary TDBCTL
 	  remote_conn_map        : ip#port-->MYSQL*
 	  remote_server_name_map : ip#port-->server_name
       step                   : 0 for init ,1 for add and delete
@@ -114,7 +124,7 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 	regex pattern(tdbctl_mysql_wrapper_prefix);	
 
 	/*
-	init for update sql in tdbctl
+	init for update SQL in TDBCTL
 	*/
 	string update_sql_cur = "update cluster_admin.tc_partiton_admin_config set "
 		" is_partitioned = 1 where db_name =";
@@ -128,7 +138,7 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 	if (step == 0)
 	{
 		/*
-		init for get  unpartitioned sql in remote for
+		init for get  unpartitioned SQL in remote for
 		init partition 
 		*/
 		get_partition_sql = "select db_name, "
@@ -138,7 +148,7 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 	else if (step == 1)
 	{
 		/*
-		init for get  unpartitioned sql in remote for
+		init for get  unpartitioned SQL in remote for
 		add delete partition
 		*/
 		get_partition_sql = "select db_name, "
@@ -200,7 +210,7 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 			if (result ==0 && step==0)
 			{
 				/*
-				init for update config sql in tdbctl
+				init for update config SQL in TDBCTL
 				*/
 				update_config_sql = update_sql_cur + quotation + db_name + quotation + " and tb_name= "
 					+ quotation + tb_name + quotation;
@@ -261,8 +271,7 @@ PARTITION_ALGORITHM_TYPE get_partition_algorithm_type(string remote_hash_algorit
 	return partition_type;
 }
 
-int get_min_partition(MYSQL* mysql, string remote_db, string tb_name, string& min_partition,
-	tc_exec_info* exec_info) 
+int get_min_partition(MYSQL* mysql, string remote_db, string tb_name, string& min_partition) 
 {
 	int result = 0;
 	string quotation = "\"";
@@ -283,40 +292,13 @@ int get_min_partition(MYSQL* mysql, string remote_db, string tb_name, string& mi
 	else
 	{
 		result = 2;
-		tc_exec_sql_without_result(mysql, get_min_partition_sql, exec_info);
 	}
 	return result;
 }
 
-int get_max_partition(MYSQL* mysql, string remote_db, string tb_name, string& max_partition,
-	tc_exec_info* exec_info)
-{
-	int result = 0;
-	string quotation = "\"";
-	//init for select  max partition sql
-	string get_max_partition_sql = "select max(PARTITION_DESCRIPTION) "
-		" from information_schema.PARTITIONS where TABLE_SCHEMA=";
-	get_max_partition_sql += quotation + remote_db + quotation;
-	get_max_partition_sql += " and TABLE_NAME= " + quotation + tb_name + quotation;
-	get_max_partition_sql += " and PARTITION_NAME is NOT NULL and PARTITION_EXPRESSION is "
-		" NOT NULL order by PARTITION_DESCRIPTION";
-
-	MYSQL_RES* res = tc_exec_sql_with_result(mysql, get_max_partition_sql);
-	MYSQL_ROW row = NULL;
-	if (res && (row = mysql_fetch_row(res)))
-	{
-		max_partition = row[1];
-	}
-	else
-	{
-		result = 2;
-		tc_exec_sql_without_result(mysql, get_max_partition_sql, exec_info);
-	}
-	return result;
-}
 
 int get_min_max_partition(MYSQL* mysql, string remote_db, string tb_name, string& min_partition,
-	string& max_partition, tc_exec_info* exec_info)
+	string& max_partition) 
 {
 	int result = 0;
 	string quotation = "\"";
@@ -338,7 +320,6 @@ int get_min_max_partition(MYSQL* mysql, string remote_db, string tb_name, string
 	else
 	{
 		result = 2;
-		tc_exec_sql_without_result(mysql, get_min_max_partition_sql, exec_info);
 	}
 	return result;
 }
@@ -370,7 +351,7 @@ int get_time_diff(string str)
 	tm_new.tm_sec = 0;
 	timer_new = mktime(&tm_new);
 
-	//get time diff
+	//get time_diff
 	double diff_t = difftime(to_tm_time, timer_new);
 	int t1 = static_cast<int>(diff_t / TERM);
 	t1 = abs(t1);
@@ -390,12 +371,12 @@ int tc_remote_add_del_partition(MYSQL* mysql, MYSQL* tdbctl_primary_conn,
 	tc_exec_info exec_info;
 	stringstream ss;
 
-	//init for admin  partition
+	//init for ADMIN  partition
 	string min_partition = "";
 	string max_partition = "";
 	string add_partition_sql = "";
 	string del_partition_sql = "";
-	//init for log sql
+	//init for log SQL
 	string quotation = "\"";
 	string error_code = "0";
 	string message = "";
@@ -422,7 +403,7 @@ int tc_remote_add_del_partition(MYSQL* mysql, MYSQL* tdbctl_primary_conn,
 		result = 2;
 		goto finish;
 	}
-	if (get_min_max_partition(mysql, remote_db, tb_name, min_partition, max_partition, &exec_info))
+	if (get_min_max_partition(mysql, remote_db, tb_name, min_partition, max_partition))
 	{
 		ss.str("");
 		ss << exec_info.err_code;
@@ -439,8 +420,9 @@ int tc_remote_add_del_partition(MYSQL* mysql, MYSQL* tdbctl_primary_conn,
 	inter_max = get_time_diff(max_partition);
 	if (inter_max <= 40)
 	{
-		add_partition_sql = tc_create_add_partition_sql(remote_db, tb_name, db_partition_columnname,
-			partition_column_type, interval_time, remote_hash_algorithm, max_partition);
+		add_partition_sql = tc_create_add_partition_sql(remote_db, tb_name, 
+			db_partition_columnname, partition_column_type, interval_time,
+			remote_hash_algorithm, max_partition);
 		if (tc_exec_sql_without_result(mysql, add_partition_sql, &exec_info))
 		{
 			result = 2;
@@ -464,12 +446,13 @@ int tc_remote_add_del_partition(MYSQL* mysql, MYSQL* tdbctl_primary_conn,
 		}
 		del_total = del_total - 3 > 0 ? 3 : del_total;
 		while (del_total>0) {
-			if(tc_create_del_partition_sql(mysql, remote_db, tb_name, db_partition_columnname, partition_column_type,
-				interval_time, remote_hash_algorithm, &exec_info, del_partition_sql))
+			if(tc_create_del_partition_sql(mysql, remote_db, tb_name,
+				db_partition_columnname, partition_column_type,
+				interval_time, remote_hash_algorithm, del_partition_sql))
 			{
-				exec_info.err_code = 0;
-				exec_info.row_affect = 0;
-				exec_info.err_msg = "";
+				error_code = 1;
+				message = "fail to get min from information_schema.PARTITIONS";
+				result = 2;
 				goto finish;
 			}
 			retry = 3;
@@ -501,8 +484,8 @@ int tc_remote_add_del_partition(MYSQL* mysql, MYSQL* tdbctl_primary_conn,
 	}
 
 finish:
-	if (tc_partiton_log(tdbctl_primary_conn, &exec_info, remote_db, tb_name, server_name,
-		ipport, error_code, message))
+	if (tc_partiton_log(tdbctl_primary_conn, &exec_info, remote_db, tb_name,
+		server_name, ipport, error_code, message))
 	{
 		result = 2;
 		exec_info.err_code = 0;
@@ -565,10 +548,11 @@ void get_new_time(string str, int i, int interval, struct tm* l_time)
 }
 
 /*
-init sql for add partition
+init SQL for add partition
 */
-string tc_create_add_partition_sql(string remote_db, string tb_name, string db_partition_columnname,
-	string partition_column_type, int interval_time, string remote_hash_algorithm, string max_partition) 
+string tc_create_add_partition_sql(string remote_db, string tb_name,
+	string db_partition_columnname, string partition_column_type,
+	int interval_time, string remote_hash_algorithm, string max_partition) 
 {
 	string alter_sql = "alter table " + remote_db + "." + tb_name + " add partition(";
 	string partition_sql = " partition by " + remote_hash_algorithm;
@@ -636,27 +620,28 @@ string tc_create_add_partition_sql(string remote_db, string tb_name, string db_p
 /*
 init sql for delete partition
 */
-int tc_create_del_partition_sql(MYSQL* mysql, string remote_db, string tb_name, string db_partition_columnname,
-	string partition_column_type, int interval_time, string remote_hash_algorithm, tc_exec_info* exec_info,
-	string& del_sql)
+int tc_create_del_partition_sql(MYSQL* mysql, string remote_db, string tb_name,
+	string db_partition_columnname, string partition_column_type,
+	int interval_time, string remote_hash_algorithm, string& del_sql)
 {
 	int result = 0;
 	string quotation = "\"";
 	string min_partition = "";
-	if (get_min_partition(mysql, remote_db, tb_name, min_partition, exec_info))
+	if (get_min_partition(mysql, remote_db, tb_name, min_partition))
 	{
 		result = 2;
+		return result;
 	}
 	min_partition=get_time_string(min_partition);
 	del_sql = "alter table ";
 	del_sql += remote_db + "." + tb_name;
 	del_sql += " drop partition p"+ min_partition;
-
 	return result;
 }
 
-int tc_partiton_log(MYSQL* tdbctl_primary_conn, tc_exec_info* exec_info, string db, string tb_name,
-	string server_name, string ipport, string error_code, string message) 
+int tc_partiton_log(MYSQL* tdbctl_primary_conn, tc_exec_info* exec_info,
+	string db, string tb_name, string server_name, string ipport,
+	string error_code, string message) 
 {
 	int result = 0;
 	time_t to_tm_time = (time_t)time((time_t*)0);
@@ -723,8 +708,8 @@ int tc_remote_new_partition(MYSQL* mysql, MYSQL* tdbctl_primary_conn,
 		goto finish;
 	}
 
-	alter_sql = tc_create_alter_sql(remote_db, tb_name, partition_column_type, interval_time, 
-		remote_hash_algorithm, db_partition_columnname);
+	alter_sql = tc_create_alter_sql(remote_db, tb_name, partition_column_type,
+		interval_time, remote_hash_algorithm, db_partition_columnname);
 	if (tc_exec_sql_without_result(mysql, alter_sql, &exec_info))
 	{
 		result = 2;
@@ -739,8 +724,8 @@ int tc_remote_new_partition(MYSQL* mysql, MYSQL* tdbctl_primary_conn,
 	}
 
 finish:
-	if (tc_partiton_log(tdbctl_primary_conn,&exec_info, remote_db, tb_name, server_name,
-		ipport, error_code, message))
+	if (tc_partiton_log(tdbctl_primary_conn,&exec_info, remote_db, tb_name,
+		server_name, ipport, error_code, message))
 	{
 		result = 2;
 		exec_info.err_code = 0;
@@ -753,8 +738,9 @@ finish:
 /*
 init sql for new partition
 */
-string tc_create_alter_sql(string remote_db, string tb_name, string partition_column_type, 
-	int interval_time, string remote_hash_algorithm, string  db_partition_columnname)
+string tc_create_alter_sql(string remote_db, string tb_name,
+	string partition_column_type, int interval_time,
+	string remote_hash_algorithm, string  db_partition_columnname)
 {
 	string alter_sql = "";
 	string partition_sql = " partition by " + remote_hash_algorithm;
@@ -874,7 +860,7 @@ bool get_time_flag()
 }
 
 /*
-admin partition for remote
+ADMIN partition for remote
 1.read config table
 2.if no partition,init partition
 3.if multi-partition , add and delete partition
@@ -891,13 +877,21 @@ void tc_partition_admin_thread()
 			for (ulong i = 0; i <= tc_partition_admin_interval; ++i)
 			{
 				/*
-				do tc_partition_admin_worker if current time equals to  tc_partition_admin_time
+				init partition when wait time to tc_partition_init_interval
+				*/
+				if (i == tc_partition_init_interval) 
+				{
+					//init partition for cluster
+					tc_partition_admin_worker(0);
+				}
+				/*
+				init ,add or delete partition  if current time equals to  tc_partition_admin_time
 				or wait time to tc_partition_admin_interval
 				*/
 				if (i == tc_partition_admin_interval || get_time_flag())
 				{
-					//admin partition for cluster
-					tc_partition_admin_worker();
+					//ADMIN partition for cluster
+					tc_partition_admin_worker(1);
 					i = 0;
 				}
 				sleep(1);

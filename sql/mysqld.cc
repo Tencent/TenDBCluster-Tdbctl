@@ -439,6 +439,7 @@ ulong tc_check_repair_routing_interval = 300;
 ulong tc_check_availability_interval = 10;
 ulong tc_partition_admin_interval = 86400;
 ulong tc_partition_admin_time = 3600;
+ulong tc_partition_init_interval = 300;
 ulong tc_max_prepared_time = 60;
 ulong opt_binlog_rows_event_max_size;
 const char *binlog_checksum_default= "NONE";

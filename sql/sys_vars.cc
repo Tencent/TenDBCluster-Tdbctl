@@ -6425,7 +6425,13 @@ static Sys_var_ulong Sys_tc_partition_admin_interval(
 	"tc_partition_admin_interval",
 	"The interval time of  admin partition of the cluster",
 	GLOBAL_VAR(tc_partition_admin_interval), CMD_LINE(REQUIRED_ARG),
-	VALID_RANGE(0, 86400), DEFAULT(86400), BLOCK_SIZE(1));
+	VALID_RANGE(3600, 30*86400), DEFAULT(86400), BLOCK_SIZE(1));
+
+static Sys_var_ulong Sys_tc_partition_init_interval(
+	"tc_partition_init_interval",
+	"The interval time of  init partition of the cluster",
+	GLOBAL_VAR(tc_partition_init_interval), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(100, 86400), DEFAULT(300), BLOCK_SIZE(1));
 
 static Sys_var_ulong Sys_tc_partition_admin_time(
 	"tc_partition_admin_time",
