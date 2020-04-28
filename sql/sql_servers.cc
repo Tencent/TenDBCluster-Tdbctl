@@ -1760,7 +1760,9 @@ bool tc_flush_routing(LEX* lex)
   while (retry_times-- > 0)
   {
     int exec_ret = 0;
-		if (lex->do_grants && tc_do_grants_internal()) {
+		if (tc_enable_internal_grant &&
+			  lex->do_grants &&
+			  tc_do_grants_internal()) {
 			sleep(2);
 			continue;
 		}

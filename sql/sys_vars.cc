@@ -6397,6 +6397,18 @@ static Sys_var_mybool Sys_tc_set_changed_node_read_only(
   GLOBAL_VAR(tc_set_changed_node_read_only), CMD_LINE(OPT_ARG),
   DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_tc_enable_internal_dump(
+  "tc_enable_internal_dump",
+  "If ON, when a new spider node added to cluster, an internal dump will active for schema restore",
+  GLOBAL_VAR(tc_enable_internal_dump), CMD_LINE(OPT_ARG),
+  DEFAULT(TRUE));
+
+static Sys_var_mybool Sys_tc_enable_internal_grant(
+  "tc_enable_internal_grant",
+  "If ON, when a new spider node added to cluster, an internal GRANT will active for cluster privileges",
+  GLOBAL_VAR(tc_enable_internal_grant), CMD_LINE(OPT_ARG),
+  DEFAULT(TRUE));
+
 static Sys_var_mybool Sys_sort_when_partition_prefix_order(
   "sort_when_partition_prefix_order",
   " using file sort when query with partition table + prefix index + order by ",
