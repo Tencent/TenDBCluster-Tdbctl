@@ -5326,6 +5326,9 @@ end_with_restore_list:
 				goto error;
 			}
 
+			if (!tc_enable_internal_dump)
+				break;
+
 			if (tc_dump_node_schema(
 				server_list.front()->host,
 				server_list.front()->port,
@@ -5355,7 +5358,8 @@ end_with_restore_list:
 			FOREIGN_SERVER *server =
 				get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
 			//at present, only spider node need to dump/restore, other WRAPPER not support.
-			if (server && (strcasecmp(server->scheme, SPIDER_WRAPPER) == 0 ||
+			if (tc_enable_internal_dump && server &&
+				(strcasecmp(server->scheme, SPIDER_WRAPPER) == 0 ||
 				strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) == 0))
 			{
 				Server_options options = lex->server_options;
@@ -6184,6 +6188,9 @@ tcadmin_execute_command(THD* thd)
 				goto finish;
 			}
 
+      if (!tc_enable_internal_dump)
+			  break;
+
 			if (tc_dump_node_schema(
 				server_list.front()->host,
 				server_list.front()->port,
@@ -6216,7 +6223,8 @@ tcadmin_execute_command(THD* thd)
 			/* At present, only spider node need to dump/restore schema, other WRAPPER not support.
 			Anytime if tdbctl need to support, configure replication also need after schema restored.
 			*/
-			if (server && (strcasecmp(server->scheme, SPIDER_WRAPPER) == 0 ||
+			if (tc_enable_internal_dump && server &&
+				(strcasecmp(server->scheme, SPIDER_WRAPPER) == 0 ||
 				strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) == 0))
 			{
 				Server_options options = lex->server_options;
@@ -8670,6 +8678,9 @@ bool xlock_dbtb_name(THD* thd, const char* db_name, const char* tb_name)
 
 /*
 lock MDL_STATEMENT by string
+
+  @retval FALSE  Success
+  @retval TRUE   Failure
 */
 bool lock_statement_by_name(THD* thd, const char* lock_name, enum_mdl_type lock_type)
 {

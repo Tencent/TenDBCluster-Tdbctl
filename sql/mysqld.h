@@ -175,6 +175,8 @@ extern my_bool sp_automatic_privileges, opt_noacl;
 extern my_bool tc_check_repair_routing;
 extern my_bool tc_check_repair_trans;
 extern my_bool tc_set_changed_node_read_only;
+extern my_bool tc_enable_internal_dump;
+extern my_bool tc_enable_internal_grant;
 extern my_bool tc_check_availability;
 extern my_bool sort_when_partition_prefix_order;
 extern my_bool tc_partition_admin;
