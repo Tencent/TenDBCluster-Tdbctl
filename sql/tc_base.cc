@@ -2171,7 +2171,12 @@ map<string, string> get_remote_ipport_map(
 }
 
 /*
-get map for ipport->server_name
+  get map for ipport->server_name
+
+  @retval
+  map for result
+  key:   ipport
+  value: server_name
 */
 map<string, string> get_server_name_map(
 	MEM_ROOT *mem,
@@ -2199,8 +2204,12 @@ map<string, string> get_server_name_map(
 }
 
 /*
-output:
-server_uuid_map  server_uuid-------->server_name
+  get map for server_uuid->server_name
+
+  @retval
+  map for result
+  key:   server_uuid
+  value: server_name
 */
 map<string, string> get_server_uuid_map(
 	int &ret,
@@ -2252,6 +2261,16 @@ finish:
 	return server_uuid_map;
 }
 
+
+/*
+  get server_name of current TDBCTL node
+
+  @param (out)
+  ret: 0 for ok, 1 for error
+
+  @retval
+  server_name  of current TDBCTL node
+*/
 string tc_get_server_name(
 	int &ret,
 	MEM_ROOT *mem,
@@ -2319,8 +2338,21 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 }
 
 /*
-get tdbctl's ipport map
-server_name->ip#port->user, server_name->ip#port->passwd
+  get map for  server_name->ipport
+
+  @param (out)
+  tdbctl_user_map: 
+    key:   ip#port
+	value: username
+
+  tdbctl_passwd_map
+    key:   ip#port
+	value: password
+
+  @retval
+	map for result
+	key:   server_name
+	value: ip#port
 */
 map<string, string> get_tdbctl_ipport_map(
 	MEM_ROOT* mem,
@@ -2501,7 +2533,7 @@ MYSQL *tc_tdbctl_conn_primary(
   if (tdbctl_ipport_map.empty())
   {
     ret = 1;
-    sql_print_warning("tc connect to primary node failed: map is empty");
+    sql_print_warning("tc connect to primary node failed: no tdbctl in mysql.servers");
     return NULL;
   }
 
