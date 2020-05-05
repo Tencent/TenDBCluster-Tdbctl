@@ -3802,15 +3802,15 @@ end_with_restore_list:
         thd->security_context()->priv_user().str),
       lex->verbose);
     break;
-	case TC_SQLCOM_SHOW_PROCESSLIST:
+  case TC_SQLCOM_SHOW_PROCESSLIST:
     if (!thd->security_context()->priv_user().str[0] &&
         check_global_access(thd,PROCESS_ACL))
       break;
-		tc_show_processlist(thd, lex->verbose, lex->server_name);
+    tc_show_processlist(thd, lex->verbose, lex->server_name);
     break;
-	case TC_SQLCOM_SHOW_VARIABLES:
-		tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
-		break;
+  case TC_SQLCOM_SHOW_VARIABLES:
+    tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
+    break;
   case SQLCOM_SHOW_PRIVILEGES:
     res= mysqld_show_privileges(thd);
     break;
@@ -5237,209 +5237,211 @@ end_with_restore_list:
       my_ok(thd);
     break;
   }
-	case TC_SQLCOM_CREATE_NODE:
+  case TC_SQLCOM_CREATE_NODE:
   case TC_SQLCOM_ALTER_NODE:
-	case TC_SQLCOM_DROP_NODE:
+  case TC_SQLCOM_DROP_NODE:
   case TC_SQLCOM_FLUSH_ROUTING:
   {
-		/*
-		NB: use server_uuid as lock string here
-		we add x lock to block any DDL or flush command
-		*/
-		if (res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
-		{
+    /*
+      NB: use server_uuid as lock string here
+      we add x lock to block any DDL or flush command
+    */
+    if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE)))
+    {
       my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "lock wait timeout");
-			goto error;
-		}
+      goto error;
+    }
 
-		/* always do reload first */
-		if (servers_reload(thd))
-		{
-			my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "reload server failed");
-			goto error;
-		}
+    /* always do reload first */
+    if (servers_reload(thd))
+    {
+      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "reload server failed");
+      goto error;
+    }
 
-		switch (lex->sql_command) {
-		case TC_SQLCOM_CREATE_NODE:
-		{
-			string server_name, add_address;
-			list<FOREIGN_SERVER*> server_list;
-			char path[FN_REFLEN + 1];
-			char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
-			my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
-				tmp_file_prefix, current_thd->query_start(), current_pid,
-				thd->thread_id());
+    switch (lex->sql_command) {
+    case TC_SQLCOM_CREATE_NODE:
+    {
+      string server_name, add_address;
+      list<FOREIGN_SERVER*> server_list;
+      char path[FN_REFLEN + 1];
+      char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
+      my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
+          tmp_file_prefix, current_thd->query_start(), current_pid,
+          thd->thread_id());
 
-			DBUG_ASSERT(lex->m_sql_cmd != NULL);
-			if (!(lex->server_options.get_host() &&
-				lex->server_options.get_port() &&
-				lex->server_options.get_username() &&
-				lex->server_options.get_password()))
-			{
-				my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "USER, PASSWORD, HOST, PORT options must be specify");
-				goto error;
-			}
+      DBUG_ASSERT(lex->m_sql_cmd != NULL);
+      if (!(lex->server_options.get_host() &&
+        lex->server_options.get_port() &&
+        lex->server_options.get_username() &&
+        lex->server_options.get_password()))
+      {
+        my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "USER, PASSWORD, HOST, PORT options must be specify");
+        goto error;
+      }
 
-			/* get an unique server_name by wrapper */
-			server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme(), TRUE);
-			DBUG_ASSERT(server_name.length() != 0);
-			lex->server_options.m_server_name.length = server_name.length();
-			lex->server_options.m_server_name.str =
-				strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
+      /* get an unique server_name by wrapper */
+      server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme(), TRUE);
+      DBUG_ASSERT(server_name.length() != 0);
+      lex->server_options.m_server_name.length = server_name.length();
+      lex->server_options.m_server_name.str =
+          strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
 
-			/* add tdbctl/remote node, only need to do create server command */
-			if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 ||
-				strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0)
-				break;
+      /* add tdbctl/remote node, only need to do create server command */
+      if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 ||
+          strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0)
+        break;
 
-			// for create spider node logic blow
-			DBUG_ASSERT((
-				(strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
-				(strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)));
+      // for create spider node logic blow
+      DBUG_ASSERT((
+        (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
+        (strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)));
 
-			/* get spider_list from mysql.servers, exclude slave spiders
-				 avoid to use slave spider's schema, maybe not consistent with master ?
-			*/
-			get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
-			if (server_list.empty())
-				// first spider node, no need to dump/restore schema, only add to mysql.servers
-				break;
+      /*
+       get spider_list from mysql.servers, exclude slave spiders
+       avoid to use slave spider's schema, maybe not consistent with master ?
+      */
+      get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
+      if (server_list.empty())
+        // first spider node, no need to dump/restore schema, only add to mysql.servers
+        break;
 
-			/* dump spider's schema from first spider(master) node.
-				 must exclude itself
-				 TODO: new add spider node's ip#port must not exists in mysql.servers;
-			*/
-			DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
-				server_list.front()->port != lex->server_options.get_port());
+      /*
+        dump spider's schema from first spider(master) node.
+        must exclude itself
+        TODO: new add spider node's ip#port must not exists in mysql.servers;
+      */
+      DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
+          server_list.front()->port != lex->server_options.get_port());
 
-			add_address = string(lex->server_options.get_host()) + "#" +
-				to_string(lex->server_options.get_port());
-			/* create spider node must node exist in mysql.servers. */
-			if (std::find_if_not(server_list.begin(), server_list.end(),
-				[&](FOREIGN_SERVER *server) -> bool {
-				string current_address = string(server->host) + "#" + to_string(server->port);
-				//at present, only consider SPIDER(master) wrapper.
-				DBUG_ASSERT((strcasecmp(server->scheme, SPIDER_WRAPPER) == 0));
-				return add_address.compare(current_address) != 0; }) == server_list.end())
-			{
-				my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
-				goto error;
-			}
+      add_address = string(lex->server_options.get_host()) + "#" +
+          to_string(lex->server_options.get_port());
+      /* create spider node must node exist in mysql.servers. */
+      if (std::find_if_not(server_list.begin(), server_list.end(),
+          [&](FOREIGN_SERVER *server) -> bool {
+          string current_address = string(server->host) + "#" + to_string(server->port);
+          //at present, only consider SPIDER(master) wrapper.
+          DBUG_ASSERT((strcasecmp(server->scheme, SPIDER_WRAPPER) == 0));
+          return add_address.compare(current_address) != 0; }) == server_list.end())
+      {
+        my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
+        goto error;
+      }
 
-			if (!tc_enable_internal_dump)
-				break;
+      if (!tc_enable_internal_dump)
+        break;
 
-			if (tc_dump_node_schema(
-				server_list.front()->host,
-				server_list.front()->port,
-				server_list.front()->username,
-				server_list.front()->password,
-				path))
-			{
-				my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
-					server_list.front()->host, server_list.front()->port);
-				goto error;
-			}
+      if (tc_dump_node_schema(
+          server_list.front()->host,
+          server_list.front()->port,
+          server_list.front()->username,
+          server_list.front()->password,
+          path))
+      {
+        my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+            server_list.front()->host, server_list.front()->port);
+        goto error;
+      }
 
-			if (tc_restore_node_schema(lex->server_options.get_host(),
-				lex->server_options.get_port(),
-				lex->server_options.get_username(),
-				lex->server_options.get_password(),
-				path))
-			{
-				my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
-					lex->server_options.get_host(), lex->server_options.get_port());
-				goto error;
-			}
-			break;
-		}
-		case TC_SQLCOM_ALTER_NODE:
-		{
-			FOREIGN_SERVER *server =
-				get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
-			//at present, only spider node need to dump/restore, other WRAPPER not support.
-			if (tc_enable_internal_dump && server &&
-				(strcasecmp(server->scheme, SPIDER_WRAPPER) == 0 ||
-				strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) == 0))
-			{
-				Server_options options = lex->server_options;
-				/* host#port had changed, need dump/restore schema */
-				if ((options.get_port() != -1 && options.get_port() != server->port) ||
-					(options.get_host() && strcasecmp(options.get_host(), server->host) != 0))
-				{
-					const char *new_host = options.get_host() ? options.get_host() : server->host;
-					//PORT_NOT_SET
-					const long new_port = (options.get_port() != -1) ? options.get_port() : server->port;
-					const char *new_user = options.get_username() ? options.get_username() : server->username;
-					const char *new_password = options.get_password() ? options.get_password() : server->password;
+      if (tc_restore_node_schema(lex->server_options.get_host(),
+          lex->server_options.get_port(),
+          lex->server_options.get_username(),
+          lex->server_options.get_password(),
+          path))
+      {
+        my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
+          lex->server_options.get_host(), lex->server_options.get_port());
+        goto error;
+      }
+      break;
+    }
+    case TC_SQLCOM_ALTER_NODE:
+    {
+      FOREIGN_SERVER *server =
+          get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
+      //at present, only spider node need to dump/restore, other WRAPPER not support.
+      if (tc_enable_internal_dump && server &&
+          (strcasecmp(server->scheme, SPIDER_WRAPPER) == 0 ||
+          strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) == 0))
+      {
+        Server_options options = lex->server_options;
+        /* host#port had changed, need dump/restore schema */
+        if ((options.get_port() != -1 && options.get_port() != server->port) ||
+            (options.get_host() && strcasecmp(options.get_host(), server->host) != 0))
+        {
+          const char *new_host = options.get_host() ? options.get_host() : server->host;
+          //PORT_NOT_SET
+          const long new_port = (options.get_port() != -1) ? options.get_port() : server->port;
+          const char *new_user = options.get_username() ? options.get_username() : server->username;
+          const char *new_password = options.get_password() ? options.get_password() : server->password;
 
-					char path[FN_REFLEN + 1];
-					char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
-					my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
-						tmp_file_prefix, current_thd->query_start(), current_pid,
-						thd->thread_id());
+          char path[FN_REFLEN + 1];
+          char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
+          my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
+              tmp_file_prefix, current_thd->query_start(), current_pid,
+              thd->thread_id());
 
-					//dump schema from old spider node
-					if (tc_dump_node_schema(
-						server->host,
-						server->port,
-						server->username,
-						server->password,
-						path))
-					{
-						my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
-							server->host, server->port);
-						goto error;
-					}
+          //dump schema from old spider node
+          if (tc_dump_node_schema(
+              server->host,
+              server->port,
+              server->username,
+              server->password,
+              path))
+          {
+            my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+              server->host, server->port);
+            goto error;
+          }
 
-					if (tc_restore_node_schema(new_host, new_port, new_user, new_password, path))
-					{
-						my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), new_host, new_port);
-						goto error;
-					}
-				}
-			}
-			break;
-		}
-		case TC_SQLCOM_DROP_NODE:
-			//no nothing but execute
-			DBUG_ASSERT(lex->m_sql_cmd != NULL);
-			break;
-		case TC_SQLCOM_FLUSH_ROUTING:
-			goto flush;
-		default:
-			my_ok(thd);
-			goto finish;
-		}
+          if (tc_restore_node_schema(new_host, new_port, new_user, new_password, path))
+          {
+            my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), new_host, new_port);
+            goto error;
+          }
+        }
+      }
+      break;
+    }
+    case TC_SQLCOM_DROP_NODE:
+      //no nothing but execute
+      DBUG_ASSERT(lex->m_sql_cmd != NULL);
+      break;
+    case TC_SQLCOM_FLUSH_ROUTING:
+      goto flush;
+    default:
+      my_ok(thd);
+      goto finish;
+    }
 
-		if (res = lex->m_sql_cmd->execute(thd))
-			goto error;
+    if ((res = lex->m_sql_cmd->execute(thd)))
+      goto error;
 
     //Reset the thread OK status before changing the outcome.
-		if (thd->get_stmt_da()->is_ok())
-		  thd->get_stmt_da()->reset_diagnostics_area();
+    if (thd->get_stmt_da()->is_ok())
+      thd->get_stmt_da()->reset_diagnostics_area();
 
   flush:
-		/* create/alter/drop node, also need to do flush routing */
-		/* no need reload servers, m_sql_cmd->execute had update cache */
+    /* create/alter/drop node, also need to do flush routing */
+    /* no need reload servers, m_sql_cmd->execute had update cache */
     if (tc_flush_routing(lex))
     {
       my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-			goto error;
+      goto error;
     }
 
-		my_ok(thd);
-		break;
+    my_ok(thd);
+    break;
   }
   case TC_SQLCOM_MONITOR_INIT:
   {
-	  if (tc_check_cluster_availability_init())
-	  {
-		  my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
-		  break;
-	  }
-	  my_ok(thd);
-	  break;
+    if (tc_check_cluster_availability_init())
+    {
+      my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
+      break;
+    }
+    my_ok(thd);
+    break;
   }
 #endif
   default:
@@ -6100,231 +6102,235 @@ tcadmin_execute_command(THD* thd)
   case SQLCOM_SHUTDOWN:
     my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
     break;
-	case TC_SQLCOM_CREATE_NODE:
-	case TC_SQLCOM_ALTER_NODE:
-	case TC_SQLCOM_DROP_NODE:
-	case TC_SQLCOM_FLUSH_ROUTING:
-	{
-		/*
-		 NB: use server_uuid as lock string here
-		 we add x lock to block any DDL or flush command
-		*/
-		if (res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
-		{
-			my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "lock wait timeout");
-			goto finish;
-		}
+  case TC_SQLCOM_CREATE_NODE:
+  case TC_SQLCOM_ALTER_NODE:
+  case TC_SQLCOM_DROP_NODE:
+  case TC_SQLCOM_FLUSH_ROUTING:
+  {
+    /*
+      NB: use server_uuid as lock string here
+      we add x lock to block any DDL or flush command
+    */
+    if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE)))
+    {
+      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "lock wait timeout");
+      goto finish;
+    }
 
-		/* always do reload first */
-		if (servers_reload(thd))
-		{
-			my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-			goto finish;
-		}
+    /* always do reload first */
+    if (servers_reload(thd))
+    {
+      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+      goto finish;
+    }
 
-		switch (lex->sql_command) {
-		case TC_SQLCOM_CREATE_NODE:
-		{
-			string server_name, add_address;
-			list<FOREIGN_SERVER*> server_list;
-			char path[FN_REFLEN + 1];
-			char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
-			my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
-				tmp_file_prefix, current_thd->query_start(), current_pid,
-				thd->thread_id());
+    switch (lex->sql_command) {
+    case TC_SQLCOM_CREATE_NODE:
+    {
+      string server_name, add_address;
+      list<FOREIGN_SERVER*> server_list;
+      char path[FN_REFLEN + 1];
+      char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
+      my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
+          tmp_file_prefix, current_thd->query_start(), current_pid,
+          thd->thread_id());
 
-			DBUG_ASSERT(lex->m_sql_cmd != NULL);
-			if (!(lex->server_options.get_host() &&
-				lex->server_options.get_port() &&
-				lex->server_options.get_username() &&
-				lex->server_options.get_password()))
-			{
-				my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "USER, PASSWORD, HOST, PORT options must be specify");
-				goto finish;
-			}
+      DBUG_ASSERT(lex->m_sql_cmd != NULL);
+      if (!(lex->server_options.get_host() &&
+          lex->server_options.get_port() &&
+          lex->server_options.get_username() &&
+          lex->server_options.get_password()))
+      {
+        my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "USER, PASSWORD, HOST, PORT options must be specify");
+        goto finish;
+      }
 
-			/* get an unique server_name by wrapper */
-			server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme(), TRUE);
-			DBUG_ASSERT(server_name.length() != 0);
-			lex->server_options.m_server_name.length = server_name.length();
-			lex->server_options.m_server_name.str =
-				strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
+      /* get an unique server_name by wrapper */
+      server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme(), TRUE);
+      DBUG_ASSERT(server_name.length() != 0);
+      lex->server_options.m_server_name.length = server_name.length();
+      lex->server_options.m_server_name.str =
+          strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
 
-			/* add tdbctl/remote node, only need to do create server command */
-			if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 ||
-				strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0)
-				break;
+      /* add tdbctl/remote node, only need to do create server command */
+      if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 ||
+          strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0)
+        break;
 
-			/* for create spider node logic blow */
-			DBUG_ASSERT((
-				(strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
-				(strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)));
+      /* for create spider node logic blow */
+      DBUG_ASSERT((
+         (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
+         (strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)));
 
-			/* get spider_list from mysql.servers, exclude slave spiders
-				 avoid to user slave spider's schema, maybe not consistent with master ?
-			*/
-			get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
-			if (server_list.empty())
-				// first spider node, no need to dump/restore schema, only add to mysql.servers
-				break;
+      /*
+        get spider_list from mysql.servers, exclude slave spiders
+        avoid to user slave spider's schema, maybe not consistent with master ?
+      */
+      get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
+      if (server_list.empty())
+        // first spider node, no need to dump/restore schema, only add to mysql.servers
+        break;
 
-			/* dump spider's schema from first spider node.
-				 must exclude itself
-			*/
-			DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
-				server_list.front()->port != lex->server_options.get_port());
+      /*
+        dump spider's schema from first spider node.
+        must exclude itself
+      */
+      DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
+          server_list.front()->port != lex->server_options.get_port());
 
-			add_address = string(lex->server_options.get_host()) + "#" +
-				to_string(lex->server_options.get_port());
-			/* create spider node must node exist in mysql.servers. */
-			if (std::find_if_not(server_list.begin(), server_list.end(),
-				[&](FOREIGN_SERVER *server) -> bool {
-				string current_address = string(server->host) + "#" + to_string(server->port);
-				//at present, only consider SPIDER(master) wrapper.
-				DBUG_ASSERT((strcasecmp(server->scheme, SPIDER_WRAPPER) == 0));
-				return add_address.compare(current_address) != 0; }) == server_list.end())
-			{
-				my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
-				goto finish;
-			}
+      add_address = string(lex->server_options.get_host()) + "#" +
+          to_string(lex->server_options.get_port());
+      /* create spider node must node exist in mysql.servers. */
+      if (std::find_if_not(server_list.begin(), server_list.end(),
+          [&](FOREIGN_SERVER *server) -> bool {
+          string current_address = string(server->host) + "#" + to_string(server->port);
+          //at present, only consider SPIDER(master) wrapper.
+          DBUG_ASSERT((strcasecmp(server->scheme, SPIDER_WRAPPER) == 0));
+          return add_address.compare(current_address) != 0; }) == server_list.end())
+      {
+        my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
+        goto finish;
+      }
 
       if (!tc_enable_internal_dump)
-			  break;
+        break;
 
-			if (tc_dump_node_schema(
-				server_list.front()->host,
-				server_list.front()->port,
-				server_list.front()->username,
-				server_list.front()->password,
-				path))
-			{
-				my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
-					server_list.front()->host, server_list.front()->port);
-				goto finish;
-			}
+      if (tc_dump_node_schema(
+          server_list.front()->host,
+          server_list.front()->port,
+          server_list.front()->username,
+          server_list.front()->password,
+          path))
+      {
+        my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+            server_list.front()->host, server_list.front()->port);
+        goto finish;
+      }
 
-			if (tc_restore_node_schema(lex->server_options.get_host(),
-				lex->server_options.get_port(),
-				lex->server_options.get_username(),
-				lex->server_options.get_password(),
-				path))
-			{
-				my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
-					lex->server_options.get_host(), lex->server_options.get_port());
-				goto finish;
-			}
+      if (tc_restore_node_schema(lex->server_options.get_host(),
+          lex->server_options.get_port(),
+          lex->server_options.get_username(),
+          lex->server_options.get_password(),
+          path))
+      {
+        my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
+             lex->server_options.get_host(), lex->server_options.get_port());
+        goto finish;
+      }
 
-			break;
-		}
-		case TC_SQLCOM_ALTER_NODE:
-		{
-			FOREIGN_SERVER * server =
-				get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
-			/* At present, only spider node need to dump/restore schema, other WRAPPER not support.
-			Anytime if tdbctl need to support, configure replication also need after schema restored.
-			*/
-			if (tc_enable_internal_dump && server &&
-				(strcasecmp(server->scheme, SPIDER_WRAPPER) == 0 ||
-				strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) == 0))
-			{
-				Server_options options = lex->server_options;
-				/* host#port had changed, need dump/restore schema */
-				if ((options.get_port() != -1 && options.get_port() != server->port) ||
-					(options.get_host() && strcasecmp(options.get_host(), server->host) != 0))
-				{
-					const char *new_host = options.get_host() ? options.get_host() : server->host;
-					//PORT_NOT_SET
-					const long new_port = (options.get_port() != -1) ? options.get_port() : server->port;
-					const char *new_user = options.get_username() ? options.get_username() : server->username;
-					const char *new_password = options.get_password() ? options.get_password() : server->password;
+      break;
+    }
+    case TC_SQLCOM_ALTER_NODE:
+    {
+      FOREIGN_SERVER * server =
+          get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
+      /*
+        At present, only spider node need to dump/restore schema, other WRAPPER not support.
+        Anytime if tdbctl need to support, configure replication also need after schema restored.
+      */
+      if (tc_enable_internal_dump && server &&
+          (strcasecmp(server->scheme, SPIDER_WRAPPER) == 0 ||
+          strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) == 0))
+      {
+        Server_options options = lex->server_options;
+        /* host#port had changed, need dump/restore schema */
+        if ((options.get_port() != -1 && options.get_port() != server->port) ||
+            (options.get_host() && strcasecmp(options.get_host(), server->host) != 0))
+        {
+          const char *new_host = options.get_host() ? options.get_host() : server->host;
+          //PORT_NOT_SET
+          const long new_port = (options.get_port() != -1) ? options.get_port() : server->port;
+          const char *new_user = options.get_username() ? options.get_username() : server->username;
+          const char *new_password = options.get_password() ? options.get_password() : server->password;
 
-					char path[FN_REFLEN + 1];
-					char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
-					my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
-						tmp_file_prefix, current_thd->query_start(), current_pid,
-						thd->thread_id());
+          char path[FN_REFLEN + 1];
+          char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
+          my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
+              tmp_file_prefix, current_thd->query_start(), current_pid,
+              thd->thread_id());
 
-					//dump schema from old spider node
-					if (tc_dump_node_schema(
-						server->host,
-						server->port,
-						server->username,
-						server->password,
-						path))
-					{
-						my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
-							server->host, server->port);
-						goto finish;
-					}
+          //dump schema from old spider node
+          if (tc_dump_node_schema(
+              server->host,
+              server->port,
+              server->username,
+              server->password,
+              path))
+          {
+            my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+                server->host, server->port);
+            goto finish;
+          }
 
-					if (tc_restore_node_schema(new_host, new_port, new_user, new_password, path))
-					{
-						my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), new_host, new_port);
-						goto finish;
-					}
-				}
-			}
-			break;
-		}
-		case TC_SQLCOM_DROP_NODE:
-			DBUG_ASSERT(lex->m_sql_cmd != NULL);
-			break;
-		case TC_SQLCOM_FLUSH_ROUTING:
-			goto flush;
-		default:
-			my_ok(thd);
-			goto finish;
-		}
+          if (tc_restore_node_schema(new_host, new_port, new_user, new_password, path))
+          {
+            my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), new_host, new_port);
+            goto finish;
+          }
+        }
+      }
+      break;
+    }
+    case TC_SQLCOM_DROP_NODE:
+      DBUG_ASSERT(lex->m_sql_cmd != NULL);
+      break;
+    case TC_SQLCOM_FLUSH_ROUTING:
+      goto flush;
+    default:
+      my_ok(thd);
+      goto finish;
+    }
 
-		if (res = lex->m_sql_cmd->execute(thd))
-			goto finish;
+    if ((res = lex->m_sql_cmd->execute(thd)))
+      goto finish;
 
-		//Reset the thread OK status before changing the outcome.
-		if (thd->get_stmt_da()->is_ok())
-			thd->get_stmt_da()->reset_diagnostics_area();
+    //Reset the thread OK status before changing the outcome.
+    if (thd->get_stmt_da()->is_ok())
+        thd->get_stmt_da()->reset_diagnostics_area();
 
-	flush:
-		/* create/alter/drop node, also need to do flush routing */
-		/* no need reload server, m_sql_cmd->execute had update cache */
-				/* always do reload first */
-		if (servers_reload(thd))
-		{
-			my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-			goto finish;
-		}
+  flush:
+    /* create/alter/drop node, also need to do flush routing */
+    /* no need reload server, m_sql_cmd->execute had update cache */
+    /* always do reload first */
+    if (servers_reload(thd))
+    {
+      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+      goto finish;
+    }
 
-		if (tc_flush_routing(lex))
-		{
-			my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-			goto finish;
-		}
+    if (tc_flush_routing(lex))
+    {
+      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+      goto finish;
+    }
 
-		my_ok(thd);
-		goto finish;
-	}
+    my_ok(thd);
+    goto finish;
+  }
   case TC_SQLCOM_MONITOR_INIT:
   {
-	  if (tc_check_cluster_availability_init())
-	  {
-		  my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
-		  break;
-	  }
-	  my_ok(thd);
-	  break;
+    if (tc_check_cluster_availability_init())
+    {
+      my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
+      break;
+    }
+    my_ok(thd);
+    break;
   }
-	case TC_SQLCOM_SHOW_PROCESSLIST:
-	{
-		if (!thd->security_context()->priv_user().str[0] &&
-			check_global_access(thd, PROCESS_ACL))
-			break;
-		tc_show_processlist(thd, lex->verbose, lex->server_name);
-		break;
-	}
-	case TC_SQLCOM_SHOW_VARIABLES:
-		tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
-		break;
-	/* 5. other may be supported int the future */
-	case SQLCOM_UNLOCK_TABLES:
+  case TC_SQLCOM_SHOW_PROCESSLIST:
+  {
+    if (!thd->security_context()->priv_user().str[0] &&
+        check_global_access(thd, PROCESS_ACL))
+      break;
+    tc_show_processlist(thd, lex->verbose, lex->server_name);
+    break;
+  }
+  case TC_SQLCOM_SHOW_VARIABLES:
+    tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
+    break;
+
+  /* 5. other may be supported int the future */
+  case SQLCOM_UNLOCK_TABLES:
   case SQLCOM_LOCK_TABLES:
   case SQLCOM_BEGIN:
   case SQLCOM_COMMIT:
@@ -6342,13 +6348,13 @@ tcadmin_execute_command(THD* thd)
 
   if (!tc_query_convert(thd, lex, &parse_result, shard_count, &spider_sql, &remote_sql_map))
   {
-		/*
-		NB: use server_uuid as lock string here
-		we add S lock to block tdbctl flush routing(acquire X lock)
-		*/
-		if (res = lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED))
-			goto finish;
-    if (res = xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str()))
+    /*
+      NB: use server_uuid as lock string here
+      we add S lock to block tdbctl flush routing(acquire X lock)
+     */
+    if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED)))
+      goto finish;
+    if ((res = xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str())))
       goto finish;
     tc_append_before_query(thd, lex, before_sql_for_spider, before_sql_for_remote);
     tc_ddl_run(thd, before_sql_for_spider, before_sql_for_remote, spider_sql, remote_sql_map, &exec_result);
@@ -6889,13 +6895,11 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
           }
           else
           {
-			  if (thd->variables.tc_admin && !tc_is_spider_node(thd))
-			  {
-				  my_error(ER_TCADMIN_NOT_SPIDER, MYF(0));
-			  }
-			 else if(thd->variables.tc_admin)
+            if (thd->variables.tc_admin && !tc_is_spider_node(thd))
+              my_error(ER_TCADMIN_NOT_SPIDER, MYF(0));
+            else if(thd->variables.tc_admin)
               error = tcadmin_execute_command(thd);
-             else
+            else
               error = mysql_execute_command(thd, true);
           }
 
