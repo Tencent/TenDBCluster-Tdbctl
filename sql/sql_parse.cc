@@ -6627,8 +6627,16 @@ void THD::reset_for_next_command()
   DBUG_VOID_RETURN;
 }
 
+/*
+  whether the query is from spider node in mysql.servers
+
+  @retval
+	false: not spider node in mysql.servers
+	true:  spider node in mysql.servers
+*/
 bool tc_is_spider_node(THD* thd) 
 {
+  int ret = 1;
   bool res = false;
   string user="";
   string ip="";
@@ -6651,15 +6659,29 @@ bool tc_is_spider_node(THD* thd)
         thd->spider_user_map,
         thd->spider_passwd_map,
         TRUE);
+
+  /*
+  get username of current TDBCTL node from mysql.servers
+  */
+  string tdbctl_username = tc_get_user_name(ret, TDBCTL_WRAPPER, false);
+  if (ret)
+    return res;
+  /*
+  compare username of current TDBCTL node in mysql.servers and current user
+  */
+  if (strcasecmp((char *)(tdbctl_username.data()), (char *)(user.data())))
+    return res;
+	
+  /*
+  compare ip of current TDBCTL node in mysql.servers and current user
+  */
   for (its = thd->spider_user_map.begin(); its != thd->spider_user_map.end(); its++)
   {
     string ipport = its->first;
     ulong pos = ipport.find("#");
     string hosts = ipport.substr(0, pos);
-    string users = its->second;
-    if ((!(strcasecmp((char *)(hosts.data()), (char *)(host.data())))
-        || !strcasecmp((char *)(hosts.data()), (char *)(ip.data())))
-        && !strcasecmp((char *)(users.data()), (char *)(user.data())))
+    if (!(strcasecmp((char *)(hosts.data()), (char *)(host.data())))
+        || !strcasecmp((char *)(hosts.data()), (char *)(ip.data()))) 
     {
       res = true;
       return res;

@@ -2279,7 +2279,7 @@ string tc_get_server_name(
 {
 	ret = 0;
 	string server_name;
-	map<string, string> tdbctl_server_uuid_map = get_server_uuid_map(ret, mem, TDBCTL_WRAPPER, with_slave);
+	map<string, string> tdbctl_server_uuid_map = get_server_uuid_map(ret, mem, wrapper, with_slave);
 	if (ret)
 	{
 		goto finish;
@@ -2294,6 +2294,45 @@ string tc_get_server_name(
 finish:
 	tdbctl_server_uuid_map.clear();
 	return server_name;
+}
+
+
+/*
+  get username of current TDBCTL node
+
+  @param (out)
+  ret: 0 for ok, 1 for error
+
+  @retval
+  username  of current TDBCTL node
+*/
+string tc_get_user_name(
+	int &ret,
+	const char* wrapper,
+	bool with_slave)
+{
+	ret = 0;
+	string username;
+	MEM_ROOT mem_root;
+	init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	MEM_ROOT_GUARD(mem_root);
+	FOREIGN_SERVER *server, server_buffer;
+	string tdbctl_server_name = tc_get_server_name(ret, &mem_root, wrapper, with_slave);
+	if (ret)
+	{
+		return username;
+	}
+	if ((server = get_server_by_name(&mem_root, tdbctl_server_name.c_str(), &server_buffer)))
+	{
+	  username = server->username;
+		return username;
+	}
+	if (username.size() <= 0) 
+	{
+	  ret = 1;
+		return username;
+	}
+	return username;
 }
 
 MYSQL* tc_conn_connect(string ipport, string user, string passwd)
@@ -2311,7 +2350,7 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 
   if (user.length() == 0 && passwd.length() == 0)
   {
-    sql_print_error("tc connect fail: username or password is empty");
+	  sql_print_error("tc connect fail: username or password is empty");
     return NULL;
   }
 
@@ -3064,7 +3103,7 @@ uint tc_get_primary_node(std::string &host, uint *port)
     list<FOREIGN_SERVER*> server_list;
 
     init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-    MEM_ROOT_GUARD(mem_root)
+	MEM_ROOT_GUARD(mem_root);
     get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
 
     //empty, error happened

@@ -360,6 +360,10 @@ string tc_get_server_name(
 	const char* wrapper,
 	bool with_slave);
 
+string tc_get_user_name(
+	int &ret,
+	const char* wrapper,
+	bool with_slave);
 
 string tc_get_spider_grant_sql(
 	set<string> &spider_ipport_set,
