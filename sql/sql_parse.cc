@@ -6629,31 +6629,44 @@ void THD::reset_for_next_command()
 
 bool tc_is_spider_node(THD* thd) 
 {
-	bool res = false;
-	string user = thd->m_security_ctx->user().str;
-	string ip = thd->m_security_ctx->ip().str;
-	string host = thd->m_security_ctx->host().str;
-	map<string, string>::iterator its;
-	thd->spider_ipport_set = get_spider_ipport_set(
-		thd->mem_root,
-		thd->spider_user_map,
-		thd->spider_passwd_map,
-		TRUE);
-	for (its = thd->spider_user_map.begin(); its != thd->spider_user_map.end(); its++)
-	{
-		string ipport = its->first;
-		ulong pos = ipport.find("#");
-		string hosts = ipport.substr(0, pos);
-		string users = its->second;
-		if ((!(strcasecmp((char *)(hosts.data()), (char *)(host.data())))
-			|| !strcasecmp((char *)(hosts.data()), (char *)(ip.data())))
-			&& !strcasecmp((char *)(users.data()), (char *)(user.data())))
-		{
-			res = true;
-			return res;
-		}
-	}
-	return res;
+  bool res = false;
+  string user="";
+  string ip="";
+  string host="";
+  if (thd->m_security_ctx)
+  {
+    if (thd->m_security_ctx->user().length)
+      user = thd->m_security_ctx->user().str;
+
+    if (thd->m_security_ctx->ip().length)
+      ip = thd->m_security_ctx->ip().str;
+
+    if (thd->m_security_ctx->host().length)
+      host = thd->m_security_ctx->host().str;
+  }
+
+  map<string, string>::iterator its;
+  thd->spider_ipport_set = get_spider_ipport_set(
+        thd->mem_root,
+        thd->spider_user_map,
+        thd->spider_passwd_map,
+        TRUE);
+  for (its = thd->spider_user_map.begin(); its != thd->spider_user_map.end(); its++)
+  {
+    string ipport = its->first;
+    ulong pos = ipport.find("#");
+    string hosts = ipport.substr(0, pos);
+    string users = its->second;
+    if ((!(strcasecmp((char *)(hosts.data()), (char *)(host.data())))
+        || !strcasecmp((char *)(hosts.data()), (char *)(ip.data())))
+        && !strcasecmp((char *)(users.data()), (char *)(user.data())))
+    {
+      res = true;
+      return res;
+    }
+  }
+
+  return res;
 }
 
 /**
