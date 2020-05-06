@@ -805,15 +805,16 @@ void Plugin_gcs_events_handler::handle_leader_election_if_needed() const
                           "Unable to disable super read only flag. "
                           "Try to disable it manually."); /* purecov: inspected */
             }
-						/* only new elected member(local and primary) need do tdbctl flush routing
-						tdbctl flush routing will fetch the newest primary member and flush to all spiders.
-						*/
-						if (tdbctl_flush_routing(sql_command_interface))
-						{
-							log_message(MY_ERROR_LEVEL,
-													"tdbctl flush routing new primary routing failed. "
+            /*
+              only new elected member(local and primary) need do tdbctl flush routing
+              tdbctl flush routing will fetch the newest primary member and flush to all spiders.
+             */
+            if (tdbctl_flush_routing(sql_command_interface))
+            {
+              log_message(MY_ERROR_LEVEL,
+                          "tdbctl flush routing new primary routing failed. "
                           "Try to disable it manually."); /* purecov: inspected */
-						}
+            }
           }
           else
           {

@@ -322,14 +322,14 @@ end:
   DBUG_PRINT("info", ("unlocking servers_cache"));
   mysql_rwlock_unlock(&THR_LOCK_servers);
   /*
-  when init mysqld, global_modify_server_version=1, 
-  it is not ok to get tc_is_master_tdbctl_node, because mysqld is not serving
-   */
+    when init mysqld, global_modify_server_version=1,
+    it is not ok to get tc_is_master_tdbctl_node, because mysqld is not serving
+  */
   if (global_modify_server_version != 1 &&
-	  global_modify_server_version_old != global_modify_server_version)
+      global_modify_server_version_old != global_modify_server_version)
   {
-	  tdbctl_is_primary = tc_is_primary_tdbctl_node();
-	  global_modify_server_version_old = global_modify_server_version;
+    tdbctl_is_primary = tc_is_primary_tdbctl_node();
+    global_modify_server_version_old = global_modify_server_version;
   }
   delete_redundant_routings();
   DBUG_RETURN(return_val);
@@ -921,26 +921,27 @@ bool Sql_cmd_drop_server::execute(THD *thd)
         (FOREIGN_SERVER *)my_hash_search(&servers_cache,
                                          (uchar*) m_server_name.str,
                                          m_server_name.length);
-			if (server)
-			{
-				my_hash_delete(&servers_cache, (uchar*)server);
-				global_modify_server_version++;
-				/* add to_delete_servername_list for TDBCTL DROP NODE command, which will
-				traverse the list later and delete SPIDER node's server_name also.
-				NB: We should have call delete_redundant_routings here, but it acquire
-				THR_LOCK_servers lock also(this function had acquired ), so we have to call
-				delete_redundant_routings after THR_LOCK_servers unlock.
-				In concurrence DROP SERVER situation, the to_delete_servername_list
-				may incorrect if we use outside of THR_LOCK_servers lock. In fact, no need to
-				worry, because follow:
-				Before we add this logic, DROP SERVER not care about spider's routing,
-				so the incorrect not affect DROP SERVER command. For TDBCTL DROP NODE command,
-				we had acquire a MDL_EXCLUSIVE lock by lock_statement_by_name function to block other
-        concurrence DROP NODE, so acceptable at present
-				*/
-				to_delete_servername_list.clear();
-				to_delete_servername_list.push_back(server->server_name);
-			}
+      if (server)
+      {
+        my_hash_delete(&servers_cache, (uchar*)server);
+        global_modify_server_version++;
+        /*
+         add to_delete_servername_list for TDBCTL DROP NODE command, which will
+         traverse the list later and delete SPIDER node's server_name also.
+         NB: We should have call delete_redundant_routings here, but it acquire
+         THR_LOCK_servers lock also(this function had acquired ), so we have to call
+         delete_redundant_routings after THR_LOCK_servers unlock.
+         In concurrence DROP SERVER situation, the to_delete_servername_list
+         may incorrect if we use outside of THR_LOCK_servers lock. In fact, no need to
+         worry, because follow:
+         Before we add this logic, DROP SERVER not care about spider's routing,
+         so the incorrect not affect DROP SERVER command. For TDBCTL DROP NODE command,
+         we had acquire a MDL_EXCLUSIVE lock by lock_statement_by_name function to block other
+         concurrence DROP NODE, so acceptable at present
+        */
+        to_delete_servername_list.clear();
+        to_delete_servername_list.push_back(server->server_name);
+      }
       else if (!m_if_exists)
       {
         my_error(ER_FOREIGN_SERVER_DOESNT_EXIST, MYF(0),  m_server_name.str);
@@ -957,8 +958,8 @@ bool Sql_cmd_drop_server::execute(THD *thd)
     trans_commit_stmt(thd);
   close_mysql_tables(thd);
 
-	/* after delete server, should transfer to spider also */
-	delete_redundant_routings();
+  /* after delete server, should transfer to spider also */
+  delete_redundant_routings();
   if (close_cached_connection_tables(thd, m_server_name.str,
                                      m_server_name.length))
   {
@@ -1032,7 +1033,7 @@ static FOREIGN_SERVER *clone_server(MEM_ROOT *mem, const FOREIGN_SERVER *server,
   buffer->owner= server->owner ? strdup_root(mem, server->owner) : NULL;
   buffer->host= server->host ? strdup_root(mem, server->host) : NULL;
 
- DBUG_RETURN(buffer);
+  DBUG_RETURN(buffer);
 }
 
 
@@ -1084,49 +1085,40 @@ ulong get_servers_count()
 */
 ulong get_servers_count_by_wrapper(const char* wrapper_name, bool with_slave)
 {
-	ulong ret = 0;
-	FOREIGN_SERVER* server = NULL;
-	string wrapper_slave = wrapper_name;
-	if (with_slave)
-	{
-		wrapper_slave += "_SLAVE";
-	}
-	mysql_rwlock_rdlock(&THR_LOCK_servers);
-	ulong records = servers_cache.records;
-	if(records == 0)
-		goto finish;
-	for (ulong i = 0; i < records; i++)
-	{
-		if (!(server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
-		{
-			server = (FOREIGN_SERVER*)NULL;
-		}
-		else
-		{
-			if (!strcasecmp(server->scheme, wrapper_name) ||
-				!strcasecmp(server->scheme, wrapper_slave.c_str()))
-			{
-				++ret;
-			}
-		}
-	}
+  ulong ret = 0;
+  FOREIGN_SERVER* server = NULL;
+  string wrapper_slave = wrapper_name;
+  if (with_slave)
+    wrapper_slave += "_SLAVE";
+
+  mysql_rwlock_rdlock(&THR_LOCK_servers);
+  ulong records = servers_cache.records;
+  if(records == 0)
+    goto finish;
+  for (ulong i = 0; i < records; i++)
+  {
+    if (!(server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
+      server = (FOREIGN_SERVER*)NULL;
+    else
+    {
+      if (!strcasecmp(server->scheme, wrapper_name) ||
+          !strcasecmp(server->scheme, wrapper_slave.c_str()))
+        ++ret;
+    }
+  }
 
 finish:
-	mysql_rwlock_unlock(&THR_LOCK_servers);
-	return ret;
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+  return ret;
 }
 
 bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second)
 {
-	int ret = strcmp(first->server_name, second->server_name);
-	if (ret < 0)
-	{
-		return TRUE;
-	}
-	else
-	{
-		return FALSE;
-	}
+  int ret = strcmp(first->server_name, second->server_name);
+  if (ret < 0)
+    return TRUE;
+  else
+    return FALSE;
 }
 
 /*
@@ -1139,28 +1131,24 @@ void get_server_by_wrapper(
   bool with_slave
 )
 {
-	DBUG_ASSERT(wrapper_name);
+  DBUG_ASSERT(wrapper_name);
   ulong records = 0;
   FOREIGN_SERVER* server;
   string wrapper_slave = wrapper_name;
   mysql_rwlock_rdlock(&THR_LOCK_servers);
   records = servers_cache.records;
   if (with_slave)
-  {
     wrapper_slave +=  "_SLAVE";
-  }
 
   for (ulong i = 0; i < records; i++)
   {
     if (!(server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
-    {
       server = (FOREIGN_SERVER*)NULL;
-    }
     else
     {
       if (!strcasecmp(wrapper_name, NULL_WRAPPER) ||
-				!strcasecmp(server->scheme, wrapper_name) ||
-	      !strcasecmp(server->scheme, wrapper_slave.c_str()))
+          !strcasecmp(server->scheme, wrapper_name) ||
+          !strcasecmp(server->scheme, wrapper_slave.c_str()))
       {
         server = clone_server(mem, server, NULL);
         server_list.push_back(server);
@@ -1171,29 +1159,29 @@ void get_server_by_wrapper(
   server_list.sort(server_compare);
 }
 
-/**
+/*
   generate a new unique server_name by wrapper
-	server_name = wrapper_name + increase id
+  server_name = wrapper_name + increase id
 
   @wrapper_name TDBCTL|SPIDER_SLAVE|SPIDER|mysql
 
-	@retval return an unique server_name which
-	        not exist in mysql.servers
-	TODO: generate continuous number, gap maybe exist after
-	frequent ADD/DROP node
+  @retval return an unique server_name which
+   not exist in mysql.servers
+   TODO: generate continuous number, gap maybe exist after
+   frequent ADD/DROP node
 */
 string get_new_server_name_by_wrapper(
     const char* wrapper_name,
-	  bool with_slave
+    bool with_slave
 )
 {
-	ostringstream server_name;
+  ostringstream server_name;
   string wrapper_slave = wrapper_name;
   ulong records = 0;
-	ulong max_suffix_num = 0;
+  ulong max_suffix_num = 0;
 
-	server_name.str("");
-	server_name << get_wrapper_prefix_by_wrapper(wrapper_name);
+  server_name.str("");
+  server_name << get_wrapper_prefix_by_wrapper(wrapper_name);
   if (with_slave)
     wrapper_slave +=  "_SLAVE";
 
@@ -1204,59 +1192,58 @@ string get_new_server_name_by_wrapper(
   {
     if (auto server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i))
     {
-			//for spider, total SPIDER and SPIDER_SLAVE's server_name must be unique
+      //for spider, total SPIDER and SPIDER_SLAVE's server_name must be unique
       if (!strcasecmp(server->scheme, wrapper_name) ||
-				(with_slave && !strcasecmp(server->scheme, wrapper_slave.c_str())))
+          (with_slave && !strcasecmp(server->scheme, wrapper_slave.c_str())))
       {
-				ulong suffix_num = 0;
-				string prefix = server->scheme;
-				regex pattern(wrapper_name, regex::icase);
-				prefix = regex_replace(prefix, pattern, "");
-				suffix_num = std::atol(prefix.c_str());
-				if (max_suffix_num <= suffix_num)
-					max_suffix_num = suffix_num + 1;
+        ulong suffix_num = 0;
+        string prefix = server->scheme;
+        regex pattern(wrapper_name, regex::icase);
+        prefix = regex_replace(prefix, pattern, "");
+        suffix_num = std::atol(prefix.c_str());
+        if (max_suffix_num <= suffix_num)
+          max_suffix_num = suffix_num + 1;
       }
     }
   }
   mysql_rwlock_unlock(&THR_LOCK_servers);
 
-	server_name << max_suffix_num;
+  server_name << max_suffix_num;
 
-	return server_name.str();
+  return server_name.str();
 }
 
 const char *get_wrapper_prefix_by_wrapper(
-	const char *wrapper_name
+    const char *wrapper_name
 )
 {
-	if (strcasecmp(wrapper_name, SPIDER_WRAPPER) == 0 ||
-		strcasecmp(wrapper_name, SPIDER_SLAVE_WRAPPER) == 0)
-		return tdbctl_spider_wrapper_prefix;
-	else if (strcasecmp(wrapper_name, TDBCTL_WRAPPER) == 0)
-		return tdbctl_control_wrapper_prefix;
-	else if (strcasecmp(wrapper_name, MYSQL_WRAPPER) == 0 ||
-		strcasecmp(wrapper_name, MYSQL_SLAVE_WRAPPER) == 0)
-		return tdbctl_mysql_wrapper_prefix;
-	else
-		return wrapper_name;
+  if (strcasecmp(wrapper_name, SPIDER_WRAPPER) == 0 ||
+      strcasecmp(wrapper_name, SPIDER_SLAVE_WRAPPER) == 0)
+    return tdbctl_spider_wrapper_prefix;
+  else if (strcasecmp(wrapper_name, TDBCTL_WRAPPER) == 0)
+    return tdbctl_control_wrapper_prefix;
+  else if (strcasecmp(wrapper_name, MYSQL_WRAPPER) == 0 ||
+      strcasecmp(wrapper_name, MYSQL_SLAVE_WRAPPER) == 0)
+    return tdbctl_mysql_wrapper_prefix;
+  else
+    return wrapper_name;
 }
 
-/**
-get server info from mysql.servers and generate SQL statement
+/*
+  get server info from mysql.servers and generate SQL statement
 
   @Note
-	for Tdbctl node, not dump all tdbctl nodes info, we only chose one.
-	MGR scenario:
-	   Multi-Primary: use first member(store to map, use map's order)
-		 Single-Primary: use Primary member
-	None-MGR scenario:
-	   always use first member
+  for Tdbctl node, not dump all tdbctl nodes info, we only chose one.
+  MGR scenario:
+  Multi-Primary: use first member(store to map, use map's order)
+  Single-Primary: use Primary member
+  None-MGR scenario: always use first member
 */
 static string dump_servers_to_sql()
 {
   ulong records = 0;
   FOREIGN_SERVER* server;
-	map<string, string> tdbctl_sql_map;
+  map<string, string> tdbctl_sql_map;
   mysql_rwlock_rdlock(&THR_LOCK_servers);
   records = servers_cache.records;
   string replace_sql_all = "replace into mysql.servers"
@@ -1292,46 +1279,46 @@ static string dump_servers_to_sql()
       replace_sql_cur = replace_sql_cur + name + host + db + username
         + password + port_s + socket + wrapper + owner;
       replace_sql_cur += "),";
-			/* for tdbctl node, need special deal subsequent */
-			if (strcasecmp(server->scheme, TDBCTL_WRAPPER) == 0)
-			{
-				/* NOTE: at present, ip#port must be unique for tdbctl */
-				string ip_port = string(server->host) + "#" + ss.str();
-				tdbctl_sql_map.insert(pair<string, string>(ip_port, replace_sql_cur));
-				continue;
-			}
+      /* for tdbctl node, need special deal subsequent */
+      if (strcasecmp(server->scheme, TDBCTL_WRAPPER) == 0)
+      {
+        /* NOTE: at present, ip#port must be unique for tdbctl */
+        string ip_port = string(server->host) + "#" + ss.str();
+        tdbctl_sql_map.insert(pair<string, string>(ip_port, replace_sql_cur));
+        continue;
+      }
       replace_sql_all += replace_sql_cur;
     }
   }
 
-	if (!tdbctl_sql_map.empty())
-	{
-		string ip_port;
-		string primary_host = "";
-		uint primary_port;
-		int	ret = tc_get_primary_node(primary_host, &primary_port);
-		if (ret != -1)
-		{
-			ss.str("");
-			ss << primary_port;
-			ip_port = primary_host + "#" + ss.str();
+  if (!tdbctl_sql_map.empty())
+  {
+    string ip_port;
+    string primary_host = "";
+    uint primary_port;
+    int	ret = tc_get_primary_node(primary_host, &primary_port);
+    if (ret != -1)
+    {
+      ss.str("");
+      ss << primary_port;
+      ip_port = primary_host + "#" + ss.str();
 
-			if (tdbctl_sql_map.count(ip_port) == 1)
-				//add tdbctl insert sql
-				replace_sql_all += tdbctl_sql_map[ip_port];
-			else {
-				sql_print_warning("primary node not in mysql.servers, return null sql");
-				mysql_rwlock_unlock(&THR_LOCK_servers);
-				return "";
-			}
-		}
-		else
-		{// unknown error, such as network partition.
-			sql_print_warning("get primary node info failed");
-			mysql_rwlock_unlock(&THR_LOCK_servers);
-			return "";
-		}
-	}
+      if (tdbctl_sql_map.count(ip_port) == 1)
+        //add tdbctl insert sql
+        replace_sql_all += tdbctl_sql_map[ip_port];
+      else {
+        sql_print_warning("primary node not in mysql.servers, return null sql");
+        mysql_rwlock_unlock(&THR_LOCK_servers);
+        return "";
+      }
+    }
+    else
+    {// unknown error, such as network partition.
+      sql_print_warning("get primary node info failed");
+      mysql_rwlock_unlock(&THR_LOCK_servers);
+      return "";
+    }
+  }
 
   replace_sql_all.erase(replace_sql_all.end() - 1);
   mysql_rwlock_unlock(&THR_LOCK_servers);
@@ -1400,7 +1387,7 @@ int tc_set_changed_remote_read_only()
   int ret = 0;
   int result = 0;
   tc_exec_info exec_info;
-//  string sql = "set global super_read_only=1";
+  //string sql = "set global super_read_only=1";
   string sql = "set global read_only=1";
   list<FOREIGN_SERVER*> diff_server_list;
   ostringstream  sstr;
@@ -1462,154 +1449,148 @@ int tc_set_changed_remote_read_only()
   return result;
 }
 
-/**
+/*
   do GRANT PRIVILEGES on tdbctl, remote, spider
 
-	NOTES
+  NOTES
     spider node: need simple privileges to connect any tdbctl to transfer sql; need
-      INSERT, DELETE, UPDATE, DROP to connect any remote and do DML
+    INSERT, DELETE, UPDATE, DROP to connect any remote and do DML
     tdbctl node: need ALL PRIVILEGES to connect spider, remote do DDL etc.
     remote node: N/A
 
-	  tdbctl only need to do grants on primary node at present
-		tdbctl, spider, remote must all exists in mysql.servers, otherwise, return 0(ok).
+    tdbctl only need to do grants on primary node at present
+    tdbctl, spider, remote must all exists in mysql.servers, otherwise, return 0(ok).
 
-	RETURN VALUE
-	  zero is success, no zero for error.
+  RETURN VALUE
+    zero is success, no zero for error.
 */
 int tc_do_grants_internal()
 {
-	int ret = 0;
+  int ret = 0;
   MEM_ROOT mem_root;
-	map<string, MYSQL*> spider_conn_map;
-	map<string, string> spider_user_map;
-	map<string, string> spider_passwd_map;
-	map<string, tc_exec_info> spider_result_map;
-	string spider_do_sql;
+  map<string, MYSQL*> spider_conn_map;
+  map<string, string> spider_user_map;
+  map<string, string> spider_passwd_map;
+  map<string, tc_exec_info> spider_result_map;
+  string spider_do_sql;
 
-	map<string, MYSQL*> remote_conn_map;
-	map<string, string> remote_user_map;
-	map<string, string> remote_passwd_map;
+  map<string, MYSQL*> remote_conn_map;
+  map<string, string> remote_user_map;
+  map<string, string> remote_passwd_map;
   map<string, tc_exec_info> remote_result_map;
-	string remote_do_sql;
+  string remote_do_sql;
 
-	map<string, MYSQL*> tdbctl_conn_map;
-	map<string, string> tdbctl_user_map;
-	map<string, string> tdbctl_passwd_map;
+  map<string, MYSQL*> tdbctl_conn_map;
+  map<string, string> tdbctl_user_map;
+  map<string, string> tdbctl_passwd_map;
   map<string, tc_exec_info> tdbctl_result_map;
-	MYSQL *tdbctl_primary_conn = NULL;
-	string tdbctl_do_sql;
+  MYSQL *tdbctl_primary_conn = NULL;
+  string tdbctl_do_sql;
 
   init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-	/* not include SPIDER_SLAVE at present */
-	set<string>  spider_ipport_set = get_spider_ipport_set(
-			&mem_root,
-			spider_user_map,
-			spider_passwd_map,
-			FALSE);
-	map<string, string> remote_ipport_map = get_remote_ipport_map(
-			&mem_root,
-			remote_user_map,
-			remote_passwd_map);
-	map<string, string> tdbctl_ipport_map = get_tdbctl_ipport_map(
-			&mem_root,
-			tdbctl_user_map,
-			tdbctl_passwd_map);
+  /* not include SPIDER_SLAVE at present */
+  set<string>  spider_ipport_set = get_spider_ipport_set(
+      &mem_root,
+      spider_user_map,
+      spider_passwd_map,
+      FALSE);
+  map<string, string> remote_ipport_map = get_remote_ipport_map(
+      &mem_root,
+      remote_user_map,
+      remote_passwd_map);
+  map<string, string> tdbctl_ipport_map = get_tdbctl_ipport_map(
+      &mem_root,
+      tdbctl_user_map,
+      tdbctl_passwd_map);
 
-	if (spider_ipport_set.empty() ||
-		remote_ipport_map.empty() || tdbctl_ipport_map.empty())
-	{
-		ret = 0;
-		sql_print_information("skip do internal grant,",
-			"at least exist one of each spider, tdbctl and remote in mysql.servers");
-		goto exit;
-	}
+  if (spider_ipport_set.empty() ||
+      remote_ipport_map.empty() || tdbctl_ipport_map.empty())
+  {
+    ret = 0;
+    sql_print_information("skip do internal grant, \
+        at least exist one of each spider, tdbctl and remote in mysql.servers");
+    goto exit;
+  }
 
-	tdbctl_do_sql = tc_get_tdbctl_grant_sql(spider_ipport_set, spider_user_map,
-		spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+  tdbctl_do_sql = tc_get_tdbctl_grant_sql(spider_ipport_set, spider_user_map,
+      spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
 
-	spider_conn_map = tc_spider_conn_connect(ret,
-		spider_ipport_set, spider_user_map, spider_passwd_map);
-	if (ret) {
-		goto exit;
-	}
-	remote_conn_map = tc_remote_conn_connect(ret,
-		remote_ipport_map, remote_user_map, remote_passwd_map);
-	if (ret) {
-		goto exit;
-	}
-	//tdbctl_conn_map = tc_tdbctl_conn_connect(ret,
-	//	tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
-	//if (ret) {
-	//	goto exit;
-	//}
-	tdbctl_primary_conn = tc_tdbctl_conn_primary(ret, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
-	if (ret) {
-		sql_print_information("connect to tdbctl primary failed");
-		goto exit;
-	}
+  spider_conn_map = tc_spider_conn_connect(ret,
+      spider_ipport_set, spider_user_map, spider_passwd_map);
+  if (ret)
+    goto exit;
+  remote_conn_map = tc_remote_conn_connect(ret,
+      remote_ipport_map, remote_user_map, remote_passwd_map);
+  if (ret)
+    goto exit;
+  tdbctl_primary_conn = tc_tdbctl_conn_primary(ret, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+  if (ret)
+  {
+    sql_print_information("connect to tdbctl primary failed");
+    goto exit;
+  }
 
-	//spider do grant
-	init_result_map(spider_result_map, spider_ipport_set);
-	//set ddl_execute_by_ctl to off on spider, only need execute on spider node
-	spider_do_sql = "set ddl_execute_by_ctl = off;";
-	spider_do_sql += tc_get_spider_grant_sql(spider_ipport_set, spider_user_map,
-		spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
-	if (tc_exec_sql_paral(spider_do_sql, spider_conn_map,
-		spider_result_map, spider_user_map, spider_passwd_map, FALSE))
-	{/* return, close conn, reconnect + retry all */
-		ret = 1;
-		sql_print_information("spider do internal grant failed");
-		goto exit;
-	}
+  //spider do grant
+  init_result_map(spider_result_map, spider_ipport_set);
+  //set ddl_execute_by_ctl to off on spider, only need execute on spider node
+  spider_do_sql = "set ddl_execute_by_ctl = off;";
+  spider_do_sql += tc_get_spider_grant_sql(spider_ipport_set, spider_user_map,
+      spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+  if (tc_exec_sql_paral(spider_do_sql, spider_conn_map,
+      spider_result_map, spider_user_map, spider_passwd_map, FALSE))
+  {/* return, close conn, reconnect + retry all */
+    ret = 1;
+    sql_print_information("spider do internal grant failed");
+    goto exit;
+  }
 
-	//remote do grant
-	init_result_map2(remote_result_map, remote_ipport_map);
-	remote_do_sql = tc_get_remote_grant_sql(spider_ipport_set, spider_user_map,
-		spider_passwd_map, remote_ipport_map, remote_user_map, remote_passwd_map,
-		tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
-	if (tc_exec_sql_paral(remote_do_sql, remote_conn_map,
-		remote_result_map, remote_user_map, remote_passwd_map, FALSE))
-	{/* return, close conn, reconnect + retry all */
-		ret = 1;
-		sql_print_information("remote do internal grant failed");
-		goto exit;
-	}
+  //remote do grant
+  init_result_map2(remote_result_map, remote_ipport_map);
+  remote_do_sql = tc_get_remote_grant_sql(spider_ipport_set, spider_user_map,
+      spider_passwd_map, remote_ipport_map, remote_user_map, remote_passwd_map,
+      tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+  if (tc_exec_sql_paral(remote_do_sql, remote_conn_map,
+      remote_result_map, remote_user_map, remote_passwd_map, FALSE))
+  {/* return, close conn, reconnect + retry all */
+    ret = 1;
+    sql_print_information("remote do internal grant failed");
+    goto exit;
+  }
 
-	//tdbctl do grant
-	init_result_map2(tdbctl_result_map, tdbctl_ipport_map);
-	tdbctl_do_sql = "set tc_admin = off;";
-	tdbctl_do_sql += tc_get_tdbctl_grant_sql(spider_ipport_set, spider_user_map,
-		spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
-	if (tc_exec_sql_up(tdbctl_primary_conn, tdbctl_do_sql, &(tdbctl_result_map.begin()->second)))
-	{
-		ret = 1;
-		sql_print_information("tdbctl do internal grant failed");
-		goto exit;
-	}
+  //tdbctl do grant
+  init_result_map2(tdbctl_result_map, tdbctl_ipport_map);
+  tdbctl_do_sql = "set tc_admin = off;";
+  tdbctl_do_sql += tc_get_tdbctl_grant_sql(spider_ipport_set, spider_user_map,
+      spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+  if (tc_exec_sql_up(tdbctl_primary_conn, tdbctl_do_sql, &(tdbctl_result_map.begin()->second)))
+  {
+    ret = 1;
+    sql_print_information("tdbctl do internal grant failed");
+    goto exit;
+  }
 
 exit:
-	tc_conn_free(spider_conn_map);
-	tc_conn_free(remote_conn_map);
-	tc_conn_free(tdbctl_conn_map);
-	if (tdbctl_primary_conn != NULL)
-		mysql_close(tdbctl_primary_conn);
-	spider_conn_map.clear();
-	remote_conn_map.clear();
-	tdbctl_conn_map.clear();
-	spider_ipport_set.clear();
-	remote_ipport_map.clear();
-	tdbctl_ipport_map.clear();
-	spider_user_map.clear();
-	spider_passwd_map.clear();
-	remote_user_map.clear();
-	remote_passwd_map.clear();
-	tdbctl_user_map.clear();
-	tdbctl_passwd_map.clear();
-	spider_result_map.clear();
-	remote_result_map.clear();
-	tdbctl_result_map.clear();
-	free_root(&mem_root, MYF(0));
+  tc_conn_free(spider_conn_map);
+  tc_conn_free(remote_conn_map);
+  tc_conn_free(tdbctl_conn_map);
+  if (tdbctl_primary_conn != NULL)
+    mysql_close(tdbctl_primary_conn);
+  spider_conn_map.clear();
+  remote_conn_map.clear();
+  tdbctl_conn_map.clear();
+  spider_ipport_set.clear();
+  remote_ipport_map.clear();
+  tdbctl_ipport_map.clear();
+  spider_user_map.clear();
+  spider_passwd_map.clear();
+  remote_user_map.clear();
+  remote_passwd_map.clear();
+  tdbctl_user_map.clear();
+  tdbctl_passwd_map.clear();
+  spider_result_map.clear();
+  remote_result_map.clear();
+  tdbctl_result_map.clear();
+  free_root(&mem_root, MYF(0));
 
   return ret;
 }
@@ -1732,8 +1713,8 @@ bool tc_flush_routing(LEX* lex)
     break;
   case FLUSH_ROUTING_BY_SERVER:
   {
-	  string ipport = tc_get_ipport_from_server_by_wrapper(&lex->server_options, SPIDER_WRAPPER);
-		/* at present, only SPIDER wrapper server do flush */
+    string ipport = tc_get_ipport_from_server_by_wrapper(&lex->server_options, SPIDER_WRAPPER);
+    /* at present, only SPIDER wrapper server do flush */
     if (!ipport.length() || !all_spider_ipport_set.count(ipport))
     {
       result = TRUE;
@@ -1760,12 +1741,12 @@ bool tc_flush_routing(LEX* lex)
   while (retry_times-- > 0)
   {
     int exec_ret = 0;
-		if (tc_enable_internal_grant &&
-			  lex->do_grants &&
-			  tc_do_grants_internal()) {
-			sleep(2);
-			continue;
-		}
+    if (tc_enable_internal_grant &&
+        lex->do_grants &&
+        tc_do_grants_internal()) {
+      sleep(2);
+      continue;
+    }
     spider_conn_map = tc_spider_conn_connect(ret, to_flush_ipport_set, spider_user_map, spider_passwd_map);
     if (ret)
     {
@@ -1907,8 +1888,8 @@ int tc_check_and_repair_routing()
 {
   int ret = 0;
   int result = 0;
-	THD *thd;
-	bool locked = false;
+  THD *thd;
+  bool locked = false;
   map<string, MYSQL*> spider_conn_map;
   map<string, string> spider_user_map;
   map<string, string> spider_passwd_map;
@@ -1923,13 +1904,13 @@ int tc_check_and_repair_routing()
   list<FOREIGN_SERVER*> all_list;
   ulong records;
   tc_exec_info exec_info;
-	set<string>  spider_ipport_set;
+  set<string>  spider_ipport_set;
 
   if (!(thd = new THD))
-	{
-		result = 1;
-		goto finish;
-	}
+  {
+    result = 1;
+    goto finish;
+  }
 
   spider_ipport_set = get_spider_ipport_set(
                                       thd->mem_root,
@@ -1997,29 +1978,29 @@ int tc_check_and_repair_routing()
       {
         fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
           "ipport is %s, routing mismatch\n",
-          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, 
-          l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
-				if (!locked)
-				{
-					if (lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
-						fprintf(stderr, "lock for repair routing timeout\n");
-					else
-						locked = true;
-				}
+        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+        l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        if (!locked)
+        {
+          if (lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
+            fprintf(stderr, "lock for repair routing timeout\n");
+          else
+            locked = true;
+        }
         if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
         {
           fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
             "ipport is %s, routing repair failed\n",
-            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, 
-            l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+          l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
           result = 2;
         }
         else
         {
           fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO TDBCTL] "
             "ipport is %s, routing repair succeed\n",
-            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, 
-            l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+          l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
         }
       }
       li.clear();
@@ -2029,22 +2010,22 @@ int tc_check_and_repair_routing()
     {
       fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
         "ipport is %s, routing mismatch\n",
-        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, 
-        l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+      l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+      l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
       if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
       {
         fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
           "ipport is %s, routing repair failed\n",
-          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-          l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+        l_time->tm_min, l_time->tm_sec, ipport.c_str());
         result = 2;
       }
       else
       {
         fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO TDBCTL] "
           "ipport is %s, routing repair succeed\n",
-          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-          l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+        l_time->tm_min, l_time->tm_sec, ipport.c_str());
       }
     }
   }
@@ -2058,7 +2039,7 @@ finish:
   spider_user_map.clear();
   spider_passwd_map.clear();
   all_list.clear();
-	delete thd;
+  delete thd;
   return result;
 }
 
@@ -2153,7 +2134,7 @@ bool update_server_version(bool* version_updated)
   ulong share_records_bak = servers_cache_bak.records;
   if (share_records != share_records_bak)
   {
-	  *version_updated = TRUE;
+    *version_updated = TRUE;
   }
   DBUG_ENTER("replace_server_version");
   for (ulong i = 0; i < share_records; i++)
@@ -2298,8 +2279,8 @@ int get_remote_changed_servers(
     {
       fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
         "ipport is %s, routing mismatch\n",
-        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-        l_time->tm_min, l_time->tm_sec, ipport.c_str());
+      l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
+      l_time->tm_min, l_time->tm_sec, ipport.c_str());
       result = 2;
     }
     break;

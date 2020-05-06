@@ -30,23 +30,6 @@ mutex remote_exec_mtx;
 mutex spider_exec_mtx;
 
 
-static string tc_dbname_replace(
-  string sql, 
-  string spider_db_name, 
-  string remote_db_name
-)
-{
-    string db_org1 = " " + spider_db_name;
-    string db_org2 = "`" + spider_db_name + "`";
-    string db_dst1 = " " + remote_db_name;
-    string db_dst2 = " `" + remote_db_name + "`";
-    regex pattern1(db_org1);
-    regex pattern2(db_org2);
-    sql = regex_replace(sql, pattern1, db_dst1);
-    sql = regex_replace(sql, pattern2, db_dst2);
-    return sql;
-}
-
 static string tc_dbname_replace_with_point(
   string sql, 
   string spider_db_name, 
@@ -2215,63 +2198,64 @@ map<string, string> get_server_name_map(
 	bool with_slave
 )
 {
-	map<string, string> server_name_map;
-	ostringstream  sstr;
-	list<FOREIGN_SERVER*> server_list;
+  map<string, string> server_name_map;
+  ostringstream  sstr;
+  list<FOREIGN_SERVER*> server_list;
 
-	get_server_by_wrapper(server_list, mem, wrapper, with_slave);
-	for (auto &server : server_list)
-	{
-		string host = server->host;
-		sstr.str("");
-		sstr << server->port;
-		string ports = sstr.str();
-		string s = host + "#" + ports;
-		string server_name = server->server_name;
-		server_name_map.insert(pair<string, string>(s, server_name));
-	}
+  get_server_by_wrapper(server_list, mem, wrapper, with_slave);
+  for (auto &server : server_list)
+  {
+    string host = server->host;
+    sstr.str("");
+    sstr << server->port;
+    string ports = sstr.str();
+    string s = host + "#" + ports;
+    string server_name = server->server_name;
+    server_name_map.insert(pair<string, string>(s, server_name));
+  }
 
-	return server_name_map;
+  return server_name_map;
 }
 
 MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 {
-    int read_timeout = 600;
-    int write_timeout = 600;
-    int connect_timeout = 60;
-    ulong pos = ipport.find("#");
-    string hosts = ipport.substr(0, pos);
-    string ports = ipport.substr(pos + 1);
-    uint port = atoi(ports.c_str());
-    uint connect_retry_count = 3;
-    uint real_connect_option = 0;
-    MYSQL* mysql;
+  int read_timeout = 600;
+  int write_timeout = 600;
+  int connect_timeout = 60;
+  ulong pos = ipport.find("#");
+  string hosts = ipport.substr(0, pos);
+  string ports = ipport.substr(pos + 1);
+  uint port = atoi(ports.c_str());
+  uint connect_retry_count = 3;
+  uint real_connect_option = 0;
+  MYSQL* mysql;
 
-	  if (user.length() == 0 && passwd.length() == 0)
-	  {
-      sql_print_error("tc connect fail: username or password is empty");
-		  return NULL;
-	  }
+  if (user.length() == 0 && passwd.length() == 0)
+  {
+    sql_print_error("tc connect fail: username or password is empty");
+    return NULL;
+  }
 
-    while (connect_retry_count-- > 0)
+  while (connect_retry_count-- > 0)
+  {
+    mysql = mysql_init(NULL);
+    mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
+    mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
+    mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
+    real_connect_option = CLIENT_INTERACTIVE | CLIENT_MULTI_STATEMENTS;
+    if (!mysql_real_connect(mysql, hosts.c_str(), user.c_str(), passwd.c_str(), "", port, NULL, real_connect_option))
     {
-        mysql = mysql_init(NULL);
-        mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
-        mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
-        mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
-        real_connect_option = CLIENT_INTERACTIVE | CLIENT_MULTI_STATEMENTS;
-        if (!mysql_real_connect(mysql, hosts.c_str(), user.c_str(), passwd.c_str(), "", port, NULL, real_connect_option))
-        {
-            sql_print_warning("tc connect fail: error code is %d, error message: %s", mysql_errno(mysql), mysql_error(mysql));
-            if(mysql)
-                mysql_close(mysql);
-            if (!connect_retry_count)
-                return NULL;
-        }
-        else 
-            break;
+      sql_print_warning("tc connect fail: error code is %d, error message: %s", mysql_errno(mysql), mysql_error(mysql));
+      if(mysql)
+        mysql_close(mysql);
+      if (!connect_retry_count)
+        return NULL;
     }
-    return mysql;
+    else
+      break;
+  }
+
+  return mysql;
 }
 
 /*
@@ -2284,35 +2268,36 @@ map<string, string> get_tdbctl_ipport_map(
 	map<string, string> &tdbctl_passwd_map
 )
 {
-	map<string, string> ipport_map;
-	FOREIGN_SERVER *server, server_buffer;
-	ostringstream  sstr;
-	string server_name_pre = tdbctl_control_wrapper_prefix;
-	ulong records = get_servers_count();
-	tdbctl_user_map.clear();
-	tdbctl_passwd_map.clear();
+  map<string, string> ipport_map;
+  FOREIGN_SERVER *server, server_buffer;
+  ostringstream  sstr;
+  string server_name_pre = tdbctl_control_wrapper_prefix;
+  ulong records = get_servers_count();
+  tdbctl_user_map.clear();
+  tdbctl_passwd_map.clear();
 
-	for (ulong i = 0; i < records; i++)
-	{
-		sstr.str("");
-		sstr << i;
-		string hash_value = sstr.str();
-		string server_name = server_name_pre + hash_value;
-		if ((server = get_server_by_name(mem, server_name.c_str(), &server_buffer)))
-		{
-			string host = server->host;
-			string user = server->username;
-			string passwd = server->password;
-			sstr.str("");
-			sstr << server->port;
-			string ports = sstr.str();
-			string s = host + "#" + ports;
-			ipport_map.insert(pair<string, string>(server_name, s));
-			tdbctl_user_map.insert(pair<string, string>(s, user));
-			tdbctl_passwd_map.insert(pair<string, string>(s, passwd));
-		}
-	}
-	return ipport_map;
+  for (ulong i = 0; i < records; i++)
+  {
+    sstr.str("");
+    sstr << i;
+    string hash_value = sstr.str();
+    string server_name = server_name_pre + hash_value;
+    if ((server = get_server_by_name(mem, server_name.c_str(), &server_buffer)))
+    {
+      string host = server->host;
+      string user = server->username;
+      string passwd = server->password;
+      sstr.str("");
+      sstr << server->port;
+      string ports = sstr.str();
+      string s = host + "#" + ports;
+      ipport_map.insert(pair<string, string>(server_name, s));
+      tdbctl_user_map.insert(pair<string, string>(s, user));
+      tdbctl_passwd_map.insert(pair<string, string>(s, passwd));
+    }
+  }
+
+  return ipport_map;
 }
 
 map<string, MYSQL*> tc_spider_conn_connect(
@@ -2322,24 +2307,26 @@ map<string, MYSQL*> tc_spider_conn_connect(
   map<string, string> spider_passwd_map
 )
 {
-    map<string, MYSQL*> conn_map;
-    set<string>::iterator its;
-    for (its = spider_ipport_set.begin(); its != spider_ipport_set.end(); its++)
-    {// ipport_c must like 1.1.1.1#3306
-        string ipport = (*its);
-        MYSQL* mysql;
-        if((mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])))
-            conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
-        else
-        {
-            /* error */
-            ret = 1;
-            my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
-            break;
-        }
+  map<string, MYSQL*> conn_map;
+  set<string>::iterator its;
+  for (its = spider_ipport_set.begin(); its != spider_ipport_set.end(); its++)
+  {// ipport_c must like 1.1.1.1#3306
+    string ipport = (*its);
+    MYSQL* mysql;
+    if((mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])))
+     conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
+    else
+    {
+      /* error */
+      ret = 1;
+      my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+      break;
     }
-    return conn_map;
+  }
+
+  return conn_map;
 }
+
 MYSQL* tc_spider_conn_single(
 	int &ret,
 	set<string> spider_ipport_set,
@@ -2347,29 +2334,24 @@ MYSQL* tc_spider_conn_single(
 	map<string, string> spider_passwd_map
 )
 {
-	MYSQL* mysql = NULL;
-	set<string>::iterator its;
-	if (spider_ipport_set.size())
-	{
-		// ipport_c must like 1.1.1.1#3306
-		string ipport = *(spider_ipport_set.begin());
-		if (!(mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])))
-		{
-			/* error */
-			ret = 1;
-			my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
-		}
-	}
-	else
-	{
-		ret = 1;
-	}
-	return mysql;
+  MYSQL* mysql = NULL;
+  set<string>::iterator its;
+  if (spider_ipport_set.size())
+  {
+    // ipport_c must like 1.1.1.1#3306
+    string ipport = *(spider_ipport_set.begin());
+    if (!(mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])))
+    {
+      /* error */
+      ret = 1;
+      my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+    }
+  }
+  else
+    ret = 1;
+
+  return mysql;
 }
-
-
-
-
 
 map<string, MYSQL*> tc_remote_conn_connect(
   int &ret, 
@@ -2378,34 +2360,34 @@ map<string, MYSQL*> tc_remote_conn_connect(
   map<string, string> remote_passwd_map
 )
 {
-    map<int, string> ipport_map;
-    map<string, MYSQL*> conn_map;
-    map<string, string>::iterator its2;
+  map<int, string> ipport_map;
+  map<string, MYSQL*> conn_map;
+  map<string, string>::iterator its2;
 
-    for (its2 = remote_ipport_map.begin(); its2 != remote_ipport_map.end(); its2++)
+  for (its2 = remote_ipport_map.begin(); its2 != remote_ipport_map.end(); its2++)
+  {
+    string ipport = its2->second;
+    ulong pos = ipport.find("#");
+    string hosts = ipport.substr(0, pos);
+    string ports = ipport.substr(pos + 1);
+    MYSQL* mysql;
+    if ((mysql = tc_conn_connect(ipport, remote_user_map[ipport], remote_passwd_map[ipport])))
+      conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
+    else
     {
-        string ipport = its2->second;
-        ulong pos = ipport.find("#");
-        string hosts = ipport.substr(0, pos);
-        string ports = ipport.substr(pos + 1);
-        MYSQL* mysql;
-        if ((mysql = tc_conn_connect(ipport, remote_user_map[ipport], remote_passwd_map[ipport])))
-            conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
-        else
-        {
-            /* error */
-            ret = 1;
-            my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
-            break;
-        }
+      /* error */
+      ret = 1;
+      my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+      break;
     }
-    return conn_map;
+  }
+  return conn_map;
 }
 
-/**
+/*
  use user#password to connect tdbctl
 
- @result
+ @retval
    return a map which store each tdbctl's connect
 */
 map<string, MYSQL*> tc_tdbctl_conn_connect(
@@ -2415,106 +2397,97 @@ map<string, MYSQL*> tc_tdbctl_conn_connect(
   map<string, string> tdbctl_passwd_map
 )
 {
-    map<int, string> ipport_map;
-    map<string, MYSQL*> conn_map;
-    map<string, string>::iterator its2;
-    int read_timeout = 600;
-    int write_timeout = 600;
-    int connect_timeout = 60;
+  map<int, string> ipport_map;
+  map<string, MYSQL*> conn_map;
+  map<string, string>::iterator its2;
 
-    for (its2 = tdbctl_ipport_map.begin(); its2 != tdbctl_ipport_map.end(); its2++)
+  for (its2 = tdbctl_ipport_map.begin(); its2 != tdbctl_ipport_map.end(); its2++)
+  {
+    MYSQL* mysql;
+    string ipport = its2->second;
+    if ((mysql = tc_conn_connect(ipport, tdbctl_user_map[ipport], tdbctl_passwd_map[ipport])))
+      conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
+    else
     {
-        string ipport = its2->second;
-        ulong pos = ipport.find("#");
-        string hosts = ipport.substr(0, pos);
-        string ports = ipport.substr(pos + 1);
-        uint port = atoi(ports.c_str());
-        MYSQL* mysql;
-        if (mysql = tc_conn_connect(ipport, tdbctl_user_map[ipport], tdbctl_passwd_map[ipport]))
-            conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
-        else
-        {
-            /* error */
-            ret = 1;
-            my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
-            break;
-        }
+      /* error */
+      ret = 1;
+      my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+      break;
     }
-    return conn_map;
+  }
+  return conn_map;
 }
 
 /*
   @NOTES
-	  for MGR on Single-Primary
-      eturn an connect to the primary member;
-    for no MGR mode or Multi-Primary
-		  always use the  tdbctl_map's first key(which default ordered) to connect
+   for MGR on Single-Primary return an connect to the primary member;
+   for no MGR mode or Multi-Primary, always use the
+     tdbctl_map's first key(which default ordered) to connect
 
-	@retval
-	  ret: 0 for ok, others error
+  @retval
+   ret: 0 for ok, others error
 */
 MYSQL *tc_tdbctl_conn_primary(
-	int &ret,
-	map<string, string> &tdbctl_ipport_map,
-	map<string, string> &tdbctl_user_map,
-	map<string, string> &tdbctl_passwd_map
+        int &ret,
+        map<string, string> &tdbctl_ipport_map,
+        map<string, string> &tdbctl_user_map,
+        map<string, string> &tdbctl_passwd_map
 )
 {
-	MYSQL *conn = NULL;
-	string address, host;
-	uint port;
+  MYSQL *conn = NULL;
+  string address, host;
+  uint port;
 
-	if (tdbctl_ipport_map.empty())
-	{
-		ret = 1;
-		sql_print_warning("tc connect to primary node failed: map is empty");
-	  return NULL;
-	}
+  if (tdbctl_ipport_map.empty())
+  {
+    ret = 1;
+    sql_print_warning("tc connect to primary node failed: map is empty");
+    return NULL;
+  }
 
-	if (tc_get_primary_node(host, &port))
-	{
-		address = host + "#" + to_string(port);
-		/* NOTE: primary member must exist in mysql.servers */
-		if (std::find_if(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(),
-			[address](const std::pair<string, string> &tdbctl_ip_port) -> bool {
-			return address.compare(tdbctl_ip_port.second) == 0; }) == tdbctl_ipport_map.end())
-		{
-			ret = 1;
-			sql_print_warning("primary member %s not exist in mysql.servers", address.c_str());
-			return NULL;
-		}
-	}
-	else
-	{//error happened, such as network partitioning
-		sql_print_warning("get single-Primary node failed");
-		ret = 1;
+  if (tc_get_primary_node(host, &port))
+  {
+    address = host + "#" + to_string(port);
+    /* NOTE: primary member must exist in mysql.servers */
+    if (std::find_if(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(),
+        [address](const std::pair<string, string> &tdbctl_ip_port) -> bool {
+        return address.compare(tdbctl_ip_port.second) == 0; }) == tdbctl_ipport_map.end())
+    {
+      ret = 1;
+      sql_print_warning("primary member %s not exist in mysql.servers", address.c_str());
+      return NULL;
+    }
+  }
+  else
+  {//error happened, such as network partitioning
+    sql_print_warning("get single-Primary node failed");
+    ret = 1;
 
-	  return NULL;
-	}
+    return NULL;
+  }
 
-	conn = tc_conn_connect(address, tdbctl_user_map[address], tdbctl_passwd_map[address]);
-	if (conn == NULL) {
-		ret = 1;
+  conn = tc_conn_connect(address, tdbctl_user_map[address], tdbctl_passwd_map[address]);
+  if (conn == NULL) {
+    ret = 1;
     my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
-	}
+  }
 
-	return conn;
+  return conn;
 }
-
 
 bool tc_conn_free(map<string, MYSQL*> &conn_map)
 {
-    map<string, MYSQL*>::iterator its;
-    for (its = conn_map.begin(); its != conn_map.end(); its++)
+  map<string, MYSQL*>::iterator its;
+  for (its = conn_map.begin(); its != conn_map.end(); its++)
+  {
+    MYSQL *mysql = its->second;
+    if (mysql)
     {
-        MYSQL *mysql = its->second;
-        if (mysql)
-        {
-            mysql_close(mysql);
-            mysql = NULL;
-        }
+      mysql_close(mysql);
+      mysql = NULL;
     }
-    return FALSE;
+  }
+  return FALSE;
 }
 
 
@@ -2741,76 +2714,73 @@ bool tc_exec_sql_without_result(MYSQL* mysql, string sql, tc_exec_info* exec_inf
 
 my_time_t string_to_timestamp(const string s)
 {
-	MYSQL_TIME_STATUS status;
-	MYSQL_TIME l_time;
-	long dummy_my_timezone;
-	my_bool dummy_in_dst_time_gap;
-	const char* str = s.c_str();
-	/* We require a total specification (date AND time) */
-	if (str_to_datetime(str, strlen(str), &l_time, 0, &status) ||
-		l_time.time_type != MYSQL_TIMESTAMP_DATETIME || status.warnings)
-	{
-		exit(1);
-	}
-	return
-		my_system_gmt_sec(&l_time, &dummy_my_timezone, &dummy_in_dst_time_gap);
+  MYSQL_TIME_STATUS status;
+  MYSQL_TIME l_time;
+  long dummy_my_timezone;
+  my_bool dummy_in_dst_time_gap;
+  const char* str = s.c_str();
+  /* We require a total specification (date AND time) */
+  if (str_to_datetime(str, strlen(str), &l_time, 0, &status) ||
+        l_time.time_type != MYSQL_TIMESTAMP_DATETIME || status.warnings)
+  {
+    exit(1);
+  }
+  return my_system_gmt_sec(&l_time, &dummy_my_timezone, &dummy_in_dst_time_gap);
 }
 
 void init_result_map(map<string, tc_exec_info>& result_map,
-	set<string> &ipport_set)
+        set<string> &ipport_set)
 {
-	std::for_each(ipport_set.begin(), ipport_set.end(), [&](string ipport) {
-		tc_exec_info exec_info;
-		exec_info.err_code = 0;
-		exec_info.row_affect = 0;
-		exec_info.err_msg = "";
-		result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
-	});
+  std::for_each(ipport_set.begin(), ipport_set.end(), [&](string ipport) {
+    tc_exec_info exec_info;
+    exec_info.err_code = 0;
+    exec_info.row_affect = 0;
+    exec_info.err_msg = "";
+    result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
+  });
 }
 
 void init_result_map2(map<string, tc_exec_info>& result_map,
-	map<string, string> &ipport_map)
+        map<string, string> &ipport_map)
 {
-	std::for_each(ipport_map.begin(), ipport_map.end(), [&](std::pair<string, string>its){
-		string ipport = its.second;
-		tc_exec_info exec_info;
-		exec_info.err_code = 0;
-		exec_info.row_affect = 0;
-		exec_info.err_msg = "";
-		result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
-	});
+  std::for_each(ipport_map.begin(), ipport_map.end(), [&](std::pair<string, string>its){
+    string ipport = its.second;
+    tc_exec_info exec_info;
+    exec_info.err_code = 0;
+    exec_info.row_affect = 0;
+    exec_info.err_msg = "";
+    result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
+  });
 }
 
 /*
-get mysql variable value
+  get mysql variable value
 */
 string tc_get_variable_value(MYSQL *conn, const char *variable)
 {
-	MYSQL_RES* res;
-	MYSQL_ROW row = NULL;
-	char sql[256];
-	sprintf(sql, "select @@%s", variable);
-	res = tc_exec_sql_with_result(conn, sql);
-	if (res && (row = mysql_fetch_row(res)))
-	{
-		return row[0];
-	}
+  MYSQL_RES* res;
+  MYSQL_ROW row = NULL;
+  char sql[256];
+  sprintf(sql, "select @@%s", variable);
+  res = tc_exec_sql_with_result(conn, sql);
+  if (res && (row = mysql_fetch_row(res)))
+    return row[0];
 
-	return NULL;
+  return NULL;
 }
 
-/**
+/*
   check whether wrapper name is valid
 
-  @param org_name             Name of wrapper and length
+  @param org_name Name of wrapper and length
 
-  @retval  IDENT_WRAPPER_OK        Identifier wrapper name is Ok (Success)
-	@retval  IDENT_WRAPPER_WRONG     Identifier wrapper name is Wrong (ER_TCADMIN_WRONG_WRAPPER_NAME)
+  @retval IDENT_WRAPPER_OK    Identifier wrapper name is Ok (Success)
+  @retval IDENT_WRAPPER_WRONG Identifier wrapper name is Wrong (ER_TCADMIN_WRONG_WRAPPER_NAME)
 
 */
 enum_ident_wrapper_check tc_check_wrapper_name(LEX_STRING *org_name)
 {
-	char *name= org_name->str;
+  char *name= org_name->str;
   size_t name_length= org_name->length;
 
   if (!name_length || name_length > NAME_LEN)
@@ -2819,361 +2789,362 @@ enum_ident_wrapper_check tc_check_wrapper_name(LEX_STRING *org_name)
     return IDENT_WRAPPER_WRONG;
   }
 
-	if (strcasecmp(name, SPIDER_WRAPPER) != 0 &&
-        strcasecmp(name, TDBCTL_WRAPPER) != 0 &&
-        strcasecmp(name, MYSQL_WRAPPER) != 0 &&
-				strcasecmp(name, SPIDER_SLAVE_WRAPPER) != 0 &&
-				strcasecmp(name, MYSQL_SLAVE_WRAPPER) !=0)
-	{
+  if (strcasecmp(name, SPIDER_WRAPPER) != 0 &&
+          strcasecmp(name, TDBCTL_WRAPPER) != 0 &&
+          strcasecmp(name, MYSQL_WRAPPER) != 0 &&
+          strcasecmp(name, SPIDER_SLAVE_WRAPPER) != 0 &&
+          strcasecmp(name, MYSQL_SLAVE_WRAPPER) !=0)
+  {
     my_error(ER_TCADMIN_WRONG_WRAPPER_NAME, MYF(0), name, "only support TDBCTL, SPIDER, SPIDER_SLAVE, mysql wrapper");
     return IDENT_WRAPPER_WRONG;
-	}
+  }
 
-	return IDENT_WRAPPER_OK;
+  return IDENT_WRAPPER_OK;
 }
 
 /*
-Generate internal spider GRANT sql according to mysql.servers's info.
-Each spider should do [GRANT ALL PRIVILEGES] sql for all tdbctls, which use to
-do DDL on spider. If not, after tdbctl(MGR) failover, new primary tdbctl may
-access denied by spider
-The generate sqls should execute on each spider
+  Generate internal spider GRANT sql according to mysql.servers's info.
+  Each spider should do [GRANT ALL PRIVILEGES] sql for all tdbctls, which use to
+  do DDL on spider. If not, after tdbctl(MGR) failover, new primary tdbctl may
+  access denied by spider
+  The generate sqls should execute on each spider
 */
 string tc_get_spider_grant_sql(
-				set<string> &spider_ipport_set,
-				map<string, string> &spider_user_map,
-				map<string, string> &spider_passwd_map,
-				map<string, string> &tdbctl_ipport_map,
-				map<string, string> &tdbctl_user_map,
-				map<string, string> &tdbctl_passwd_map)
+        set<string> &spider_ipport_set,
+        map<string, string> &spider_user_map,
+        map<string, string> &spider_passwd_map,
+        map<string, string> &tdbctl_ipport_map,
+        map<string, string> &tdbctl_user_map,
+        map<string, string> &tdbctl_passwd_map)
 {
-	string spider_do_sql;
-	char create_sql[FN_REFLEN], grant_sql[FN_REFLEN];
-	std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_ip_port)
-	{
-		const char *spider_user = spider_user_map[spider_ip_port].c_str();
-		const char *spider_passwd = spider_passwd_map[spider_ip_port].c_str();
-		std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
-		{
-			string tdbctl_address = tdbctl_ip_port.second;
-			ulong pos = tdbctl_address.find("#");
-			string tdbctl_host = tdbctl_address.substr(0, pos);
+  string spider_do_sql;
+  char create_sql[FN_REFLEN], grant_sql[FN_REFLEN];
+  std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_ip_port)
+  {
+    const char *spider_user = spider_user_map[spider_ip_port].c_str();
+    const char *spider_passwd = spider_passwd_map[spider_ip_port].c_str();
+    std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
+    {
+      string tdbctl_address = tdbctl_ip_port.second;
+      ulong pos = tdbctl_address.find("#");
+      string tdbctl_host = tdbctl_address.substr(0, pos);
 
-			//tdbctl use spider's user, password to connect current spider
-			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
-				spider_user, tdbctl_host.c_str(), spider_passwd);
-			sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* TO '%s'@'%s' WITH GRANT OPTION;",
-				spider_user, tdbctl_host.c_str());
-			spider_do_sql += create_sql;
-			spider_do_sql += grant_sql;
-		});
-	});
+      //tdbctl use spider's user, password to connect current spider
+      sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+              spider_user, tdbctl_host.c_str(), spider_passwd);
+      sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* TO '%s'@'%s' WITH GRANT OPTION;",
+              spider_user, tdbctl_host.c_str());
+      spider_do_sql += create_sql;
+      spider_do_sql += grant_sql;
+    });
+  });
 
-	return spider_do_sql;
+  return spider_do_sql;
 }
 
 
 /*
-Generate internal tdbctl GRANT sql according to mysql.servers's info.
-Primary tdbctl should do [GRANT ALL PRIVILEGES] sql for all spiders, which use
-to transfer sql from spider to tdbctl. Of course, other tdbctl also need do, but MGR
-ensure to sync privileges from master tdbctl to slave, so we skip this step.
-The generate sqls only need to execute on primary tdbctl
+  Generate internal tdbctl GRANT sql according to mysql.servers's info.
+  Primary tdbctl should do [GRANT ALL PRIVILEGES] sql for all spiders, which use
+  to transfer sql from spider to tdbctl. Of course, other tdbctl also need do, but MGR
+  ensure to sync privileges from master tdbctl to slave, so we skip this step.
+  The generate sqls only need to execute on primary tdbctl
 */
 string tc_get_tdbctl_grant_sql(
-				set<string> &spider_ipport_set,
-				map<string, string> &spider_user_map,
-				map<string, string> &spider_passwd_map,
-				map<string, string> &tdbctl_ipport_map,
-				map<string, string> &tdbctl_user_map,
-				map<string, string> &tdbctl_passwd_map)
+        set<string> &spider_ipport_set,
+        map<string, string> &spider_user_map,
+        map<string, string> &spider_passwd_map,
+        map<string, string> &tdbctl_ipport_map,
+        map<string, string> &tdbctl_user_map,
+        map<string, string> &tdbctl_passwd_map)
 {
-	string tdbctl_do_sql;
-	char create_sql[FN_REFLEN], grant_sql[FN_REFLEN];
-	std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_ip_port)
-	{
-		ulong pos = spider_ip_port.find("#");
-		string spider_host = spider_ip_port.substr(0, pos);
-		std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
-		{
-			string tdbctl_address = tdbctl_ip_port.second;
-			ulong pos = tdbctl_address.find("#");
-			string tdbctl_host = tdbctl_address.substr(0, pos);
-			const char *tdbctl_user = tdbctl_user_map[tdbctl_address].c_str();
-			const char *tdbctl_passwd = tdbctl_passwd_map[tdbctl_address].c_str();
+  string tdbctl_do_sql;
+  char create_sql[FN_REFLEN], grant_sql[FN_REFLEN];
+  std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_ip_port)
+  {
+    ulong pos = spider_ip_port.find("#");
+    string spider_host = spider_ip_port.substr(0, pos);
+    std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
+    {
+      string tdbctl_address = tdbctl_ip_port.second;
+      ulong pos = tdbctl_address.find("#");
+      string tdbctl_host = tdbctl_address.substr(0, pos);
+      const char *tdbctl_user = tdbctl_user_map[tdbctl_address].c_str();
+      const char *tdbctl_passwd = tdbctl_passwd_map[tdbctl_address].c_str();
 
-			//spider use tdbctl's user, password to connect spider
-			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
-				tdbctl_user, spider_host.c_str(), tdbctl_passwd);
-			sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* TO '%s'@'%s' WITH GRANT OPTION;",
-				tdbctl_user, spider_host.c_str());
-			tdbctl_do_sql += create_sql;
-			tdbctl_do_sql += grant_sql;
-		});
-	});
+      //spider use tdbctl's user, password to connect spider
+      sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+              tdbctl_user, spider_host.c_str(), tdbctl_passwd);
+      sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* TO '%s'@'%s' WITH GRANT OPTION;",
+              tdbctl_user, spider_host.c_str());
+      tdbctl_do_sql += create_sql;
+      tdbctl_do_sql += grant_sql;
+    });
+  });
 
-	return tdbctl_do_sql;
+  return tdbctl_do_sql;
 }
 
 /*
-Generate internal remote GRANT sql according to mysql.servers's info.
-1. remote should do [GRANT SELECT, INSERT, TRUNCATE PRIVILEGES] sql for all spiders, spider need
-privileges do DML on remote
-2. remote should do [GRANT ALL PRIVILEGES] for all tdbctls, which use to connect remote and
-do DDL. We must do this, if not, after tdbctl(MGR) failover, new primary tdbctl may access denied by remote
-The generate sqls need to execute on all remotes
+  Generate internal remote GRANT sql according to mysql.servers's info.
+  1. remote should do [GRANT SELECT, INSERT, TRUNCATE PRIVILEGES] sql for all spiders, spider need
+  privileges do DML on remote
+  2. remote should do [GRANT ALL PRIVILEGES] for all tdbctls, which use to connect remote and
+  do DDL. We must do this, if not, after tdbctl(MGR) failover, new primary tdbctl may access denied by remote
+  The generate sqls need to execute on all remotes
 */
 string tc_get_remote_grant_sql(
-				set<string> &spider_ipport_set,
-				map<string, string> &spider_user_map,
-				map<string, string> &spider_passwd_map,
-				map<string, string> &remote_ipport_map,
-			  map<string, string> &remote_user_map,
-				map<string, string> &remote_passwd_map,
-				map<string, string> &tdbctl_ipport_map,
-				map<string, string> &tdbctl_user_map,
-				map<string, string> &tdbctl_passwd_map)
+        set<string> &spider_ipport_set,
+        map<string, string> &spider_user_map,
+        map<string, string> &spider_passwd_map,
+        map<string, string> &remote_ipport_map,
+        map<string, string> &remote_user_map,
+        map<string, string> &remote_passwd_map,
+        map<string, string> &tdbctl_ipport_map,
+        map<string, string> &tdbctl_user_map,
+        map<string, string> &tdbctl_passwd_map)
 {
-	string remote_do_sql;
-	char create_sql[FN_REFLEN], grant_sql[FN_REFLEN];
+  string remote_do_sql;
+  char create_sql[FN_REFLEN], grant_sql[FN_REFLEN];
 
   std::for_each(remote_ipport_map.begin(), remote_ipport_map.end(), [&](std::pair<string, string>remote_ip_port)
-	{
-		string remote_address = remote_ip_port.second;
-		const char *remote_user = remote_user_map[remote_address].c_str();
-		const char *remote_passwd = remote_passwd_map[remote_address].c_str();
+  {
+    string remote_address = remote_ip_port.second;
+    const char *remote_user = remote_user_map[remote_address].c_str();
+    const char *remote_passwd = remote_passwd_map[remote_address].c_str();
 
-		//remote do grants for spider
-	  std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_address)
-		{
-			ulong pos = spider_address.find("#");
-			string spider_host = spider_address.substr(0, pos);
+    //remote do grants for spider
+    std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_address)
+    {
+      ulong pos = spider_address.find("#");
+      string spider_host = spider_address.substr(0, pos);
 
-			//spider use remote's user, password to connect remote do DML
-			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
-				remote_user, spider_host.c_str(), remote_passwd);
-			sprintf(grant_sql, "GRANT SELECT, INSERT, DROP ON *.* to '%s'@'%s' WITH GRANT OPTION;",
-				remote_user, spider_host.c_str());
-			remote_do_sql += create_sql;
-			remote_do_sql += grant_sql;
-		});
+      //spider use remote's user, password to connect remote do DML
+      sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+              remote_user, spider_host.c_str(), remote_passwd);
+      sprintf(grant_sql, "GRANT SELECT, INSERT, DELETE, UPDATE, DROP ON *.* to '%s'@'%s' WITH GRANT OPTION;",
+              remote_user, spider_host.c_str());
+      remote_do_sql += create_sql;
+      remote_do_sql += grant_sql;
+    });
 
-		//remote do grants for tdbctl
-		std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
-		{
-			string tdbctl_address = tdbctl_ip_port.second;
-			ulong pos = tdbctl_address.find("#");
-			string tdbctl_host = tdbctl_address.substr(0, pos);
+    //remote do grants for tdbctl
+    std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
+    {
+      string tdbctl_address = tdbctl_ip_port.second;
+      ulong pos = tdbctl_address.find("#");
+      string tdbctl_host = tdbctl_address.substr(0, pos);
 
-			//tdbctl use remote's user, password to connect remote do all
-			sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
-				remote_user, tdbctl_host.c_str(), remote_passwd);
-			sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* to '%s'@'%s' WITH GRANT OPTION;",
-				remote_user, tdbctl_host.c_str());
-			remote_do_sql += create_sql;
-			remote_do_sql += grant_sql;
-		});
-	});
+      //tdbctl use remote's user, password to connect remote do all
+      sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+              remote_user, tdbctl_host.c_str(), remote_passwd);
+      sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* to '%s'@'%s' WITH GRANT OPTION;",
+              remote_user, tdbctl_host.c_str());
+      remote_do_sql += create_sql;
+      remote_do_sql += grant_sql;
+    });
+  });
 
-	return remote_do_sql;
+  return remote_do_sql;
 }
 
-/**
+/*
   @param (out)
    host: host to primary member
-	 port: port to primary member
+   port: port to primary member
 
-	@retval
-	 0: error
-	 1: mgr  running with single-primary.
-	 2. not mgr or multi-primary
+  @retval
+   0: error
+   1: mgr  running with single-primary.
+   2. not mgr or multi-primary
 
   @Note
-	 only when return 1, host and port[out] with value
+   only when return 1, host and port[out] with value
 */
 uint tc_get_primary_node(std::string &host, uint *port)
 {
-	int ret = 0;
-	ret = get_group_replication_primary_node_info(host, port);
+  int ret = 0;
+  ret = get_group_replication_primary_node_info(host, port);
 
-	if (ret == 2)
-	{//not mgr or multi-Primary
-		MEM_ROOT mem_root;
-		list<FOREIGN_SERVER*> server_list;
+  if (ret == 2)
+  {//not mgr or multi-Primary
+    MEM_ROOT mem_root;
+    list<FOREIGN_SERVER*> server_list;
 
-		init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-		MEM_ROOT_GUARD(mem_root)
-		get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
+    init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+    MEM_ROOT_GUARD(mem_root)
+    get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
 
-		//empty, error happened
-		if (server_list.empty())
-			return 0;
+    //empty, error happened
+    if (server_list.empty())
+      return 0;
 
-		//always user fist Server_name
-		server_list.sort(server_compare);
-		host = server_list.front()->host;
-		*port = server_list.front()->port;
-	}
+    //always user fist Server_name
+    server_list.sort(server_compare);
+    host = server_list.front()->host;
+    *port = server_list.front()->port;
+  }
 
-	return ret;
+  return ret;
 }
 
 
 /*
-host: primary host
-port: primary port
-return value:
--1, error
-0, not primary node
-1, primary node
+  host: primary host
+  port: primary port
+
+  return value:
+    -1, error
+    0, not primary node
+    1, primary node
 */
 int tc_is_primary_tdbctl_node()
 {
-	int ret = 0;
-	string host;
-	uint port = 0;
+  int ret = 0;
+  string host;
+  uint port = 0;
 
-	ret = tc_get_primary_node(host, &port);
-	//mgr running with single-primary
-	if (ret == 1)
-		return tdbctl_is_primary;
+  ret = tc_get_primary_node(host, &port);
+  //mgr running with single-primary
+  if (ret == 1)
+    return tdbctl_is_primary;
 
-	if (ret == 2)
-	{//not mgr or multi-Primary
-		MYSQL *conn;
-		MYSQL_RES* res;
-		MYSQL_ROW row;
-		MEM_ROOT mem_root;
-		list<FOREIGN_SERVER*> server_list;
-		string uuid, user, passwd, address;
-		uint port = 0;
+  if (ret == 2)
+  {//not mgr or multi-Primary
+    MYSQL *conn;
+    MYSQL_RES* res;
+    MYSQL_ROW row;
+    MEM_ROOT mem_root;
+    list<FOREIGN_SERVER*> server_list;
+    string uuid, user, passwd, address;
+    uint port = 0;
 
-		string sql = "show variables like  'server_uuid'";
-		init_sql_alloc(key_memory_for_tdbctl, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-		MEM_ROOT_GUARD(mem_root);
-		get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
+    string sql = "show variables like  'server_uuid'";
+    init_sql_alloc(key_memory_for_tdbctl, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+    MEM_ROOT_GUARD(mem_root);
+    get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
 
-		//error
-		if (server_list.empty())
-			return -1;
+    //error
+    if (server_list.empty())
+      return -1;
 
-		//list had been sorted, use first Server_name directly.
-		host = server_list.front()->host;
-		port = server_list.front()->port;
-		user = server_list.front()->username;
-		passwd = server_list.front()->password;
-		address = host + "#" + to_string(port);
-		conn = tc_conn_connect(address, user, passwd);
-		if (conn == NULL) {
-			my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
-			return -1;
-		}
+    //list had been sorted, use first Server_name directly.
+    host = server_list.front()->host;
+    port = server_list.front()->port;
+    user = server_list.front()->username;
+    passwd = server_list.front()->password;
+    address = host + "#" + to_string(port);
+    conn = tc_conn_connect(address, user, passwd);
+    if (conn == NULL) {
+      my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
+      return -1;
+    }
 
-		MYSQL_GUARD(conn);
-		res = tc_exec_sql_with_result(conn, sql);
-		if (res && (row = mysql_fetch_row(res)))
-			uuid = row[1];
-		else
-			return -1;
+    MYSQL_GUARD(conn);
+    res = tc_exec_sql_with_result(conn, sql);
+    if (res && (row = mysql_fetch_row(res)))
+      uuid = row[1];
+    else
+      return -1;
 
-		ret = (strcasecmp(uuid.c_str(), server_uuid) == 0) ? 1 : 0;
-	}
+    ret = (strcasecmp(uuid.c_str(), server_uuid) == 0) ? 1 : 0;
+  }
 
-	return ret;
+  return ret;
 }
 
-/**
+/*
   get server_list according to wrapper_name.
-	connect each server and parallel execute sql.
+  connect each server and parallel execute sql.
 
-	@param
-	  exec_sql: sql to execute
-		wraper_name: wrapper_name
-		with_slave: whether diffuse to slave
+  @param
+   exec_sql: sql to execute
+   wraper_name: wrapper_name
+   with_slave: whether diffuse to slave
 
-	@retval
-	  map for result
-		key:Server_name for mysql.servers
-		value: execute result
+  @retval
+   map for result
+   key:Server_name for mysql.servers
+   value: execute result
 */
 map<string, MYSQL_RES*> tc_exec_sql_paral_by_wrapper(
-			string exec_sql, string wrapper_name, bool with_slave)
+    string exec_sql, string wrapper_name, bool with_slave)
 {
-	map<string, MYSQL_RES*> result_map;
+  map<string, MYSQL_RES*> result_map;
   MEM_ROOT mem_root;
-	list<FOREIGN_SERVER*> server_list;
-	list<thread> thread_list;
+  list<FOREIGN_SERVER*> server_list;
+  list<thread> thread_list;
 
-	init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-	MEM_ROOT_GUARD(mem_root);
-	get_server_by_wrapper(server_list, &mem_root, wrapper_name.c_str(), with_slave);
+  init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+  MEM_ROOT_GUARD(mem_root);
+  get_server_by_wrapper(server_list, &mem_root, wrapper_name.c_str(), with_slave);
 
-	/*
-	  create thread for work
-	  each thread do connect, and execute sql
-	*/
-	for (auto & server: server_list)
-	{
-		thread tmp_t([&]{
-			MYSQL* mysql;
-		  MYSQL_RES *res;
-			string ipport = string(server->host) + "#" + to_string(server->port);
-			if (!(mysql = tc_conn_connect(ipport, server->username, server->password)))
-			{
-				/* error */
-				my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
-				return;
-			}
-			//use shared_ptr to release mysql
-			MYSQL_GUARD(mysql);
-			res = tc_exec_sql_with_result(mysql, exec_sql);
-		  result_map.insert(pair<string, MYSQL_RES *>(server->server_name, std::move(res)));
-		});
-		thread_list.push_back(std::move(tmp_t));
-	}
+  /*
+    create thread for work
+    each thread do connect, and execute sql
+  */
+  for (auto & server: server_list)
+  {
+    thread tmp_t([&]{
+      MYSQL* mysql;
+      MYSQL_RES *res;
+      string ipport = string(server->host) + "#" + to_string(server->port);
+      if (!(mysql = tc_conn_connect(ipport, server->username, server->password)))
+      {
+        /* error */
+        my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+        return;
+      }
+      //use shared_ptr to release mysql
+      MYSQL_GUARD(mysql);
+      res = tc_exec_sql_with_result(mysql, exec_sql);
+      result_map.insert(pair<string, MYSQL_RES *>(server->server_name, std::move(res)));
+    });
+    thread_list.push_back(std::move(tmp_t));
+  }
 
-	/* wait all thread complete */
-	for (auto &td : thread_list) {
-		if (td.joinable())
-			td.join();
-	}
+  /* wait all thread complete */
+  for (auto &td : thread_list) {
+    if (td.joinable())
+      td.join();
+  }
 
-	return result_map;
+  return result_map;
 }
 
-/**
+/*
   get server by server_name and then connect
-	to server and execute sql.
+  to server and execute sql.
 
-	@param
-	  exec_sql: sql to execute
-		server_name: Server_name in mysql.servers.
+  @param
+   exec_sql: sql to execute
+   server_name: Server_name in mysql.servers.
 */
 MYSQL_RES* tc_exec_sql_by_server(
 	string exec_sql, const char *server_name)
 {
-	MEM_ROOT mem_root;
-	MYSQL* mysql;
-	MYSQL_RES *res;
-	FOREIGN_SERVER *server;
+  MEM_ROOT mem_root;
+  MYSQL* mysql;
+  MYSQL_RES *res;
+  FOREIGN_SERVER *server;
 
-	init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-	MEM_ROOT_GUARD(mem_root);
+  init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+  MEM_ROOT_GUARD(mem_root);
 
-	server = get_server_by_name(&mem_root, server_name, NULL);
-	if (server == NULL)
-		return NULL;
+  server = get_server_by_name(&mem_root, server_name, NULL);
+  if (server == NULL)
+    return NULL;
 
-	string ipport = string(server->host) + "#" + to_string(server->port);
-	if (!(mysql = tc_conn_connect(ipport, server->username, server->password)))
-	{
-		/* error */
-		my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
-		return NULL;
-	}
-	//use shared_ptr to release mysql
-	MYSQL_GUARD(mysql);
-	res = tc_exec_sql_with_result(mysql, exec_sql);
+  string ipport = string(server->host) + "#" + to_string(server->port);
+  if (!(mysql = tc_conn_connect(ipport, server->username, server->password)))
+  {
+    /* error */
+    my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+    return NULL;
+  }
+  //use shared_ptr to release mysql
+  MYSQL_GUARD(mysql);
+  res = tc_exec_sql_with_result(mysql, exec_sql);
 
-	return res;
+  return res;
 }
