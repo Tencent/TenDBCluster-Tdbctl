@@ -1873,7 +1873,8 @@ void tc_check_and_repair_routing_thread()
 {
   while (1)
   {
-    if (tc_check_repair_routing)
+	  if ((tc_check_repair_routing &&
+		  ((tdbctl_is_primary = tc_is_primary_tdbctl_node()) > 0))) 
     {
       if (tc_check_and_repair_routing())
       {

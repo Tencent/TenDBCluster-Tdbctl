@@ -6438,3 +6438,9 @@ static Sys_var_ulong Sys_tc_partition_admin_time(
 	"The time of  admin partition of the cluster",
 	GLOBAL_VAR(tc_partition_admin_time), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(0, 86400), DEFAULT(3600), BLOCK_SIZE(1));
+
+static Sys_var_long Sys_tc_is_primary(
+	"tdbctl_is_primary",
+	"where the node is primary,-1 for unknown,0 for not-primary,1 for primary",
+	GLOBAL_VAR(tdbctl_is_primary), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(-1, 1), DEFAULT(-1), BLOCK_SIZE(1));
