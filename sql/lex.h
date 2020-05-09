@@ -529,7 +529,7 @@ static const SYMBOL symbols[] = {
   { SYM("ROLLBACK",                 ROLLBACK_SYM)},
   { SYM("ROLLUP",                   ROLLUP_SYM)},
   { SYM("ROUTINE",                  ROUTINE_SYM)},
-  { SYM("ROUTING",		              ROUTING_SYM)},
+  { SYM("ROUTING",                  ROUTING_SYM)},
   { SYM("ROTATE",                   ROTATE_SYM)},
   { SYM("ROW",                      ROW_SYM)},
   { SYM("ROW_COUNT",                ROW_COUNT_SYM)},

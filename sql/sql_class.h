@@ -72,7 +72,7 @@ extern ulong kill_idle_transaction_timeout;
 enum tc_flush_option
 {
   FLUSH_ALL_ROUTING,
-  FLUSH_ROUTING_BY_SERVER
+  FLUSH_ROUTING_BY_SERVER,
 };
 
 /**

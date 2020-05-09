@@ -7850,14 +7850,28 @@ ER_TCADMIN_INIT_MONITOR_ERROR
 
 ER_TCADMIN_NOT_SPIDER
   eng "EXECUTE ERROR: must be the spider in the cluster when tc_admin=1"
+
 ER_TCADMIN_DUMP_NODE_ERROR
   eng "DUMP ERROR: backup node %s#%d's schema failed"
+
 ER_TCADMIN_RESTORE_NODE_ERROR
   eng "RESTORE ERROR: restore schema to node %s#%d failed"
+
 ER_TCADMIN_CREATE_NODE_ERROR
-  eng "CREATE NODE ERROR: cerate node failed: %s"
+  eng "CREATE NODE ERROR: %s"
+
+ER_TCADMIN_ALTER_NODE_ERROR
+  eng "ALTER NODE ERROR: %s"
+
+ER_TCADMIN_DROP_NODE_ERROR
+  eng "DROP NODE ERROR: %s"
+
 ER_TCADMIN_WRONG_WRAPPER_NAME
   eng "Incorrect wrapper name '%-.100s': %s"
+
+ER_TCADMIN_INTERNAL_GRANT_ERROR
+  eng "INTERNAL GRANT ERROR: %s"
+
 #
 # End of MyRocks specific messages
 #

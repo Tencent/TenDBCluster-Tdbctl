@@ -3086,7 +3086,7 @@ string tc_get_remote_grant_sql(
 
   @retval
    0: error
-   1: mgr  running with single-primary.
+   1: mgr running with single-primary.
    2. not mgr or multi-primary
 
   @Note

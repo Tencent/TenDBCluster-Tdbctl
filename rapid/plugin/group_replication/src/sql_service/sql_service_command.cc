@@ -320,12 +320,12 @@ internal_tdbctl_flush_routing(Sql_service_interface *sql_interface)
 
   Sql_resultset rset;
 
-  const char* query= "tdbctl flush routing";
+  //always do force flush, for flush tdbctl, no need to block spiders
+  const char* query= "tdbctl flush routing force";
   long srv_err= sql_interface->execute_query(query);
 
   if (srv_err)
   {
-
     log_message(MY_ERROR_LEVEL, "tdbctl flush routing execution "
       "resulted in failure. errno: %d", srv_err); /* purecov: inspected */
   }

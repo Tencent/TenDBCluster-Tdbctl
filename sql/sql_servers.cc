@@ -1492,6 +1492,9 @@ int tc_do_grants_internal()
   MYSQL *tdbctl_primary_conn = NULL;
   string tdbctl_do_sql;
 
+  string host;
+  uint port;
+
   init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
   /* not include SPIDER_SLAVE at present */
   set<string>  spider_ipport_set = get_spider_ipport_set(
@@ -1512,9 +1515,26 @@ int tc_do_grants_internal()
       remote_ipport_map.empty() || tdbctl_ipport_map.empty())
   {
     ret = 0;
-    sql_print_information("skip do internal grant, \
-        at least exist one of each spider, tdbctl and remote in mysql.servers");
+    push_warning_printf(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_INTERNAL_GRANT_ERROR,
+                        "skip do internal grant, at least exist one spider,\
+                        tdbctl and mysql wrapper type in mysql.servers");
     goto exit;
+  }
+
+  if (tc_get_primary_node(host, &port))
+  {
+    string address = host + "#" + to_string(port);
+    /* NOTE: primary member must exist in mysql.servers */
+    if (std::find_if(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(),
+        [address](const std::pair<string, string> &tdbctl_ip_port) -> bool {
+        return address.compare(tdbctl_ip_port.second) == 0; }) == tdbctl_ipport_map.end())
+    {
+      push_warning_printf(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_INTERNAL_GRANT_ERROR,
+                          "skip do internal grant, primary member %s not exist in mysql.servers",
+                          address.c_str());
+      ret = 0;
+      goto exit;
+    }
   }
 
   tdbctl_do_sql = tc_get_tdbctl_grant_sql(spider_ipport_set, spider_user_map,
@@ -1531,7 +1551,7 @@ int tc_do_grants_internal()
   tdbctl_primary_conn = tc_tdbctl_conn_primary(ret, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
   if (ret)
   {
-    sql_print_information("connect to tdbctl primary failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "connect to tdbctl primary failed");
     goto exit;
   }
 
@@ -1545,7 +1565,7 @@ int tc_do_grants_internal()
       spider_result_map, spider_user_map, spider_passwd_map, FALSE))
   {/* return, close conn, reconnect + retry all */
     ret = 1;
-    sql_print_information("spider do internal grant failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "spider do grant failed");
     goto exit;
   }
 
@@ -1558,7 +1578,7 @@ int tc_do_grants_internal()
       remote_result_map, remote_user_map, remote_passwd_map, FALSE))
   {/* return, close conn, reconnect + retry all */
     ret = 1;
-    sql_print_information("remote do internal grant failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "remote do grant failed");
     goto exit;
   }
 
@@ -1570,7 +1590,7 @@ int tc_do_grants_internal()
   if (tc_exec_sql_up(tdbctl_primary_conn, tdbctl_do_sql, &(tdbctl_result_map.begin()->second)))
   {
     ret = 1;
-    sql_print_information("tdbctl do internal grant failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "internal grant: tdbctl do grant failed");
     goto exit;
   }
 
@@ -1683,9 +1703,7 @@ bool tc_check_ipport_valid()
 
 }
 
-/*
-at present, CREATE/ALTER/DROP NODE also do tc_flush_routing
-*/
+/* at present, CREATE/ALTER(mysql wrapper) NODE also do tc_flush_routing */
 bool tc_flush_routing(LEX* lex)
 {
   int ret = 0;
@@ -1695,7 +1713,6 @@ bool tc_flush_routing(LEX* lex)
   map<string, MYSQL*> spider_conn_map;
   map<string, string> spider_user_map;
   map<string, string> spider_passwd_map;
-
 
   set<string>::iterator its;
   map<string, tc_exec_info> result_map;
@@ -1746,12 +1763,6 @@ bool tc_flush_routing(LEX* lex)
   while (retry_times-- > 0)
   {
     int exec_ret = 0;
-    if (tc_enable_internal_grant &&
-        lex->do_grants &&
-        tc_do_grants_internal()) {
-      sleep(2);
-      continue;
-    }
     spider_conn_map = tc_spider_conn_connect(ret, to_flush_ipport_set, spider_user_map, spider_passwd_map);
     if (ret)
     {
