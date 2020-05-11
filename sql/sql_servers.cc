@@ -1635,6 +1635,9 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
   string unlock_sql = "unlock tables";
   string replace_sql = dump_servers_to_sql();
 
+  if (replace_sql.length() == 0)
+    //empty replace sql
+    return 1;
 
   if (tc_exec_sql_paral(set_option_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
   {/* return, close conn, reconnect + retry all */
@@ -1925,6 +1928,13 @@ int tc_check_and_repair_routing()
 
   if (!(thd = new THD))
   {
+    sql_print_warning("init repair thread failed, skip repair");
+    result = 1;
+    goto finish;
+  }
+  if (replace_sql.length() == 0)
+  {
+    sql_print_warning("get repair sql from mysql.servers failed, skip repair");
     result = 1;
     goto finish;
   }
@@ -1993,31 +2003,22 @@ int tc_check_and_repair_routing()
       li.sort(server_compare);
       if (compare_server_list(all_list, li))
       {
-        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
-          "ipport is %s, routing mismatch\n",
-        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-        l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        sql_print_warning("ipport is %s, routing mismatch", ipport.c_str());
         if (!locked)
         {
           if (lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
-            fprintf(stderr, "lock for repair routing timeout\n");
+            sql_print_warning("lock for repair routing timeout");
           else
             locked = true;
         }
         if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
         {
-          fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
-            "ipport is %s, routing repair failed\n",
-          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-          l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+          sql_print_error("ipport is %s, routing repair failed", ipport.c_str());
           result = 2;
         }
         else
         {
-          fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO TDBCTL] "
-            "ipport is %s, routing repair succeed\n",
-          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-          l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+          sql_print_information("ipport is %s, routing repair succeed", ipport.c_str());
         }
       }
       li.clear();
@@ -2025,24 +2026,15 @@ int tc_check_and_repair_routing()
     }
     else
     {
-      fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
-        "ipport is %s, routing mismatch\n",
-      l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-      l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+      sql_print_warning("ipport is %s, routing mismatch", ipport.c_str());
       if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
       {
-        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
-          "ipport is %s, routing repair failed\n",
-        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-        l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        sql_print_error("ipport is %s, routing repair failed", ipport.c_str());
         result = 2;
       }
       else
       {
-        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO TDBCTL] "
-          "ipport is %s, routing repair succeed\n",
-        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-        l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        sql_print_information("ipport is %s, routing repair succeed", ipport.c_str());
       }
     }
   }
