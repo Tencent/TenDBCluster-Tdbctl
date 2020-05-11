@@ -1136,7 +1136,6 @@ void get_server_by_wrapper(
   bool with_slave
 )
 {
-  DBUG_ASSERT(wrapper_name);
   ulong records = 0;
   FOREIGN_SERVER* server;
   string wrapper_slave = wrapper_name;
@@ -1202,7 +1201,7 @@ string get_new_server_name_by_wrapper(
           (with_slave && !strcasecmp(server->scheme, wrapper_slave.c_str())))
       {
         ulong suffix_num = 0;
-        string prefix = server->scheme;
+        string prefix = server->server_name;
         regex pattern(wrapper_name, regex::icase);
         prefix = regex_replace(prefix, pattern, "");
         suffix_num = std::atol(prefix.c_str());

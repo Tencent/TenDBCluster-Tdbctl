@@ -5279,33 +5279,31 @@ end_with_restore_list:
       lex->server_options.m_server_name.str =
           strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
 
-      //Check whether new added spider node duplicated
+      list<FOREIGN_SERVER*> server_list;
+      string add_address = string(lex->server_options.get_host()) + "#" +
+        to_string(lex->server_options.get_port());
+      get_server_by_wrapper(server_list, thd->mem_root, NULL_WRAPPER, TRUE);
+      /*
+        Create spider/tdbctl node must not exist in mysql.servers.
+        If create spider/tdbctl node, host#port must be unique.
+        At present, only consider SPIDER/TDBCTL wrapper.
+       */
+      if (std::find_if(server_list.begin(), server_list.end(),
+        [&](FOREIGN_SERVER *server) -> bool {
+          string current_address = string(server->host) + "#" + to_string(server->port);
+          if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0)
+            return false;
+          return add_address.compare(current_address) == 0;
+        }) != server_list.end())
+      {
+        my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
+        goto error;
+      }
+
+      //Only flush mysql.servers to this new added spider.
       if (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0 ||
         strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)
-      {
-        string add_address;
-        list<FOREIGN_SERVER*> server_list;
-
-        get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, TRUE);
-        add_address = string(lex->server_options.get_host()) + "#" +
-                      to_string(lex->server_options.get_port());
-        /*
-          Create spider node must not exist in mysql.servers.
-          If create spider node, host#port must be unique.
-          At present, only consider SPIDER(master) wrapper.
-         */
-        if (std::find_if(server_list.begin(), server_list.end(),
-          [&](FOREIGN_SERVER *server) -> bool {
-          string current_address = string(server->host) + "#" + to_string(server->port);
-          return add_address.compare(current_address) == 0; }) != server_list.end())
-        {
-          my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "spider node already exists");
-          goto error;
-        }
-
-        //Only flush mysql.servers to this new added spider.
         lex->tc_flush_type = FLUSH_ROUTING_BY_SERVER;
-      }
 
       break;
     }
@@ -6164,32 +6162,25 @@ break;
       lex->server_options.m_server_name.str =
         strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
 
-      //Check whether new added spider node duplicated
-      if (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0 ||
-        strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)
+      list<FOREIGN_SERVER*> server_list;
+      string add_address = string(lex->server_options.get_host()) + "#" +
+        to_string(lex->server_options.get_port());
+      get_server_by_wrapper(server_list, thd->mem_root, NULL_WRAPPER, TRUE);
+      /*
+        Create spider/tdbctl node must not exist in mysql.servers.
+        If create spider/tdbctl node, host#port must be unique.
+        At present, only consider SPIDER/TDBCTL wrapper.
+       */
+      if (std::find_if(server_list.begin(), server_list.end(),
+        [&](FOREIGN_SERVER *server) -> bool {
+        string current_address = string(server->host) + "#" + to_string(server->port);
+        if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0)
+          return false;
+        return add_address.compare(current_address) == 0;
+      }) != server_list.end())
       {
-        string add_address;
-        list<FOREIGN_SERVER*> server_list;
-
-        get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, TRUE);
-        add_address = string(lex->server_options.get_host()) + "#" +
-                            to_string(lex->server_options.get_port());
-        /*
-          Create spider node must not exist in mysql.servers.
-          If create spider node, host#port must be unique.
-          At present, only consider SPIDER(master) wrapper.
-         */
-        if (std::find_if(server_list.begin(), server_list.end(),
-          [&](FOREIGN_SERVER *server) -> bool {
-          string current_address = string(server->host) + "#" + to_string(server->port);
-          return add_address.compare(current_address) == 0; }) != server_list.end())
-        {
-          my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "spider node already exists");
-          goto finish;
-        }
-
-        //Only flush mysql.servers to this new added spider.
-        lex->tc_flush_type = FLUSH_ROUTING_BY_SERVER;
+        my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
+        goto finish;
       }
 
       break;
