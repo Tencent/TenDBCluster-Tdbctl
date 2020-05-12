@@ -2132,25 +2132,6 @@ set<string> get_spider_ipport_set(
     return ipport_set;
 }
 
-/*
-input: 
-       remote_ipport_map       server_name--->ipport
-output:
-       remote_server_name_map  ipport-------->server_name
-*/
-map<string, string>get_remote_server_name_map(
-	map<string, string> remote_ipport_map)
-{
-	map<string, string> remote_server_name_map;
-	map<string, string>::iterator its;
-	for (its = remote_ipport_map.begin(); its != remote_ipport_map.end(); its++)
-	{
-		string server_name = its->first;
-		string ipport = its->second;
-		remote_server_name_map.insert(pair<string, string>(ipport, server_name));
-	}
-	return remote_server_name_map;
-}
 
 map<string, string> get_remote_ipport_map(
   MEM_ROOT* mem, 
@@ -2190,7 +2171,12 @@ map<string, string> get_remote_ipport_map(
 }
 
 /*
-get map for ipport->server_name
+  get map for ipport->server_name
+
+  @retval
+  map for result
+  key:   ipport
+  value: server_name
 */
 map<string, string> get_server_name_map(
 	MEM_ROOT *mem,
@@ -2217,6 +2203,138 @@ map<string, string> get_server_name_map(
   return server_name_map;
 }
 
+/*
+  get map for server_uuid->server_name
+
+  @retval
+  map for result
+  key:   server_uuid
+  value: server_name
+*/
+map<string, string> get_server_uuid_map(
+	int &ret,
+	MEM_ROOT *mem,
+	const char* wrapper,
+	bool with_slave
+)
+{
+	ret = 0;
+	MYSQL_RES* res;
+	MYSQL_ROW row = NULL;
+	map<string, string> server_uuid_map;
+	FOREIGN_SERVER *server;
+	list<FOREIGN_SERVER*> server_list;
+	get_server_by_wrapper(server_list, mem, wrapper, with_slave);
+	list<FOREIGN_SERVER*>::iterator its;
+	MYSQL *conn = NULL;
+	string sql = "show variables like  'server_uuid'";
+	string uuid;
+	for (its = server_list.begin(); its != server_list.end(); its++)
+	{
+		server = *its;
+		string host = server->host;
+		long port = server->port;
+		string server_name = server->server_name;
+		string user = server->username;
+		string passwd = server->password;
+		string address = host + "#" + to_string(port);
+		conn = tc_conn_connect(address, user, passwd);
+		if (conn == NULL) {
+			ret = 1;
+			my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
+			goto finish;
+		}
+		MYSQL_GUARD(conn);
+		res = tc_exec_sql_with_result(conn, sql);
+		if (res && (row = mysql_fetch_row(res)))
+		{
+			uuid = row[1];
+		}
+		else
+		{
+			ret = 1;
+			goto finish;
+		}
+		server_uuid_map.insert(pair<string, string>(uuid, server_name));
+	}
+finish:
+	return server_uuid_map;
+}
+
+
+/*
+  get server_name of current TDBCTL node
+
+  @param (out)
+  ret: 0 for ok, 1 for error
+
+  @retval
+  server_name  of current TDBCTL node
+*/
+string tc_get_server_name(
+	int &ret,
+	MEM_ROOT *mem,
+	const char* wrapper,
+	bool with_slave) 
+{
+	ret = 0;
+	string server_name;
+	map<string, string> tdbctl_server_uuid_map = get_server_uuid_map(ret, mem, wrapper, with_slave);
+	if (ret)
+	{
+		goto finish;
+	}
+	server_name = tdbctl_server_uuid_map[server_uuid];
+	if (server_name.size() == 0) 
+	{
+		ret = 1;
+		goto finish;
+	}
+	return server_name;
+finish:
+	tdbctl_server_uuid_map.clear();
+	return server_name;
+}
+
+
+/*
+  get username of current TDBCTL node
+
+  @param (out)
+  ret: 0 for ok, 1 for error
+
+  @retval
+  username  of current TDBCTL node
+*/
+string tc_get_user_name(
+	int &ret,
+	const char* wrapper,
+	bool with_slave)
+{
+	ret = 0;
+	string username;
+	MEM_ROOT mem_root;
+	init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+	MEM_ROOT_GUARD(mem_root);
+	FOREIGN_SERVER *server, server_buffer;
+	string tdbctl_server_name = tc_get_server_name(ret, &mem_root, wrapper, with_slave);
+	if (ret)
+	{
+		return username;
+	}
+	if ((server = get_server_by_name(&mem_root, tdbctl_server_name.c_str(), &server_buffer)))
+	{
+	  username = server->username;
+		return username;
+	}
+	if (username.size() <= 0) 
+	{
+	  ret = 1;
+		return username;
+	}
+	return username;
+}
+
 MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 {
   int read_timeout = 600;
@@ -2232,7 +2350,7 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 
   if (user.length() == 0 && passwd.length() == 0)
   {
-    sql_print_error("tc connect fail: username or password is empty");
+	  sql_print_error("tc connect fail: username or password is empty");
     return NULL;
   }
 
@@ -2259,8 +2377,21 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 }
 
 /*
-get tdbctl's ipport map
-server_name->ip#port->user, server_name->ip#port->passwd
+  get map for  server_name->ipport
+
+  @param (out)
+  tdbctl_user_map: 
+    key:   ip#port
+	value: username
+
+  tdbctl_passwd_map
+    key:   ip#port
+	value: password
+
+  @retval
+	map for result
+	key:   server_name
+	value: ip#port
 */
 map<string, string> get_tdbctl_ipport_map(
 	MEM_ROOT* mem,
@@ -2441,7 +2572,7 @@ MYSQL *tc_tdbctl_conn_primary(
   if (tdbctl_ipport_map.empty())
   {
     ret = 1;
-    sql_print_warning("tc connect to primary node failed: map is empty");
+    sql_print_warning("tc connect to primary node failed: no tdbctl in mysql.servers");
     return NULL;
   }
 
@@ -2972,7 +3103,7 @@ uint tc_get_primary_node(std::string &host, uint *port)
     list<FOREIGN_SERVER*> server_list;
 
     init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-    MEM_ROOT_GUARD(mem_root)
+	MEM_ROOT_GUARD(mem_root);
     get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
 
     //empty, error happened
@@ -2990,9 +3121,6 @@ uint tc_get_primary_node(std::string &host, uint *port)
 
 
 /*
-  host: primary host
-  port: primary port
-
   return value:
     -1, error
     0, not primary node

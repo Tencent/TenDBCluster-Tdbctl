@@ -182,9 +182,10 @@ extern my_bool sort_when_partition_prefix_order;
 extern my_bool tc_partition_admin;
 extern ulong tc_check_repair_routing_interval;
 extern ulong tc_check_availability_interval;
-extern ulong tc_check_availability_connect;
 extern ulong tc_partition_admin_interval;
+extern ulong tc_partition_init_interval;
 extern ulong tc_partition_admin_time;
+extern long tdbctl_is_primary;
 extern ulong tc_max_prepared_time;
 extern my_bool opt_old_style_user_limits, trust_function_creators;
 extern my_bool check_proxy_users, mysql_native_password_proxy_users, sha256_password_proxy_users;
@@ -289,7 +290,6 @@ extern uint32 gtid_executed_compression_period;
 extern my_bool binlog_gtid_simple_recovery;
 extern ulong binlog_error_action;
 extern ulong locked_account_connection_count;
-extern int tdbctl_is_primary;
 enum enum_binlog_error_action
 {
   /// Ignore the error and let server continue without binlogging

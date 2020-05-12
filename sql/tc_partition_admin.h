@@ -37,7 +37,7 @@ const int TERM = 86400;
 
 void create_partition_admin_thread();
 void tc_partition_admin_thread();
-int tc_partition_admin_worker();
+int tc_partition_admin_worker(int step);
 
 /*
 admin partition for remote from  mysql.tc_partiton_admin_config
@@ -80,8 +80,7 @@ string tc_create_add_partition_sql(string remote_db, string tb_name, string db_p
 init sql for delete partition
 */
 int tc_create_del_partition_sql(MYSQL* mysql, string remote_db, string tb_name, string db_partition_columnname,
-	string partition_column_type, int interval_time, string remote_hash_algorithm, tc_exec_info* exec_info,
-	string& del_sql);
+	string partition_column_type, int interval_time, string remote_hash_algorithm, string& del_sql);
 
 /*
 init sql for new partition

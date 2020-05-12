@@ -437,9 +437,17 @@ my_bool sort_when_partition_prefix_order = TRUE;
 my_bool tc_partition_admin = TRUE;
 ulong tc_check_repair_routing_interval = 300;
 ulong tc_check_availability_interval = 10;
-ulong tc_check_availability_connect = 1800;
 ulong tc_partition_admin_interval = 86400;
 ulong tc_partition_admin_time = 3600;
+ulong tc_partition_init_interval = 300;
+/*
+-1: unknown
+0:  not primary
+1:  primary
+at present: must get tdbctl_is_primary by tc_is_primary_tdbctl_node
+because tdbctl_is_primary it not maintained when network partition
+*/
+long tdbctl_is_primary = -1;
 ulong tc_max_prepared_time = 60;
 ulong opt_binlog_rows_event_max_size;
 const char *binlog_checksum_default= "NONE";
@@ -518,7 +526,7 @@ bool table_definition_cache_specified= false;
 ulong locked_account_connection_count= 0;
 
 ulonglong denied_connections= 0;
-int32 tdbctl_is_primary = -1;
+
 /**
   Limit of the total number of prepared statements in the server.
   Is necessary to protect the server against out-of-memory attacks.
@@ -7116,7 +7124,6 @@ SHOW_VAR status_vars[]= {
   {"Handler_savepoint_rollback",(char*) offsetof(STATUS_VAR, ha_savepoint_rollback_count), SHOW_LONGLONG_STATUS, SHOW_SCOPE_ALL},
   {"Handler_update",           (char*) offsetof(STATUS_VAR, ha_update_count),         SHOW_LONGLONG_STATUS,    SHOW_SCOPE_ALL},
   {"Handler_write",            (char*) offsetof(STATUS_VAR, ha_write_count),          SHOW_LONGLONG_STATUS,    SHOW_SCOPE_ALL},
-  {"Tdbctl_is_master",         (char*) &tdbctl_is_primary,                             SHOW_SIGNED_INT,         SHOW_SCOPE_GLOBAL },
   {"Key_blocks_not_flushed",   (char*) offsetof(KEY_CACHE, global_blocks_changed),    SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},
   {"Key_blocks_unused",        (char*) offsetof(KEY_CACHE, blocks_unused),            SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},
   {"Key_blocks_used",          (char*) offsetof(KEY_CACHE, blocks_used),              SHOW_KEY_CACHE_LONG,     SHOW_SCOPE_GLOBAL},

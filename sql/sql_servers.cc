@@ -60,13 +60,9 @@ static list<string> to_delete_servername_list;
 static MEM_ROOT tc_mem;
 static HASH servers_cache_bak;
 static MEM_ROOT mem_bak;
-/*
-global_modify_server_version_old start from 1,
-because global_modify_server_version++ when init mysqld, 
-but global_modify_server_version_old++ at the next time
-*/
+
 ulong global_modify_server_version = 0;
-ulong global_modify_server_version_old = 1;
+static bool modify_tdbctl_flag = false;
 
 static HASH servers_cache;
 static MEM_ROOT mem;
@@ -321,15 +317,15 @@ bool servers_reload(THD *thd)
 end:
   DBUG_PRINT("info", ("unlocking servers_cache"));
   mysql_rwlock_unlock(&THR_LOCK_servers);
+
   /*
-    when init mysqld, global_modify_server_version=1,
-    it is not ok to get tc_is_master_tdbctl_node, because mysqld is not serving
+  if modify tdbclt in mysql.servers, then modify_tdbctl_flag=true;
+  need to maintain Tdbctl_is_primary
   */
-  if (global_modify_server_version != 1 &&
-      global_modify_server_version_old != global_modify_server_version)
+  if (modify_tdbctl_flag)
   {
     tdbctl_is_primary = tc_is_primary_tdbctl_node();
-    global_modify_server_version_old = global_modify_server_version;
+    modify_tdbctl_flag = false;
   }
   delete_redundant_routings();
   DBUG_RETURN(return_val);
@@ -554,7 +550,14 @@ bool Server_options::insert_into_cache() const
   /* if not do this, while we get port from server_caches, may core dump */
   server->sport = strdup_root(&mem, std::to_string(server->port).c_str());
   server->version = 0;
+  /*
+  maintain for create server
+  */
   global_modify_server_version++;
+  if (!native_strncasecmp(m_server_name.str, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix)))
+  {
+	  modify_tdbctl_flag = true;
+  }
 
   if (!(server->socket= m_socket.str ?
         strdup_root(&mem, m_socket.str) : unset_ptr))
@@ -619,8 +622,6 @@ bool Server_options::update_cache(FOREIGN_SERVER *existing) const
       !(existing->owner= strdup_root(&mem, m_owner.str)))
     DBUG_RETURN(true);
 
-  existing->version++;
-  global_modify_server_version++;
   DBUG_RETURN(false);
 }
 
@@ -924,20 +925,24 @@ bool Sql_cmd_drop_server::execute(THD *thd)
       if (server)
       {
         my_hash_delete(&servers_cache, (uchar*)server);
+        /*maintain for drop server*/
         global_modify_server_version++;
-        /*
-         add to_delete_servername_list for TDBCTL DROP NODE command, which will
-         traverse the list later and delete SPIDER node's server_name also.
-         NB: We should have call delete_redundant_routings here, but it acquire
-         THR_LOCK_servers lock also(this function had acquired ), so we have to call
-         delete_redundant_routings after THR_LOCK_servers unlock.
-         In concurrence DROP SERVER situation, the to_delete_servername_list
-         may incorrect if we use outside of THR_LOCK_servers lock. In fact, no need to
-         worry, because follow:
-         Before we add this logic, DROP SERVER not care about spider's routing,
-         so the incorrect not affect DROP SERVER command. For TDBCTL DROP NODE command,
-         we had acquire a MDL_EXCLUSIVE lock by lock_statement_by_name function to block other
-         concurrence DROP NODE, so acceptable at present
+        if (!native_strncasecmp(m_server_name.str, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix)))
+        {
+          modify_tdbctl_flag = true;
+        }
+        /* add to_delete_servername_list for TDBCTL DROP NODE command, which will
+        traverse the list later and delete SPIDER node's server_name also.
+        NB: We should have call delete_redundant_routings here, but it acquire
+        THR_LOCK_servers lock also(this function had acquired ), so we have to call
+        delete_redundant_routings after THR_LOCK_servers unlock.
+        In concurrence DROP SERVER situation, the to_delete_servername_list
+        may incorrect if we use outside of THR_LOCK_servers lock. In fact, no need to
+        worry, because follow:
+        Before we add this logic, DROP SERVER not care about spider's routing,
+        so the incorrect not affect DROP SERVER command. For TDBCTL DROP NODE command,
+        we had acquire a MDL_EXCLUSIVE lock by lock_statement_by_name function to block other
+        concurrence DROP NODE, so acceptable at present
         */
         to_delete_servername_list.clear();
         to_delete_servername_list.push_back(server->server_name);
@@ -1868,7 +1873,8 @@ void tc_check_and_repair_routing_thread()
 {
   while (1)
   {
-    if (tc_check_repair_routing)
+	  if ((tc_check_repair_routing &&
+		  ((tdbctl_is_primary = tc_is_primary_tdbctl_node()) > 0))) 
     {
       if (tc_check_and_repair_routing())
       {
@@ -2156,6 +2162,15 @@ bool update_server_version(bool* version_updated)
       {/* not equal: 1.update server_v; 2.version++ */
         server_bak->version++;
         *version_updated = TRUE;
+		/*
+		if modify tdbctl ,need to maintain modify_tdbctl_flag 
+		*/
+		if (!modify_tdbctl_flag &&
+			(!native_strncasecmp(server->server_name, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix)) ||
+			!native_strncasecmp(server_bak->server_name, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix))))
+		{
+			modify_tdbctl_flag = true;
+		}
       }
       server->version = server_bak->version;
     }

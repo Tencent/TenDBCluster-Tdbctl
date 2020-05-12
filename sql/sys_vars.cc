@@ -6354,13 +6354,7 @@ static Sys_var_ulong Sys_tc_check_availability_interval(
 	"tc_check_availability_interval",
 	"The interval time of  check the availability of the cluster",
 	GLOBAL_VAR(tc_check_availability_interval), CMD_LINE(REQUIRED_ARG),
-	VALID_RANGE(0, 65535), DEFAULT(10), BLOCK_SIZE(1));
-
-static Sys_var_ulong Sys_tc_check_availability_connect(
-	"tc_check_availability_connect",
-	"The time of  check the availability connect",
-	GLOBAL_VAR(tc_check_availability_connect), CMD_LINE(REQUIRED_ARG),
-	VALID_RANGE(0, 65535), DEFAULT(1800), BLOCK_SIZE(1));
+	VALID_RANGE(3, 65535), DEFAULT(10), BLOCK_SIZE(1));
 
 static Sys_var_mybool Sys_tc_check_repair_trans(
   "tc_check_repair_trans",
@@ -6431,10 +6425,22 @@ static Sys_var_ulong Sys_tc_partition_admin_interval(
 	"tc_partition_admin_interval",
 	"The interval time of  admin partition of the cluster",
 	GLOBAL_VAR(tc_partition_admin_interval), CMD_LINE(REQUIRED_ARG),
-	VALID_RANGE(0, 86400), DEFAULT(86400), BLOCK_SIZE(1));
+	VALID_RANGE(3600, 30*86400), DEFAULT(86400), BLOCK_SIZE(1));
+
+static Sys_var_ulong Sys_tc_partition_init_interval(
+	"tc_partition_init_interval",
+	"The interval time of  init partition of the cluster",
+	GLOBAL_VAR(tc_partition_init_interval), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(100, 86400), DEFAULT(300), BLOCK_SIZE(1));
 
 static Sys_var_ulong Sys_tc_partition_admin_time(
 	"tc_partition_admin_time",
 	"The time of  admin partition of the cluster",
 	GLOBAL_VAR(tc_partition_admin_time), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(0, 86400), DEFAULT(3600), BLOCK_SIZE(1));
+
+static Sys_var_long Sys_tc_is_primary(
+	"tdbctl_is_primary",
+	"where the node is primary,-1 for unknown,0 for not-primary,1 for primary",
+	GLOBAL_VAR(tdbctl_is_primary), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(-1, 1), DEFAULT(-1), BLOCK_SIZE(1));
