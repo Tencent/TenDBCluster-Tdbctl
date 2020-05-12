@@ -1258,6 +1258,7 @@ static string dump_servers_to_sql()
 
   if (records == 0)
   {
+    sql_print_warning("no recored found in mysql.servers, null sql returned");
     mysql_rwlock_unlock(&THR_LOCK_servers);
     return "";
   }
@@ -1311,14 +1312,14 @@ static string dump_servers_to_sql()
         //add tdbctl insert sql
         replace_sql_all += tdbctl_sql_map[ip_port];
       else {
-        sql_print_warning("primary node not in mysql.servers, return null sql");
+        sql_print_warning("primary node not in mysql.servers, null sql returned");
         mysql_rwlock_unlock(&THR_LOCK_servers);
         return "";
       }
     }
     else
     {// unknown error, such as network partition.
-      sql_print_warning("get primary node info failed");
+      sql_print_warning("get primary node info failed, null sql returned");
       mysql_rwlock_unlock(&THR_LOCK_servers);
       return "";
     }
@@ -1636,7 +1637,12 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
 
   if (replace_sql.length() == 0)
     //empty replace sql
-    return 1;
+  {
+    if (current_thd)
+      push_warning(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_FLUSH_ROUTING_ERROR,
+                  "routing sql is null, flush do nothing");
+    return 0;
+  }
 
   if (tc_exec_sql_paral(set_option_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
   {/* return, close conn, reconnect + retry all */
