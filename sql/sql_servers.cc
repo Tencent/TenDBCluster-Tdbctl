@@ -1734,6 +1734,13 @@ bool tc_flush_routing(LEX* lex)
   {
   case FLUSH_ALL_ROUTING:
     to_flush_ipport_set = all_spider_ipport_set;
+    if (to_flush_ipport_set.empty())
+    {
+      if (current_thd)
+        push_warning(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_FLUSH_ROUTING_ERROR,
+          "no spider nodes exists, skip flush");
+      goto finish;
+    }
     break;
   case FLUSH_ROUTING_BY_SERVER:
   {
