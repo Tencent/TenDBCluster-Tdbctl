@@ -30,6 +30,7 @@
 #include "recovery.h"
 #include "recovery_message.h"
 #include "read_mode_handler.h"
+#include "tc_mode_handler.h"
 
 
 /*

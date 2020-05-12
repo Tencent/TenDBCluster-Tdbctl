@@ -88,18 +88,6 @@ int disable_server_read_mode(enum_plugin_con_isolation session_isolation)
   return error;
 }
 
-long tdbctl_flush_routing(Sql_service_command_interface *command_interface)
-{
-  DBUG_ENTER("reset_super_read_mode");
-  long error =0;
-
-  DBUG_ASSERT(command_interface != NULL);
-
-  error = command_interface->tdbctl_flush_routing();
-
-  DBUG_RETURN(error);
-}
-
 long get_read_mode_state(Sql_service_command_interface *sql_command_interface,
                          bool *read_only_enabled, bool *super_read_only_enabled)
 {
