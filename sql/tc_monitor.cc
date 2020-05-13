@@ -655,6 +655,7 @@ int do_servers_reload()
 	THD  *thd = new THD();
 	if (thd == NULL)
 	{
+		ret = 1;
 		goto finish;
 	}
 	my_thread_init();
@@ -662,6 +663,7 @@ int do_servers_reload()
 	thd->store_globals();
 	if (servers_reload(thd))
 	{
+		ret = 1;
 		my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "reload server failed");
 		goto finish;
 	}
@@ -681,8 +683,8 @@ void tc_check_cluster_availability_thread()
 	1 means re-init
 
 	after re-init ok , set flag=0
-	if the TDBCTL is not primary or set global tc_check_availability=0 ,
-	set flag=1 and  free connect
+	if the TDBCTL is not primary or user set global tc_check_availability=0 ,
+	then flag=1 and  free connect
 	*/
 	int flag = 1;
 
@@ -706,42 +708,56 @@ void tc_check_cluster_availability_thread()
 		*/
 		if (tc_check_availability)
 		{
-           /*
+       /*
 		   if current node is not primary, do servers_reload to get
 		   latest mysql.server
-           */
-			if ((tdbctl_is_primary = tc_is_primary_tdbctl_node()) <= 0) 
+       */
+			if ((tdbctl_is_primary = tc_is_primary_tdbctl_node()) <= 0)
 			{
 				if (do_servers_reload())
 				{
-					sleep(2);
+					sleep(tc_check_availability_interval);
 					continue;
 				}
 			}
 			/*
 			if first time do check
 			or do  tc_init_connect  and tc_check_cluster_availability error
-			or the connect time
+			or mysql.servers cache changes
 			*/
-			while (flag || res ||  check_server_version(server_version))
+			if (flag || res ||  check_server_version(server_version))
 			{
 				//init memory and connect
 				if (!(res = tc_init_connect(server_version)))
 					flag = 0;
-				else
-					//fail to init memory and connect
-					sleep(20);
+				else 
+				{
+					/*
+					fail to init memory and connect
+					if the mysql.servers cache is empty, init connect is always failed,
+					so it is need to reload when node is slave
+					*/
+					sleep(tc_check_availability_interval);
+					continue;
+				}
 			}
 
-			//check available for cluster			
-			res = tc_check_cluster_availability();
-			if (((tdbctl_is_primary = tc_is_primary_tdbctl_node()) > 0) &&
-				tc_process_monitor_log())
-				res = 1;
-
-			for (ulong i = 0; i < labs(tc_check_availability_interval - 2); ++i)
+			/*
+			if init memory and connect ok
+			then start monitor
+			*/
+			if (!res) 
 			{
-				sleep(1);
+				//check available for cluster			
+				res = tc_check_cluster_availability();
+				if (((tdbctl_is_primary = tc_is_primary_tdbctl_node()) > 0) &&
+					tc_process_monitor_log())
+					res = 1;
+
+				for (ulong i = 0; i < labs(tc_check_availability_interval - 2); ++i)
+				{
+					sleep(1);
+				}
 			}
 		}
 		else if (!flag)
