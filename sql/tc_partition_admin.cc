@@ -880,7 +880,7 @@ void tc_partition_admin_thread()
 				/*
 				init partition when wait time to tc_partition_init_interval
 				*/
-				if (i == tc_partition_init_interval) 
+				if (i % tc_partition_init_interval == 0) 
 				{
 					//init partition for cluster
 					tc_partition_admin_worker(0);
