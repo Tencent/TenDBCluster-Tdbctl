@@ -1951,6 +1951,7 @@ int tc_check_and_repair_routing()
     goto finish;
   }
 
+  thd->variables.lock_wait_timeout = tc_check_repair_routing_interval;
   spider_ipport_set = get_spider_ipport_set(
                                       thd->mem_root,
                                       spider_user_map, 
