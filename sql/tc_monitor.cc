@@ -513,6 +513,7 @@ int tc_process_monitor_log()
 		{
 			result = 2;
 		}
+		tc_is_available = 1;
 	}
 	else
 	{
@@ -521,6 +522,7 @@ int tc_process_monitor_log()
 		{
 			result = 2;
 		}
+		tc_is_available = 0;
 	}
 	if (result == 2)
 	{
@@ -738,6 +740,7 @@ void tc_check_cluster_availability_thread()
 					so it is need to reload when node is slave
 					*/
 					sleep(tc_check_availability_interval);
+					tc_is_available = 0;
 					continue;
 				}
 			}
@@ -760,11 +763,15 @@ void tc_check_cluster_availability_thread()
 				}
 			}
 		}
-		else if (!flag)
+		else
 		{
-			//free memory and connect
-			tc_free_connect();
-			flag = 1;
+			if (!flag)
+			{
+				//free memory and connect
+				tc_free_connect();
+				flag = 1;
+			}
+			tc_is_available = -1;
 		}
 		sleep(2);
 	}

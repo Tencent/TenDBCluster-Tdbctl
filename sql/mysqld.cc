@@ -526,6 +526,16 @@ bool table_definition_cache_specified= false;
 ulong locked_account_connection_count= 0;
 
 ulonglong denied_connections= 0;
+/**
+  status for the availability of cluster which is maintained by monitor
+  0 for not ok
+  1 for ok
+	-1 for unknown
+  if init connection error or check error then tc_is_available=0
+  if check ok then tc_is_available=1
+	if disable monitor then tc_is_available=-1
+*/
+int tc_is_available = -1;
 
 /**
   Limit of the total number of prepared statements in the server.
@@ -7221,6 +7231,7 @@ SHOW_VAR status_vars[]= {
   {"Table_open_cache_hits",    (char*) offsetof(STATUS_VAR, table_open_cache_hits),    SHOW_LONGLONG_STATUS,   SHOW_SCOPE_ALL},
   {"Table_open_cache_misses",  (char*) offsetof(STATUS_VAR, table_open_cache_misses),  SHOW_LONGLONG_STATUS,   SHOW_SCOPE_ALL},
   {"Table_open_cache_overflows",(char*) offsetof(STATUS_VAR, table_open_cache_overflows), SHOW_LONGLONG_STATUS,SHOW_SCOPE_ALL},
+  {"Tc_is_available",          (char*) &tc_is_available,                               SHOW_SIGNED_INT,        SHOW_SCOPE_GLOBAL},
   {"Tc_log_max_pages_used",    (char*) &tc_log_max_pages_used,                         SHOW_LONG,              SHOW_SCOPE_GLOBAL},
   {"Tc_log_page_size",         (char*) &tc_log_page_size,                              SHOW_LONG_NOFLUSH,      SHOW_SCOPE_GLOBAL},
   {"Tc_log_page_waits",        (char*) &tc_log_page_waits,                             SHOW_LONG,              SHOW_SCOPE_GLOBAL},
