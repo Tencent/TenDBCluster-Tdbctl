@@ -774,8 +774,6 @@ void Plugin_gcs_events_handler::handle_leader_election_if_needed() const
 
       if (has_primary_changed)
       {
-        // Set local node to primary for tdbctl logic.
-        tdbctl_is_primary = is_primary_local ? 1 : 0;
         /*
           A new primary was elected, inform certifier to enable conflict
           detection until the new primary apply all relay logs.
@@ -805,15 +803,26 @@ void Plugin_gcs_events_handler::handle_leader_election_if_needed() const
                           "Unable to disable super read only flag. "
                           "Try to disable it manually."); /* purecov: inspected */
             }
-            /*
-              only new elected member(local and primary) need do tdbctl flush routing
-              tdbctl flush routing will fetch the newest primary member and flush to all spiders.
-             */
-            if (tdbctl_flush_routing(sql_command_interface))
+
+            //for tdbctl logic
+            if (tdbctl_set_primary_on(sql_command_interface))
             {
-              log_message(MY_ERROR_LEVEL,
-                          "tdbctl flush routing new primary routing failed. "
-                          "Try to disable it manually."); /* purecov: inspected */
+              log_message(MY_WARNING_LEVEL,
+                          "Unable to set tc_is_primary ON. "
+                          "Try to set it manually."); /* purecov: inspected */
+            }
+            else
+            {//set primary to on success, now do flush
+              /*
+                only new elected member(local and primary) need do tdbctl flush routing
+                tdbctl flush routing will fetch the newest primary member and flush to all spiders.
+               */
+              if (tdbctl_flush_routing(sql_command_interface))
+              {
+                log_message(MY_ERROR_LEVEL,
+                            "tdbctl flush routing on new primary node failed. "
+                            "Try to flush it manually."); /* purecov: inspected */
+              }
             }
           }
           else
@@ -822,6 +831,13 @@ void Plugin_gcs_events_handler::handle_leader_election_if_needed() const
             {
               log_message(MY_WARNING_LEVEL,
                           "Unable to set super read only flag. "
+                          "Try to set it manually."); /* purecov: inspected */
+            }
+
+            if (tdbctl_set_primary_off(sql_command_interface))
+            {
+              log_message(MY_WARNING_LEVEL,
+                          "Unable to set tc_is_primary to off. "
                           "Try to set it manually."); /* purecov: inspected */
             }
           }
@@ -858,7 +874,16 @@ void Plugin_gcs_events_handler::handle_leader_election_if_needed() const
                     "Unable to set super read only flag. "
                     "Try to set it manually."); /* purecov: inspected */
       }
+
+      //no suitable primary, set to offjjjj
+      if (tdbctl_set_primary_off(sql_command_interface))
+      {
+        log_message(MY_WARNING_LEVEL,
+                    "Unable to set tc_is_primary to off. "
+                    "Try to set it manually."); /* purecov: inspected */
+      }
     }
+
     delete sql_command_interface;
   }
 

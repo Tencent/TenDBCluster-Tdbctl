@@ -140,6 +140,28 @@ public:
 
 	*/
   long internal_tdbctl_flush_routing(Sql_service_interface *sql_interface);
+
+  /**
+    Internal method to set the tc_is_primary on.
+
+    @param sql_interface the server session interface for query execution
+
+    @return error code during execution of the sql query.
+       @retval 0  - success
+       @retval >0 - failure
+  */
+  long internal_set_tc_primary_on(Sql_service_interface *sql_interface);
+
+  /**
+    Internal method to set the tc_is_primary off.
+
+    @param sql_interface the server session interface for query execution
+
+    @return error code during execution of the sql query.
+       @retval 0  - success
+       @retval >0 - failure
+  */
+  long internal_set_tc_primary_off(Sql_service_interface *sql_interface);
 };
 
 struct st_session_method
@@ -325,6 +347,24 @@ public:
       @retval >0 - failure
   */
   long tdbctl_flush_routing();
+
+  /**
+    Method to set the tc_is_primary variable "ON" on the server.
+
+    @return error code during execution of the sql query.
+       @retval 0  - success
+       @retval >0 - failure
+  */
+  long tdbctl_set_primary_on();
+
+  /**
+    Method to set the tc_is_primary variable "OFF" on the server.
+
+    @return error code during execution of the sql query.
+       @retval 0  - success
+       @retval >0 - failure
+  */
+  long tdbctl_set_primary_off();
 
   /**
     Method to return the server gtid_executed by executing the corresponding

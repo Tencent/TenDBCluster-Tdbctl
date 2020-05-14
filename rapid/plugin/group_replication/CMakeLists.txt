@@ -132,6 +132,7 @@ SET(GROUP_REPLICATION_SOURCES
   src/plugin_utils.cc
   src/ps_information.cc
   src/read_mode_handler.cc
+  src/tc_mode_handler.cc
   src/recovery.cc
   src/recovery_channel_state_observer.cc
   src/applier_channel_state_observer.cc

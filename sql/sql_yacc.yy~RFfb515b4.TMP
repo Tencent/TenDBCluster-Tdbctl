@@ -977,6 +977,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 %token  SAVEPOINT_SYM                 /* SQL-2003-R */
 %token  SCHEDULE_SYM
 %token  SCHEMA_NAME_SYM               /* SQL-2003-N */
+%token  SCHEMA_SYM               /* SQL-2003-N */
 %token  SECOND_MICROSECOND_SYM
 %token  SECOND_SYM                    /* SQL-2003-R */
 %token  SECURITY_SYM                  /* SQL-2003-N */
@@ -2289,6 +2290,7 @@ tdbctl:
       | TDBCTL_SYM MONITOR_SYM INIT_SYM
         {
           Lex->sql_command = TC_SQLCOM_MONITOR_INIT;
+          Lex->tc_do_grants = TRUE;
         }
       | TDBCTL_SYM CREATE NODE_SYM WRAPPER_SYM
         ident_or_text OPTIONS_SYM '(' server_options_list ')' opt_with_schema
@@ -2300,10 +2302,10 @@ tdbctl:
             MYSQL_YYABORT;
 
           if (Lex->tc_with_schema &&
-                (my_strcasecmp(system_charset_info, $5.str, SPIDER_WRAPPER) != 0 &&
+                (my_strcasecmp(system_charset_info, $5.str, SPIDER_WRAPPER) != 0 ||
                 my_strcasecmp(system_charset_info, $5.str, SPIDER_SLAVE_WRAPPER) != 0))
           {
-            my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "WITH SCHMEA only support SPIDER, SPIDER_SLAVE wrapper");
+            my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "WITH SCHMEA only support SPIDER, SPIDER_SLAVE node");
             MYSQL_YYABORT;
           }
 
@@ -2326,7 +2328,6 @@ tdbctl:
       | TDBCTL_SYM DROP NODE_SYM if_exists ident_or_text opt_force
         {
           Lex->sql_command = TC_SQLCOM_DROP_NODE;
-          Lex->server_options.m_server_name= $5;
           Lex->m_sql_cmd=
               new (YYTHD->mem_root) Sql_cmd_drop_server($5, $4);
           Lex->tc_do_grants = FALSE;
@@ -2358,7 +2359,7 @@ opt_tdbctl_flush:
 
 opt_with_schema:
          /* empty */ {  Lex->tc_with_schema = FALSE; }
-         |WITH DATABASE
+         |WITH SCHEMA_SYM
          {
            Lex->tc_with_schema = TRUE;
          }
@@ -13706,6 +13707,7 @@ keyword:
         | ROUTING_SYM           {}
         | ROLLBACK_SYM          {}
         | SAVEPOINT_SYM         {}
+        | SCHEMA_SYM            {}
         | SECURITY_SYM          {}
         | SERVER_SYM            {}
         | SHUTDOWN              {}

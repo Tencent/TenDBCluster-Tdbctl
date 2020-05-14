@@ -3245,10 +3245,10 @@ public:
   bool safe_to_cache_query;
   bool subqueries;
   my_bool is_tc_flush_force;
-	/*
-	whether need do grants when flush routing, for tdbctl statement
-	*/
-	my_bool do_grants;
+	/* whether need do grants when flush routing, for tdbctl statement */
+	bool tc_do_grants;
+	/* whether need do dump/restore schema for new add spider node */
+	bool tc_with_schema;
   ulong tc_flush_type;
 private:
   bool ignore;

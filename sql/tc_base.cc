@@ -2976,10 +2976,13 @@ string tc_get_spider_grant_sql(
 
 /*
   Generate internal tdbctl GRANT sql according to mysql.servers's info.
-  Primary tdbctl should do [GRANT ALL PRIVILEGES] sql for all spiders, which use
-  to transfer sql from spider to tdbctl. Of course, other tdbctl also need do, but MGR
-  ensure to sync privileges from master tdbctl to slave, so we skip this step.
-  The generate sqls only need to execute on primary tdbctl
+  All tdbctl should do [GRANT ALL PRIVILEGES] sql for all spiders, which use
+  to transfer sql from spider to tdbctl.
+  All spiders should do [GRANT ALL PRIVILEGES] sql for other tdbctl, which use
+  to connect and manager cluster, if not, after failure, new elected primary tdbctl
+  may had no privileges to connect other tdbctl
+  In replication scenario, only primary/master node need to do this, which ensure to sync privileges
+  to other tdbctl.
 */
 string tc_get_tdbctl_grant_sql(
         set<string> &spider_ipport_set,
@@ -2991,23 +2994,36 @@ string tc_get_tdbctl_grant_sql(
 {
   string tdbctl_do_sql;
   char create_sql[FN_REFLEN], grant_sql[FN_REFLEN];
-  std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_ip_port)
-  {
-    ulong pos = spider_ip_port.find("#");
-    string spider_host = spider_ip_port.substr(0, pos);
-    std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
-    {
-      string tdbctl_address = tdbctl_ip_port.second;
-      ulong pos = tdbctl_address.find("#");
-      string tdbctl_host = tdbctl_address.substr(0, pos);
-      const char *tdbctl_user = tdbctl_user_map[tdbctl_address].c_str();
-      const char *tdbctl_passwd = tdbctl_passwd_map[tdbctl_address].c_str();
 
-      //spider use tdbctl's user, password to connect spider
+  std::for_each(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(), [&](std::pair<string, string>tdbctl_ip_port)
+  {
+    string tdbctl_address = tdbctl_ip_port.second;
+    ulong pos = tdbctl_address.find("#");
+    string tdbctl_host = tdbctl_address.substr(0, pos);
+    const char *tdbctl_user = tdbctl_user_map[tdbctl_address].c_str();
+    const char *tdbctl_passwd = tdbctl_passwd_map[tdbctl_address].c_str();
+
+    /**
+      use tdbctl's user, password to connect other tdbctl.
+      It's necessary to do this, otherwise, after failure, new elected primary
+      tdbctl may have no privilege to manager cluster.
+    */
+    sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
+      tdbctl_user, tdbctl_host.c_str(), tdbctl_passwd);
+    sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* TO '%s'@'%s' WITH GRANT OPTION;",
+      tdbctl_user, tdbctl_host.c_str());
+    tdbctl_do_sql += create_sql;
+    tdbctl_do_sql += grant_sql;
+
+    //spider use tdbctl's user, password to connect tdbctl
+    std::for_each(spider_ipport_set.begin(), spider_ipport_set.end(), [&](string spider_ip_port)
+    {
+      ulong pos = spider_ip_port.find("#");
+      string spider_host = spider_ip_port.substr(0, pos);
       sprintf(create_sql, "CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';",
-              tdbctl_user, spider_host.c_str(), tdbctl_passwd);
+        tdbctl_user, spider_host.c_str(), tdbctl_passwd);
       sprintf(grant_sql, "GRANT ALL PRIVILEGES ON *.* TO '%s'@'%s' WITH GRANT OPTION;",
-              tdbctl_user, spider_host.c_str());
+        tdbctl_user, spider_host.c_str());
       tdbctl_do_sql += create_sql;
       tdbctl_do_sql += grant_sql;
     });
@@ -3086,7 +3102,7 @@ string tc_get_remote_grant_sql(
 
   @retval
    0: error
-   1: mgr  running with single-primary.
+   1: mgr running with single-primary.
    2. not mgr or multi-primary
 
   @Note

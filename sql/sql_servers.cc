@@ -1136,7 +1136,6 @@ void get_server_by_wrapper(
   bool with_slave
 )
 {
-  DBUG_ASSERT(wrapper_name);
   ulong records = 0;
   FOREIGN_SERVER* server;
   string wrapper_slave = wrapper_name;
@@ -1202,7 +1201,7 @@ string get_new_server_name_by_wrapper(
           (with_slave && !strcasecmp(server->scheme, wrapper_slave.c_str())))
       {
         ulong suffix_num = 0;
-        string prefix = server->scheme;
+        string prefix = server->server_name;
         regex pattern(wrapper_name, regex::icase);
         prefix = regex_replace(prefix, pattern, "");
         suffix_num = std::atol(prefix.c_str());
@@ -1259,6 +1258,7 @@ static string dump_servers_to_sql()
 
   if (records == 0)
   {
+    sql_print_warning("no recored found in mysql.servers, null sql returned");
     mysql_rwlock_unlock(&THR_LOCK_servers);
     return "";
   }
@@ -1312,14 +1312,14 @@ static string dump_servers_to_sql()
         //add tdbctl insert sql
         replace_sql_all += tdbctl_sql_map[ip_port];
       else {
-        sql_print_warning("primary node not in mysql.servers, return null sql");
+        sql_print_warning("primary node not in mysql.servers, null sql returned");
         mysql_rwlock_unlock(&THR_LOCK_servers);
         return "";
       }
     }
     else
     {// unknown error, such as network partition.
-      sql_print_warning("get primary node info failed");
+      sql_print_warning("get primary node info failed, null sql returned");
       mysql_rwlock_unlock(&THR_LOCK_servers);
       return "";
     }
@@ -1492,6 +1492,9 @@ int tc_do_grants_internal()
   MYSQL *tdbctl_primary_conn = NULL;
   string tdbctl_do_sql;
 
+  string host;
+  uint port;
+
   init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
   /* not include SPIDER_SLAVE at present */
   set<string>  spider_ipport_set = get_spider_ipport_set(
@@ -1512,9 +1515,26 @@ int tc_do_grants_internal()
       remote_ipport_map.empty() || tdbctl_ipport_map.empty())
   {
     ret = 0;
-    sql_print_information("skip do internal grant, \
-        at least exist one of each spider, tdbctl and remote in mysql.servers");
+    push_warning_printf(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_INTERNAL_GRANT_ERROR,
+                        "skip do internal grant, at least exist one spider,\
+                        tdbctl and mysql wrapper type in mysql.servers");
     goto exit;
+  }
+
+  if (tc_get_primary_node(host, &port))
+  {
+    string address = host + "#" + to_string(port);
+    /* NOTE: primary member must exist in mysql.servers */
+    if (std::find_if(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(),
+        [address](const std::pair<string, string> &tdbctl_ip_port) -> bool {
+        return address.compare(tdbctl_ip_port.second) == 0; }) == tdbctl_ipport_map.end())
+    {
+      push_warning_printf(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_INTERNAL_GRANT_ERROR,
+                          "skip do internal grant, primary member %s not exist in mysql.servers",
+                          address.c_str());
+      ret = 0;
+      goto exit;
+    }
   }
 
   tdbctl_do_sql = tc_get_tdbctl_grant_sql(spider_ipport_set, spider_user_map,
@@ -1531,7 +1551,7 @@ int tc_do_grants_internal()
   tdbctl_primary_conn = tc_tdbctl_conn_primary(ret, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
   if (ret)
   {
-    sql_print_information("connect to tdbctl primary failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "connect to tdbctl primary failed");
     goto exit;
   }
 
@@ -1545,7 +1565,7 @@ int tc_do_grants_internal()
       spider_result_map, spider_user_map, spider_passwd_map, FALSE))
   {/* return, close conn, reconnect + retry all */
     ret = 1;
-    sql_print_information("spider do internal grant failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "spider do grant failed");
     goto exit;
   }
 
@@ -1558,7 +1578,7 @@ int tc_do_grants_internal()
       remote_result_map, remote_user_map, remote_passwd_map, FALSE))
   {/* return, close conn, reconnect + retry all */
     ret = 1;
-    sql_print_information("remote do internal grant failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "remote do grant failed");
     goto exit;
   }
 
@@ -1570,7 +1590,7 @@ int tc_do_grants_internal()
   if (tc_exec_sql_up(tdbctl_primary_conn, tdbctl_do_sql, &(tdbctl_result_map.begin()->second)))
   {
     ret = 1;
-    sql_print_information("tdbctl do internal grant failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "internal grant: tdbctl do grant failed");
     goto exit;
   }
 
@@ -1615,6 +1635,14 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
   string unlock_sql = "unlock tables";
   string replace_sql = dump_servers_to_sql();
 
+  if (replace_sql.length() == 0)
+    //empty replace sql
+  {
+    if (current_thd)
+      push_warning(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_FLUSH_ROUTING_ERROR,
+                  "routing sql is null, flush do nothing");
+    return 0;
+  }
 
   if (tc_exec_sql_paral(set_option_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
   {/* return, close conn, reconnect + retry all */
@@ -1683,9 +1711,7 @@ bool tc_check_ipport_valid()
 
 }
 
-/*
-at present, CREATE/ALTER/DROP NODE also do tc_flush_routing
-*/
+/* at present, CREATE/ALTER(mysql wrapper) NODE also do tc_flush_routing */
 bool tc_flush_routing(LEX* lex)
 {
   int ret = 0;
@@ -1695,7 +1721,6 @@ bool tc_flush_routing(LEX* lex)
   map<string, MYSQL*> spider_conn_map;
   map<string, string> spider_user_map;
   map<string, string> spider_passwd_map;
-
 
   set<string>::iterator its;
   map<string, tc_exec_info> result_map;
@@ -1715,6 +1740,13 @@ bool tc_flush_routing(LEX* lex)
   {
   case FLUSH_ALL_ROUTING:
     to_flush_ipport_set = all_spider_ipport_set;
+    if (to_flush_ipport_set.empty())
+    {
+      if (current_thd)
+        push_warning(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_FLUSH_ROUTING_ERROR,
+          "no spider nodes exists, skip flush");
+      goto finish;
+    }
     break;
   case FLUSH_ROUTING_BY_SERVER:
   {
@@ -1746,12 +1778,6 @@ bool tc_flush_routing(LEX* lex)
   while (retry_times-- > 0)
   {
     int exec_ret = 0;
-    if (tc_enable_internal_grant &&
-        lex->do_grants &&
-        tc_do_grants_internal()) {
-      sleep(2);
-      continue;
-    }
     spider_conn_map = tc_spider_conn_connect(ret, to_flush_ipport_set, spider_user_map, spider_passwd_map);
     if (ret)
     {
@@ -1914,10 +1940,18 @@ int tc_check_and_repair_routing()
 
   if (!(thd = new THD))
   {
+    sql_print_warning("init repair thread failed, skip repair");
+    result = 1;
+    goto finish;
+  }
+  if (replace_sql.length() == 0)
+  {
+    sql_print_warning("get repair sql from mysql.servers failed, skip repair");
     result = 1;
     goto finish;
   }
 
+  thd->variables.lock_wait_timeout = tc_check_repair_routing_interval;
   spider_ipport_set = get_spider_ipport_set(
                                       thd->mem_root,
                                       spider_user_map, 
@@ -1982,31 +2016,22 @@ int tc_check_and_repair_routing()
       li.sort(server_compare);
       if (compare_server_list(all_list, li))
       {
-        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
-          "ipport is %s, routing mismatch\n",
-        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-        l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        sql_print_warning("ipport is %s, routing mismatch", ipport.c_str());
         if (!locked)
         {
           if (lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
-            fprintf(stderr, "lock for repair routing timeout\n");
+            sql_print_warning("lock for repair routing timeout");
           else
             locked = true;
         }
         if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
         {
-          fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
-            "ipport is %s, routing repair failed\n",
-          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-          l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+          sql_print_error("ipport is %s, routing repair failed", ipport.c_str());
           result = 2;
         }
         else
         {
-          fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO TDBCTL] "
-            "ipport is %s, routing repair succeed\n",
-          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-          l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+          sql_print_information("ipport is %s, routing repair succeed", ipport.c_str());
         }
       }
       li.clear();
@@ -2014,24 +2039,15 @@ int tc_check_and_repair_routing()
     }
     else
     {
-      fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
-        "ipport is %s, routing mismatch\n",
-      l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-      l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+      sql_print_warning("ipport is %s, routing mismatch", ipport.c_str());
       if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
       {
-        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
-          "ipport is %s, routing repair failed\n",
-        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-        l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        sql_print_error("ipport is %s, routing repair failed", ipport.c_str());
         result = 2;
       }
       else
       {
-        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO TDBCTL] "
-          "ipport is %s, routing repair succeed\n",
-        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-        l_time->tm_min, l_time->tm_sec, ipport.c_str());
+        sql_print_information("ipport is %s, routing repair succeed", ipport.c_str());
       }
     }
   }

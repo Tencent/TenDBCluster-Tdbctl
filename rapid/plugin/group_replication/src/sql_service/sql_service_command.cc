@@ -320,16 +320,112 @@ internal_tdbctl_flush_routing(Sql_service_interface *sql_interface)
 
   Sql_resultset rset;
 
-  const char* query= "tdbctl flush routing";
+  //always do force flush, for flush tdbctl, no need to block spiders
+  const char* query= "tdbctl flush routing force";
   long srv_err= sql_interface->execute_query(query);
 
   if (srv_err)
   {
-
     log_message(MY_ERROR_LEVEL, "tdbctl flush routing execution "
       "resulted in failure. errno: %d", srv_err); /* purecov: inspected */
   }
 
+  DBUG_RETURN(srv_err);
+}
+
+long Sql_service_command_interface::tdbctl_set_primary_on()
+{
+  DBUG_ENTER("Sql_service_command_interface::tdbctl_set_primary_on");
+  long error=0;
+
+  if (connection_thread_isolation != PSESSION_DEDICATED_THREAD)
+  {
+    error= sql_service_commands.internal_set_tc_primary_on(m_server_interface);
+  }
+  else
+  {
+    m_plugin_session_thread->
+      queue_new_method_for_application(&Sql_service_commands::internal_set_tc_primary_on);
+    error= m_plugin_session_thread->wait_for_method_execution();
+  }
+
+  DBUG_RETURN(error);
+}
+
+long Sql_service_commands::
+internal_set_tc_primary_on(Sql_service_interface *sql_interface)
+{
+  DBUG_ENTER("Sql_service_commands::internal_set_tc_is_primary_on");
+
+  DBUG_ASSERT(sql_interface != NULL);
+
+  Sql_resultset rset;
+
+  const char * query= "SET GLOBAL tc_is_primary = 1";
+  long srv_err= sql_interface->execute_query(query);
+  if (srv_err)
+  {
+    log_message(MY_ERROR_LEVEL, "SET tc_is_primary query execution "
+      "resulted in failure. errno: %d", srv_err); /* purecov: inspected */
+  }
+#ifndef DBUG_OFF
+  else
+  {
+    query= "SELECT @@GLOBAL.tc_is_primary;";
+    sql_interface->execute_query(query, &rset);
+    DBUG_ASSERT(rset.getLong(0) == 1);
+
+    log_message(MY_INFORMATION_LEVEL, "Setting tc_is_primary=1.");
+  }
+#endif
+  DBUG_RETURN(srv_err);
+}
+
+long Sql_service_command_interface::tdbctl_set_primary_off()
+{
+  DBUG_ENTER("Sql_service_command_interface::tdbctl_set_primary_off");
+  long error=0;
+
+  if (connection_thread_isolation != PSESSION_DEDICATED_THREAD)
+  {
+    error= sql_service_commands.internal_set_tc_primary_off(m_server_interface);
+  }
+  else
+  {
+    m_plugin_session_thread->
+      queue_new_method_for_application(&Sql_service_commands::internal_set_tc_primary_off);
+    error= m_plugin_session_thread->wait_for_method_execution();
+  }
+
+  DBUG_RETURN(error);
+}
+
+long Sql_service_commands::
+internal_set_tc_primary_off(Sql_service_interface *sql_interface)
+{
+  DBUG_ENTER("Sql_service_commands::internal_set_tc_is_primary_off");
+
+  DBUG_ASSERT(sql_interface != NULL);
+
+  Sql_resultset rset;
+
+  const char * query= "SET GLOBAL tc_is_primary = 0";
+  long srv_err= sql_interface->execute_query(query);
+  if (srv_err)
+  {
+    log_message(MY_ERROR_LEVEL, "SET tc_is_primary query execution "
+      "resulted in failure. errno: %d", srv_err); /* purecov: inspected */
+  }
+#ifndef DBUG_OFF
+  else
+  {
+    query= "SELECT @@GLOBAL.tc_is_primary;";
+    sql_interface->execute_query(query, &rset);
+    DBUG_ASSERT(rset.getLong(0) == 0);
+
+    log_message(MY_INFORMATION_LEVEL, "Setting tc_is_primary=0.");
+  }
+#endif
   DBUG_RETURN(srv_err);
 }
 

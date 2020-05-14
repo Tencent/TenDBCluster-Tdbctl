@@ -70,17 +70,6 @@ long enable_super_read_only_mode(Sql_service_command_interface *sql_service_comm
 long disable_super_read_only_mode(Sql_service_command_interface *sql_service_command);
 
 /**
-  do tdbctl flush routing in the server.
-
-  @param sql_service_command  Command interface given to execute the command
-
-  @return the operation status
-    @retval 0      OK
-    @retval !=0    Error
-*/
-long tdbctl_flush_routing(Sql_service_command_interface *sql_service_command);
-
-/**
   Get read mode status from server.
 
   @param sql_service_command        Command interface given to execute the command
