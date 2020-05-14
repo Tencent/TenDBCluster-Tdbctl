@@ -504,6 +504,7 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_OPTIMIZE]|= CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS;
   sql_command_flags[SQLCOM_ANALYZE]=   CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS;
   sql_command_flags[SQLCOM_CHECK]=     CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS;
+  sql_command_flags[TC_SQLCOM_FLUSH_ROUTING]=     CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS;
 
   sql_command_flags[SQLCOM_CREATE_USER]|=       CF_AUTO_COMMIT_TRANS;
   sql_command_flags[SQLCOM_DROP_USER]|=         CF_AUTO_COMMIT_TRANS;
@@ -769,6 +770,12 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_ALTER_USER]|=              CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[SQLCOM_EXPLAIN_OTHER]|=           CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[SQLCOM_SHOW_CREATE_USER]|=        CF_ALLOW_PROTOCOL_PLUGIN;
+  sql_command_flags[TC_SQLCOM_FLUSH_ROUTING]|=        CF_ALLOW_PROTOCOL_PLUGIN;
+  sql_command_flags[TC_SQLCOM_SHOW_VARIABLES]|=       CF_ALLOW_PROTOCOL_PLUGIN;
+  sql_command_flags[TC_SQLCOM_SHOW_PROCESSLIST]|=     CF_ALLOW_PROTOCOL_PLUGIN;
+  sql_command_flags[TC_SQLCOM_CREATE_NODE]|=          CF_ALLOW_PROTOCOL_PLUGIN;
+  sql_command_flags[TC_SQLCOM_ALTER_NODE]|=           CF_ALLOW_PROTOCOL_PLUGIN;
+  sql_command_flags[TC_SQLCOM_DROP_NODE]|=            CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[SQLCOM_END]|=                     CF_ALLOW_PROTOCOL_PLUGIN;
 }
 
