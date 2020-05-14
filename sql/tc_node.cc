@@ -31,7 +31,7 @@ int tc_dump_node_schema(
 #endif
   dump_options = "--single-transaction --no-autocommit=FALSE  --skip-opt --create-options  --routines  --quick --no-data --all-databases";
   dump_options += space + "-r" + file + space + "--log-error=" + file;
-  dump_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port);
+	dump_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port) + space+ "-h" + host;
 
   string ipport = string(host) + "#" + to_string(port);
   MYSQL *conn = tc_conn_connect(ipport, user, password);
@@ -76,7 +76,7 @@ int tc_restore_node_schema(
   restore_bin = mysql_home_ptr;
   restore_bin += "/bin/mysql";
 #endif
-  restore_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port) + "<" + file;
+  restore_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port) + space + "-h" + host + "<" + file;
   restore_cmd = restore_bin + restore_options + space + ">&" + file + ".err";
 
   if (system(restore_cmd.c_str()) != 0)

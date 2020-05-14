@@ -290,6 +290,7 @@ extern uint32 gtid_executed_compression_period;
 extern my_bool binlog_gtid_simple_recovery;
 extern ulong binlog_error_action;
 extern ulong locked_account_connection_count;
+extern int tc_is_available;
 enum enum_binlog_error_action
 {
   /// Ignore the error and let server continue without binlogging
