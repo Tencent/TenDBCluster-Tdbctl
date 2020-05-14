@@ -1,3 +1,7 @@
+/*
+    Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+*/
+
 #include "tc_xa_repair.h"
 #include "sql_base.h"        
 #include "sql_lex.h"
