@@ -21,8 +21,8 @@ void tc_xa_repair_thread()
 {
   while (1)
   {
-	  if (tc_check_repair_trans && 
-		  ((tdbctl_is_primary = tc_is_primary_tdbctl_node()) > 0)) 
+		if (tc_check_repair_trans &&
+			(tc_is_primary_tdbctl_node(false) == 1))
     {
       tc_check_and_repair_trans();
       // tc_max_prepared_time - 2, because of sleep(2)

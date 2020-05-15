@@ -705,7 +705,7 @@ void tc_check_cluster_availability_thread()
 	/*
 	init Tdbctl_is_primary in background thread
 	*/
-	tdbctl_is_primary = tc_is_primary_tdbctl_node();
+	tdbctl_is_primary = tc_is_primary_tdbctl_node(true);
 	while (1)
 	{
 		/*
@@ -718,7 +718,7 @@ void tc_check_cluster_availability_thread()
 		   if current node is not primary, do servers_reload to get
 		   latest mysql.server
        */
-			if ((tdbctl_is_primary = tc_is_primary_tdbctl_node()) <= 0)
+			if (tc_is_primary_tdbctl_node(false) != 1) 
 			{
 				if (do_servers_reload())
 				{
@@ -757,8 +757,8 @@ void tc_check_cluster_availability_thread()
 			{
 				//check available for cluster			
 				res = tc_check_cluster_availability();
-				if (((tdbctl_is_primary = tc_is_primary_tdbctl_node()) > 0) &&
-					tc_process_monitor_log())
+				if ((tc_is_primary_tdbctl_node(false) == 1) &&
+					tc_process_monitor_log()) 
 					res = 1;
 
 				for (ulong i = 0; i < labs(tc_check_availability_interval - 2); ++i)
