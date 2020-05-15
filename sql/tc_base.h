@@ -418,4 +418,5 @@ extern uint report_port;
 
 int tc_is_primary_tdbctl_node(bool flag);
 uint tc_get_primary_node(std::string &host, uint *port);
+bool check_server_version(ulong& server_version);
 #endif /* TC_BASE_INCLUDED */

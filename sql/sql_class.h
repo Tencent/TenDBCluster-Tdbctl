@@ -1697,6 +1697,7 @@ public:
 
   bool tc_conn_init;
   bool spider_run_first;
+  ulong server_version;
 
   /**
     The function checks whether the thread is processing queries from binlog,

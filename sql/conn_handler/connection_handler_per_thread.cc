@@ -309,6 +309,7 @@ extern "C" void *handle_connection(void *arg)
     else
     {
       thd->tc_conn_init = FALSE;
+      thd->server_version = -1;
       while (thd_connection_alive(thd))
       {
         if (do_command(thd))

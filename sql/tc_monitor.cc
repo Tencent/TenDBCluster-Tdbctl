@@ -643,17 +643,6 @@ int tc_monitor_log(string tdbctl_name, string spider_server_name, string host,
 finish:
 	return result;
 }
-bool check_server_version(ulong& server_version) 
-{
-	bool res = false;
-	ulong server_version_new = get_modify_server_version();
-	if (server_version != server_version_new)
-	{
-		server_version = server_version_new;
-		res = true;
-	}
-	return res;
-}
 
 int do_servers_reload()
 {

@@ -3304,3 +3304,15 @@ MYSQL_RES* tc_exec_sql_by_server(
 
   return res;
 }
+
+bool check_server_version(ulong& server_version)
+{
+	bool res = false;
+	ulong server_version_new = get_modify_server_version();
+	if (server_version != server_version_new)
+	{
+		server_version = server_version_new;
+		res = true;
+	}
+	return res;
+}
