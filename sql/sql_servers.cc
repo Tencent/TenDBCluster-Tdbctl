@@ -1987,9 +1987,6 @@ int tc_check_and_repair_routing()
     string ipport = its->first;
     MYSQL* mysql = its->second;
     MYSQL_RES* res;
-    time_t to_tm_time = (time_t)time((time_t*)0);
-    struct tm lt;
-    struct tm* l_time = localtime_r(&to_tm_time, &lt);
     res = tc_exec_sql_with_result(mysql, sql);
     if (res)
     {
