@@ -1,4 +1,8 @@
 /*
+     Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+*/
+
+/*
 Add for node's control
 */
 #include "tc_node.h"

@@ -1,3 +1,7 @@
+/*
+    Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+*/
+
 #include "sql_base.h"         // open_tables, open_and_lock_tables,
 #include "sql_lex.h"
 #include "sp_head.h"

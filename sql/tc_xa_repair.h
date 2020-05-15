@@ -1,3 +1,7 @@
+/*
+     Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+*/
+
 #ifndef TC_XA_REPAIR_INCLUDED
 #define TC_XA_REPAIR_INCLUDED
 
