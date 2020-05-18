@@ -7874,6 +7874,9 @@ ER_TCADMIN_INTERNAL_GRANT_ERROR
 
 ER_TCADMIN_NOT_AVAILABLE
   eng "EXECUTE ERROR: cluster is not available"
+
+ER_TCADMIN_NOT_PRIMARY
+  eng "EXECUTE ERROR: the tdbctl is not primary node"
 #
 # End of MyRocks specific messages
 #

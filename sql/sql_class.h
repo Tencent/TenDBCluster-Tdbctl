@@ -5813,6 +5813,12 @@ public:
 */
 #define CF_DISALLOW_IN_UNAVAILAVLE (1U << 22)
 
+
+/**
+  Identifies statements that should always be disallowed if TDBCTL is not primary
+*/
+#define CF_DISALLOW_IN_NO_PRIMARY (1U << 23)
+
 /* Bits in server_command_flags */
 
 /**

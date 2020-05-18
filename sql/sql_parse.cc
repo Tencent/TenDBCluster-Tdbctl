@@ -813,6 +813,15 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_DROP_VIEW] |= CF_DISALLOW_IN_UNAVAILAVLE;
   sql_command_flags[SQLCOM_CREATE_TRIGGER] |= CF_DISALLOW_IN_UNAVAILAVLE;
   sql_command_flags[SQLCOM_DROP_TRIGGER] |= CF_DISALLOW_IN_UNAVAILAVLE;
+
+  /*
+  Mark statements that are disallowed if TDBCTL is not primary.
+  */
+  sql_command_flags[TC_SQLCOM_MONITOR_INIT] |= CF_DISALLOW_IN_NO_PRIMARY;
+  sql_command_flags[TC_SQLCOM_CREATE_NODE] |= CF_DISALLOW_IN_NO_PRIMARY;
+  sql_command_flags[TC_SQLCOM_ALTER_NODE] |= CF_DISALLOW_IN_NO_PRIMARY;
+  sql_command_flags[TC_SQLCOM_DROP_NODE] |= CF_DISALLOW_IN_NO_PRIMARY;
+  sql_command_flags[TC_SQLCOM_FLUSH_ROUTING] |= CF_DISALLOW_IN_NO_PRIMARY;
 }
 
 bool sqlcom_can_generate_row_events(enum enum_sql_command command)
@@ -2937,6 +2946,13 @@ mysql_execute_command(THD *thd, bool first_level)
       goto error;
     }
   }
+	/*Non - primary TDBCTL node, unable to execute TDBCTL SQL*/
+	if (tc_is_primary_tdbctl_node(false) != 1 &&
+		(sql_command_flags[lex->sql_command] & CF_DISALLOW_IN_NO_PRIMARY))
+	{
+		my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
+		goto finish;
+	}
 
   switch (lex->sql_command) {
 
@@ -7209,8 +7225,19 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
           }
           else
           {
+            /*
+            Non - clustered spider node,
+            unable to execute request under tc_admin = 1
+            */
             if (thd->variables.tc_admin && !tc_is_spider_node(thd))
               my_error(ER_TCADMIN_NOT_SPIDER, MYF(0));
+            /*
+            Non - primary TDBCTL node,
+            unable to execute request under tc_admin = 1
+            */
+            else if (thd->variables.tc_admin &&
+             (tc_is_primary_tdbctl_node() != 1))
+              my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
             else if(thd->variables.tc_admin)
               error = tcadmin_execute_command(thd, true);
             else
