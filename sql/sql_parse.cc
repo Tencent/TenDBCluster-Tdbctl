@@ -777,6 +777,42 @@ void init_update_queries(void)
   sql_command_flags[TC_SQLCOM_ALTER_NODE]|=           CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[TC_SQLCOM_DROP_NODE]|=            CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[SQLCOM_END]|=                     CF_ALLOW_PROTOCOL_PLUGIN;
+  /*
+  Mark statements that are disallowed if cluster is unavailable.
+  */
+  //GRANT
+  sql_command_flags[SQLCOM_CREATE_USER] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_DROP_USER] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_ALTER_USER] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_RENAME_USER] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_REVOKE] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_GRANT] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  
+  //DDL
+  sql_command_flags[SQLCOM_CREATE_TABLE] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_CREATE_INDEX] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_DROP_INDEX] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_ALTER_TABLE] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_RENAME_TABLE] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_DROP_TABLE] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_CHANGE_DB] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_CREATE_DB] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_DROP_DB] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_ALTER_DB] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  
+  sql_command_flags[SQLCOM_CREATE_EVENT] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_ALTER_EVENT] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_CREATE_FUNCTION] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_CREATE_PROCEDURE] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_CREATE_SPFUNCTION] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_ALTER_PROCEDURE] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_ALTER_FUNCTION] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_DROP_PROCEDURE] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_DROP_FUNCTION] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_CREATE_VIEW] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_DROP_VIEW] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_CREATE_TRIGGER] |= CF_DISALLOW_IN_UNAVAILAVLE;
+  sql_command_flags[SQLCOM_DROP_TRIGGER] |= CF_DISALLOW_IN_UNAVAILAVLE;
 }
 
 bool sqlcom_can_generate_row_events(enum enum_sql_command command)
@@ -5695,6 +5731,13 @@ tcadmin_execute_command(THD* thd, bool first_level)
   string before_sql_for_remote;
   map<string, string> remote_sql_map;
   int shard_count;
+  /*when cluster is not available, it is forbidden to DDL or grant*/
+  if (tc_check_availability && tc_is_available != 1 &&
+    (sql_command_flags[lex->sql_command] & CF_DISALLOW_IN_UNAVAILAVLE))
+  {
+    my_error(ER_TCADMIN_NOT_AVAILABLE, MYF(0));
+    goto finish;
+  }
   if (check_server_version(thd->server_version))
   {
     DBUG_ASSERT(thd->variables.tc_admin);

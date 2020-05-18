@@ -5808,6 +5808,11 @@ public:
 */
 #define CF_ALLOW_PROTOCOL_PLUGIN (1U << 16)
 
+/**
+  Identifies statements that should always be disallowed if cluster is unavailable
+*/
+#define CF_DISALLOW_IN_UNAVAILAVLE (1U << 22)
+
 /* Bits in server_command_flags */
 
 /**

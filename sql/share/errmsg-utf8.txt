@@ -7872,6 +7872,8 @@ ER_TCADMIN_WRONG_WRAPPER_NAME
 ER_TCADMIN_INTERNAL_GRANT_ERROR
   eng "INTERNAL GRANT ERROR: %s"
 
+ER_TCADMIN_NOT_AVAILABLE
+  eng "EXECUTE ERROR: cluster is not available"
 #
 # End of MyRocks specific messages
 #
