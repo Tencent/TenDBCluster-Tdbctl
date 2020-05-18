@@ -6,6 +6,7 @@
 #include "sql_base.h"        
 #include "sql_lex.h"
 #include "tc_base.h"
+#include "log.h"
 #include <thread>
 #include <string>
 #include <list>
@@ -89,8 +90,6 @@ void tc_get_remote_prepared_trans(
   map<string, MYSQL*>::iterator its;
   map<string, MYSQL_RES*>::iterator its_res;
   time_t to_tm_time = (time_t)time((time_t*)0);
-  struct tm lt;
-  struct tm* l_time = localtime_r(&to_tm_time, &lt);
 
   for (its = conn_map.begin(); its != conn_map.end(); its++)
   {/* init for  result_map */
@@ -128,10 +127,9 @@ void tc_get_remote_prepared_trans(
     }
     else
     {
-      fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
-        "ipport is %s, check prepared transaction mismatch\n",
-        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-        l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+			sql_print_warning("TDBCTL: ipport is %s," 
+				"check prepared transaction mismatch",
+				ipport.c_str());
     }
   }
 }
@@ -148,9 +146,6 @@ void tc_check_status_from_commit_logs(
   set<string>::iterator its;
   map<string, MYSQL*>::iterator its2;
   map<string, MYSQL_RES*>::iterator its_res;
-  time_t to_tm_time = (time_t)time((time_t*)0);
-  struct tm lt;
-  struct tm* l_time = localtime_r(&to_tm_time, &lt);
   map<string, MYSQL_RES*> result_map;
   /* TODO pre_sql also need to limit the xid commit time in mysql.xa_commit_log */
   string pre_sql = "select * from mysql.xa_commit_log where xid=";
@@ -191,10 +186,9 @@ void tc_check_status_from_commit_logs(
       }
       else
       {
-        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
-          "ipport is %s, failed to get xid info from mysql.xa_commit_log \n",
-          l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-          l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+				sql_print_warning("TDBCTL: ipport is %s, "
+					" failed to get xid info from mysql.xa_commit_log",
+					ipport.c_str());
         need_retry = TRUE;
       }
     }
@@ -223,9 +217,6 @@ void tc_process_prepared_trans(
   set<string>::iterator its;
   map<string, tc_exec_info> result_map;
   map<string, MYSQL*>::iterator its_tmp;
-  time_t to_tm_time = (time_t)time((time_t*)0);
-  struct tm lt;
-  struct tm* l_time = localtime_r(&to_tm_time, &lt);
 
   for (its_tmp = conn_map.begin(); its_tmp != conn_map.end(); its_tmp++)
   {/* init for exec result: result_map */
@@ -260,10 +251,9 @@ void tc_process_prepared_trans(
         }
         else
         {// succeed to repair unexpected prepared transaction
-          fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
-            "ipport is %s, succeed to repair unexpected prepared transaction",
-            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-            l_time->tm_hour, l_time->tm_min, l_time->tm_sec, ipport.c_str());
+					sql_print_warning("TDBCTL: ipport is %s, "
+						" succeed to repair unexpected prepared transaction", 
+						ipport.c_str());
         }
     }
   }

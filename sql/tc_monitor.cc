@@ -23,7 +23,6 @@
 #include <regex>
 #include <thread>
 #include <mutex>
-#include "log.h"
 #include "tc_monitor.h"
 
 static int64 current_id = 0;
