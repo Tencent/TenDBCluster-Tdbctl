@@ -3141,12 +3141,20 @@ uint tc_get_primary_node(std::string &host, uint *port)
 
 
 /*
-  return value:
+
+  @param : flag
+	  true:  means need to judge tdbctl_is_primary
+	         tdbctl_is_primary need to be maintained when TDBCTL 
+	         in mysql.servers modified
+	  false: means no need to judge tdbctl_is_primary
+	         background thread and sql_parse only need to get tdbctl_is_primary,
+	         needn't to maintain tdbctl_is_primary
+  @retval
     -1, error
     0, not primary node
     1, primary node
 */
-int tc_is_primary_tdbctl_node()
+int tc_is_primary_tdbctl_node(bool flag)
 {
   int ret = 0;
   string host;
@@ -3154,7 +3162,7 @@ int tc_is_primary_tdbctl_node()
 
   ret = tc_get_primary_node(host, &port);
   //mgr running with single-primary
-  if (ret == 1)
+  if (ret == 1 || (!flag && ret == 2 ))
     return tdbctl_is_primary;
 
   if (ret == 2)
@@ -3295,4 +3303,16 @@ MYSQL_RES* tc_exec_sql_by_server(
   res = tc_exec_sql_with_result(mysql, exec_sql);
 
   return res;
+}
+
+bool check_server_version(ulong& server_version)
+{
+	bool res = false;
+	ulong server_version_new = get_modify_server_version();
+	if (server_version != server_version_new)
+	{
+		server_version = server_version_new;
+		res = true;
+	}
+	return res;
 }

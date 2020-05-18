@@ -324,7 +324,7 @@ end:
   */
   if (modify_tdbctl_flag)
   {
-    tdbctl_is_primary = tc_is_primary_tdbctl_node();
+    tdbctl_is_primary = tc_is_primary_tdbctl_node(true);
     modify_tdbctl_flag = false;
   }
   delete_redundant_routings();
@@ -1899,8 +1899,8 @@ void tc_check_and_repair_routing_thread()
 {
   while (1)
   {
-	  if ((tc_check_repair_routing &&
-		  ((tdbctl_is_primary = tc_is_primary_tdbctl_node()) > 0))) 
+	  if (tc_check_repair_routing &&
+		  (tc_is_primary_tdbctl_node(false) == 1)) 
     {
       if (tc_check_and_repair_routing())
       {
@@ -1987,9 +1987,6 @@ int tc_check_and_repair_routing()
     string ipport = its->first;
     MYSQL* mysql = its->second;
     MYSQL_RES* res;
-    time_t to_tm_time = (time_t)time((time_t*)0);
-    struct tm lt;
-    struct tm* l_time = localtime_r(&to_tm_time, &lt);
     res = tc_exec_sql_with_result(mysql, sql);
     if (res)
     {

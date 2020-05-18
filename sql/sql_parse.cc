@@ -5694,12 +5694,25 @@ tcadmin_execute_command(THD* thd)
   string before_sql_for_remote;
   map<string, string> remote_sql_map;
   int shard_count;
+  if (check_server_version(thd->server_version))
+  {
+    DBUG_ASSERT(thd->variables.tc_admin);
+    tc_conn_free(thd->spider_conn_map);
+    tc_conn_free(thd->remote_conn_map);
+    thd->spider_conn_map.clear();
+    thd->remote_conn_map.clear();
+    thd->spider_ipport_set.clear();
+    thd->remote_ipport_map.clear();
+    thd->spider_user_map.clear();
+    thd->spider_passwd_map.clear();
+    thd->remote_user_map.clear();
+    thd->remote_passwd_map.clear();
+  }
 
   /* do spider/remote conn init */
   if (!thd->tc_conn_init && thd->variables.tc_admin)
   {
-    int ret = 0;
-    thd->tc_conn_init = TRUE;
+    int ret = 0; 
     thd->spider_ipport_set = get_spider_ipport_set(
                                thd->mem_root, 
                                thd->spider_user_map, 
@@ -5726,6 +5739,8 @@ tcadmin_execute_command(THD* thd)
                              thd->remote_passwd_map);
     if (ret)
       goto finish;
+	else
+      thd->tc_conn_init = TRUE;
   }
   shard_count = thd->remote_ipport_map.size();
 
@@ -6391,6 +6406,19 @@ break;
 
 finish:
 
+	if (thd->tc_conn_init == FALSE && thd->variables.tc_admin)
+	{
+		tc_conn_free(thd->spider_conn_map);
+		tc_conn_free(thd->remote_conn_map);
+		thd->spider_conn_map.clear();
+		thd->remote_conn_map.clear();
+		thd->spider_ipport_set.clear();
+		thd->remote_ipport_map.clear();
+		thd->spider_user_map.clear();
+		thd->spider_passwd_map.clear();
+		thd->remote_user_map.clear();
+		thd->remote_passwd_map.clear();
+	}
   /* Free tables. Set stage 'closing tables' */
   close_thread_tables(thd);
 
