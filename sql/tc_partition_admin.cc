@@ -121,9 +121,6 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
     int step)
 {
 	int result = 0;
-	time_t to_tm_time = (time_t)time((time_t*)0);
-	struct tm lt;
-	struct tm* l_time = localtime_r(&to_tm_time, &lt);
 	map<string, MYSQL*>::iterator its;
 	regex pattern(tdbctl_mysql_wrapper_prefix);	
 
@@ -177,8 +174,6 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 			int interval_time = atoi(row[5]);
 			string remote_hash_algorithm = row[6];
 			tc_exec_info exec_info;
-			to_tm_time = (time_t)time((time_t*)0);
-			l_time = localtime_r(&to_tm_time, &lt);
 			update_config_sql = "";
 
 			/*
@@ -220,10 +215,8 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 					+ quotation + tb_name + quotation;
 				if (tc_exec_sql_without_result(tdbctl_primary_conn, update_config_sql, &exec_info))
 				{
-					fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN PARTITION_ADMIN] "
-						"fail to  update  in  cluster_admin.tc_partiton_admin_config : %02d %s \n",
-						l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-						l_time->tm_min, l_time->tm_sec, exec_info.err_code, exec_info.err_msg.c_str());
+					sql_print_warning("PARTITION_ADMIN:fail to  update  in  cluster_admin.tc_partiton_admin_config : %02d %s",
+						exec_info.err_code, (char*)(exec_info.err_msg.data()));
 					exec_info.err_code = 0;
 					exec_info.row_affect = 0;
 					exec_info.err_msg = "";
@@ -234,10 +227,7 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 	else
 	{
 		result = 2;
-		fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN PARTITION_ADMIN] "
-			"fail to select cluster_admin.tc_partiton_admin_config \n",
-			l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-			l_time->tm_min, l_time->tm_sec);
+		sql_print_warning("PARTITION_ADMIN:fail to select cluster_admin.tc_partiton_admin_config");
 	}
 	return result;
 }
@@ -648,10 +638,6 @@ int tc_partiton_log(MYSQL* tdbctl_primary_conn, tc_exec_info* exec_info,
 	string error_code, string message) 
 {
 	int result = 0;
-	time_t to_tm_time = (time_t)time((time_t*)0);
-	struct tm lt;
-	struct tm* l_time = localtime_r(&to_tm_time, &lt);
-
 	string log_sql = "insert into cluster_admin.tc_partiton_admin_log( "
 		" db_name,tb_name,server_name,host,code,message) values(";
 	string quotation = "\"";
@@ -666,10 +652,8 @@ int tc_partiton_log(MYSQL* tdbctl_primary_conn, tc_exec_info* exec_info,
 	if (tc_exec_sql_without_result(tdbctl_primary_conn, log_sql, exec_info))
 	{
 		result = 2;
-		fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN PARTITION_ADMIN] "
-			"fail to log in  cluster_admin.tc_partiton_admin_log :%02d %s\n",
-			l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-			l_time->tm_min, l_time->tm_sec, exec_info->err_code, exec_info->err_msg.c_str());
+		sql_print_warning("PARTITION_ADMIN: fail to log in  cluster_admin.tc_partiton_admin_log:%02d %s",
+			exec_info->err_code, (char*)(exec_info->err_msg.data()));
 	}
 	return result;
 }
