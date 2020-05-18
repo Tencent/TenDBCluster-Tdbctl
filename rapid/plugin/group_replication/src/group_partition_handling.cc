@@ -176,6 +176,7 @@ int Group_partition_handling::launch_partition_handler_thread()
   DBUG_ENTER("Group_partition_handling::launch_partition_handler_thread");
 
   member_in_partition= true;
+  disable_tdbctl_primary_mode(PSESSION_INIT_THREAD);
 
   //If the timeout is set to 0 do nothing
   if (!timeout_on_unreachable)
