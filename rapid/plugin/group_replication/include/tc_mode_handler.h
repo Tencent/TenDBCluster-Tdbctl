@@ -46,4 +46,33 @@ long tdbctl_set_primary_on(Sql_service_command_interface *sql_service_command);
 */
 long tdbctl_set_primary_off(Sql_service_command_interface *sql_service_command);
 
+/**
+  This method creates a server session and connects to the server
+  to enable the tc_is_primary
+
+  @param session_isolation session creation requirements: use current thread,
+                           use thread but initialize it or create it in a
+                           dedicated thread
+
+  @return the operation status
+    @retval 0      OK
+    @retval !=0    Error
+*/
+int enable_tdbctl_primary_mode(enum_plugin_con_isolation session_isolation);
+
+/**
+  This method creates a server session and connects to the server
+  to disable the tc_is_primary
+
+   @param session_isolation session creation requirements: use current thread,
+                           use thread but initialize it or create it in a
+                           dedicated thread
+
+  @return the operation status
+    @retval 0      OK
+    @retval !=0    Error
+*/
+int disable_tdbctl_primary_mode(enum_plugin_con_isolation session_isolation);
+
+
 #endif /* TC_MODE_HANDLER_INCLUDE */

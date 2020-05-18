@@ -146,7 +146,10 @@ void Group_partition_handling::kill_transactions_and_leave()
     shared_stop_write_lock->release_write_lock();
 
   if (set_read_mode)
+  {
     enable_server_read_mode(PSESSION_INIT_THREAD);
+    disable_tdbctl_primary_mode(PSESSION_INIT_THREAD);
+  }
 
   DBUG_VOID_RETURN;
 }

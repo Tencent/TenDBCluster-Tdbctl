@@ -516,13 +516,14 @@ int initialize_plugin_and_join(enum_plugin_con_isolation sql_api_isolation,
    deadlock issues.
   */
   if (!plugin_is_auto_starting &&
-      enable_super_read_only_mode(sql_command_interface))
+      enable_super_read_only_mode(sql_command_interface) &&
+      tdbctl_set_primary_off(sql_command_interface))
   {
     /* purecov: begin inspected */
     error =1;
     log_message(MY_ERROR_LEVEL,
-                "Could not enable the server read only mode and guarantee a "
-                  "safe recovery execution");
+                "Could not enable the server read only mode, disable tdbctl primary "
+                  "and guarantee a safe recovery execution");
     goto err;
     /* purecov: end */
   }
@@ -910,6 +911,13 @@ int plugin_group_replication_stop()
       log_message(MY_ERROR_LEVEL,
                   "On plugin shutdown it was not possible to enable the "
                   "server read only mode. Local transactions will be accepted "
+                  "and committed."); /* purecov: inspected */
+    }
+    if (disable_tdbctl_primary_mode(PSESSION_DEDICATED_THREAD))
+    {
+      log_message(MY_ERROR_LEVEL,
+                  "On plugin shutdown it was not possible to disable the "
+                  "server tdbctl primary mode. Local transactions will be accepted "
                   "and committed."); /* purecov: inspected */
     }
     plugin_is_waiting_to_set_server_read_mode= false;
