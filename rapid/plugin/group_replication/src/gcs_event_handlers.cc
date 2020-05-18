@@ -181,6 +181,13 @@ Plugin_gcs_events_handler::handle_recovery_message(const Gcs_message& message) c
                     "disable the server read mode. "
                     "Try to disable it manually."); /* purecov: inspected */
       }
+      if (enable_tdbctl_primary_mode(PSESSION_INIT_THREAD))
+      {
+        log_message(MY_WARNING_LEVEL,
+                    "When declaring the plugin online it was not possible to "
+                    "enable the tdbctl primary mode. "
+                    "Try to enable it manually."); /* purecov: inspected */
+      }
     }
 
     // The member is declared as online upon receiving this message
@@ -875,7 +882,7 @@ void Plugin_gcs_events_handler::handle_leader_election_if_needed() const
                     "Try to set it manually."); /* purecov: inspected */
       }
 
-      //no suitable primary, set to offjjjj
+      //no suitable primary, set tdbctl primary mode to off.
       if (tdbctl_set_primary_off(sql_command_interface))
       {
         log_message(MY_WARNING_LEVEL,
@@ -986,6 +993,20 @@ void Plugin_gcs_events_handler::handle_joining_members(const Gcs_view& new_view,
     {
       log_message(MY_ERROR_LEVEL,
                   "Error when activating super_read_only mode on start. "
+                  "The member will now exit the group.");
+      group_member_mgr->update_member_status(local_member_info->get_uuid(),
+                                             Group_member_info::MEMBER_ERROR);
+      this->leave_group_on_error();
+      return;
+    }
+
+    /**
+      Disable the tdbctl primary mode if not set during start (auto-start)
+    */
+    if (disable_tdbctl_primary_mode(PSESSION_INIT_THREAD))
+    {
+      log_message(MY_ERROR_LEVEL,
+                  "Error when disable tdbctl primary mode on start. "
                   "The member will now exit the group.");
       group_member_mgr->update_member_status(local_member_info->get_uuid(),
                                              Group_member_info::MEMBER_ERROR);
