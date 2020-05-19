@@ -318,16 +318,7 @@ extern "C" void *handle_connection(void *arg)
       /* disconnect spider/remote conn*/
       if (thd->tc_conn_init && thd->variables.tc_admin)
       {
-        tc_conn_free(thd->spider_conn_map);
-        tc_conn_free(thd->remote_conn_map);
-        thd->spider_conn_map.clear();
-        thd->remote_conn_map.clear();
-        thd->spider_ipport_set.clear();
-        thd->remote_ipport_map.clear();
-        thd->spider_user_map.clear();
-        thd->spider_passwd_map.clear();
-        thd->remote_user_map.clear();
-        thd->remote_passwd_map.clear();
+        free_thd_connection(thd);
       }
       end_connection(thd);
     }

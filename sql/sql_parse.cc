@@ -928,6 +928,24 @@ void cleanup_items(Item *item)
   DBUG_VOID_RETURN;
 }
 
+
+/**
+  Free connection between for DDL and grant 
+*/
+void free_thd_connection(THD *thd)
+{
+	tc_conn_free(thd->spider_conn_map);
+	tc_conn_free(thd->remote_conn_map);
+	thd->spider_conn_map.clear();
+	thd->remote_conn_map.clear();
+	thd->spider_ipport_set.clear();
+	thd->remote_ipport_map.clear();
+	thd->spider_user_map.clear();
+	thd->spider_passwd_map.clear();
+	thd->remote_user_map.clear();
+	thd->remote_passwd_map.clear();
+}
+
 #ifndef EMBEDDED_LIBRARY
 
 /**
@@ -5757,16 +5775,7 @@ tcadmin_execute_command(THD* thd, bool first_level)
   if (check_server_version(thd->server_version))
   {
     DBUG_ASSERT(thd->variables.tc_admin);
-    tc_conn_free(thd->spider_conn_map);
-    tc_conn_free(thd->remote_conn_map);
-    thd->spider_conn_map.clear();
-    thd->remote_conn_map.clear();
-    thd->spider_ipport_set.clear();
-    thd->remote_ipport_map.clear();
-    thd->spider_user_map.clear();
-    thd->spider_passwd_map.clear();
-    thd->remote_user_map.clear();
-    thd->remote_passwd_map.clear();
+    free_thd_connection(thd);
   }
 
   /* do spider/remote conn init */
@@ -6481,7 +6490,11 @@ error:
 
 finish:
   THD_STAGE_INFO(thd, stage_query_end);
-
+  if (thd->tc_conn_init == FALSE)
+  {
+    DBUG_ASSERT(thd->variables.tc_admin);
+    free_thd_connection(thd);
+  }
   // Cleanup EXPLAIN info
   if (!thd->in_sub_stmt)
   {
