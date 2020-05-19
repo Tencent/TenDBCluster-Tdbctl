@@ -1900,7 +1900,7 @@ void tc_check_and_repair_routing_thread()
   while (1)
   {
 	  if (tc_check_repair_routing &&
-		  (tc_is_primary_tdbctl_node(false) == 1)) 
+        (tc_is_primary_tdbctl_node() == 1))
     {
       if (tc_check_and_repair_routing())
       {

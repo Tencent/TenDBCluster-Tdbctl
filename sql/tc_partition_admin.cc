@@ -871,37 +871,33 @@ ADMIN partition for remote
 */
 void tc_partition_admin_thread()
 {
-	while (1)
-	{
-		/*
-	    TODO:get tc_tdbctl_conn_primary by host and port
-	    */
-		if (tc_partition_admin &&
-			(tc_is_primary_tdbctl_node(false) == 1)) 
-		{
-			for (ulong i = 0; i <= tc_partition_admin_interval; ++i)
-			{
-				/*
-				init partition when wait time to tc_partition_init_interval
-				*/
-				if (i % tc_partition_init_interval == 0) 
-				{
-					//init partition for cluster
-					tc_partition_admin_worker(0);
-				}
-				/*
-				init ,add or delete partition  if current time equals to  tc_partition_admin_time
-				or wait time to tc_partition_admin_interval
-				*/
-				if (i == tc_partition_admin_interval || get_time_flag())
-				{
-					//ADMIN partition for cluster
-					tc_partition_admin_worker(1);
-					i = 0;
-				}
-				sleep(1);
-			}
-		}
-		sleep(2);
-	}
+  while (1)
+  {
+    /* TODO:get tc_tdbctl_conn_primary by host and port */
+    if (tc_partition_admin &&
+        (tc_is_primary_tdbctl_node() == 1))
+    {
+      for (ulong i = 0; i <= tc_partition_admin_interval; ++i)
+      {
+        /* init partition when wait time to tc_partition_init_interval */
+        if (i % tc_partition_init_interval == 0)
+        {
+          //init partition for cluster
+          tc_partition_admin_worker(0);
+        }
+        /*
+          init ,add or delete partition  if current time equals to  tc_partition_admin_time
+          or wait time to tc_partition_admin_interval
+        */
+        if (i == tc_partition_admin_interval || get_time_flag())
+        {
+          //ADMIN partition for cluster
+          tc_partition_admin_worker(1);
+          i = 0;
+        }
+        sleep(1);
+      }
+    }
+    sleep(2);
+  }
 }

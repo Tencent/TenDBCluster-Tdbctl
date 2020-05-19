@@ -5463,7 +5463,7 @@ end_with_restore_list:
     if (tc_check_cluster_availability_init())
     {
       my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
-      break;
+      goto error;
     }
     my_ok(thd);
     break;
@@ -5673,19 +5673,20 @@ finish:
 */
 
 int
-tcadmin_execute_command(THD* thd)
+tcadmin_execute_command(THD* thd, bool first_level)
 {
   int res = 0;
   LEX* lex = thd->lex;
   /* first SELECT_LEX (have special meaning for many of non-SELECTcommands) */
   SELECT_LEX* select_lex = lex->select_lex;
+  struct system_variables *per_query_variables_backup = NULL;
+
   DBUG_ENTER("tcadmin_execute_command");
 
   thd->work_part_info = 0;
 
-   lex->first_lists_tables_same();
+  lex->first_lists_tables_same();
   select_lex->context.resolve_in_table_list_only(select_lex->table_list.first);
-
 
   tc_parse_result parse_result;
   tc_execute_result exec_result;
@@ -5738,8 +5739,8 @@ tcadmin_execute_command(THD* thd)
                              thd->remote_user_map, 
                              thd->remote_passwd_map);
     if (ret)
-      goto finish;
-	else
+      goto error;
+    else
       thd->tc_conn_init = TRUE;
   }
   shard_count = thd->remote_ipport_map.size();
@@ -5840,22 +5841,23 @@ tcadmin_execute_command(THD* thd)
   case SQLCOM_STOP_GROUP_REPLICATION:
   case SQLCOM_UNLOCK_BINLOG:
   case SQLCOM_SELECT:
-	if (!thd->is_error())
-		 my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-      goto finish;
+  {
+    if (!thd->is_error())
+      my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
+    goto error;
+  }
   case SQLCOM_SET_OPTION:
   {
     List<set_var_base>* lex_var_list = &lex->var_list;
-    if (likely(!(res = sql_set_variables(thd, lex_var_list, true))))
-    {
-      if (likely(!thd->is_error()))
-        my_ok(thd);
-    }
+    if (!(res = sql_set_variables(thd, lex_var_list, true)))
+      my_ok(thd);
     else
     {
       if (!thd->is_error())
         my_error(ER_WRONG_ARGUMENTS, MYF(0), "SET");
+      goto error;
     }
+
     goto finish;
   }
   /* 2. DDL need dispatch to each spider only */
@@ -6010,6 +6012,7 @@ tcadmin_execute_command(THD* thd)
     if (parse_result.result)
     {/* abnormal query */
       my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), parse_result.result_info.c_str());
+      goto error;
     }
     break;
   }
@@ -6062,6 +6065,7 @@ tcadmin_execute_command(THD* thd)
       parse_result.result = TRUE;
       parse_result.result_info = "command not support";
       my_error(ER_TCADMIN_ALTER_TABLE, MYF(0), parse_result.result_info.c_str());
+      goto error;
     }
     else
     {
@@ -6089,18 +6093,19 @@ tcadmin_execute_command(THD* thd)
       parse_result.result = TRUE;
       parse_result.result_info = "Invalid RENAME TABLE statement";
       my_error(ER_TCADMIN_ALTER_TABLE, MYF(0), parse_result.result_info.c_str());
+      goto error;
     }
     break;
   }
   case SQLCOM_DROP_TABLE:
   {
-parse_result.query_string = thd->query();
-parse_result.db_name = tc_get_cur_dbname(thd, lex);
-parse_result.table_name = tc_get_cur_tbname(thd, lex);
-parse_result.sql_type = lex->sql_command;
-parse_result.result = FALSE;
-thd->spider_run_first = TRUE;
-break;
+    parse_result.query_string = thd->query();
+    parse_result.db_name = tc_get_cur_dbname(thd, lex);
+    parse_result.table_name = tc_get_cur_tbname(thd, lex);
+    parse_result.sql_type = lex->sql_command;
+    parse_result.result = FALSE;
+    thd->spider_run_first = TRUE;
+    break;
   }
   case SQLCOM_CHANGE_DB:
   {
@@ -6141,7 +6146,7 @@ break;
   case SQLCOM_KILL:
   case SQLCOM_SHUTDOWN:
     my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-    break;
+    goto error;
   case TC_SQLCOM_CREATE_NODE:
   case TC_SQLCOM_ALTER_NODE:
   case TC_SQLCOM_DROP_NODE:
@@ -6151,17 +6156,17 @@ break;
       NB: use server_uuid as lock string here
       we add x lock to block any DDL or flush command
     */
-    if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE)))
+    if (lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
     {
       my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "lock wait timeout");
-      goto finish;
+      goto error;
     }
 
     /* always do reload first */
     if (servers_reload(thd))
     {
       my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-      goto finish;
+      goto error;
     }
 
     switch (lex->sql_command) {
@@ -6174,7 +6179,7 @@ break;
         lex->server_options.get_password()))
       {
         my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "USER, PASSWORD, HOST, PORT options must be specify");
-        goto finish;
+        goto error;
       }
 
       /* get an unique server_name by wrapper */
@@ -6202,7 +6207,7 @@ break;
       }) != server_list.end())
       {
         my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
-        goto finish;
+        goto error;
       }
 
       break;
@@ -6216,13 +6221,13 @@ break;
       if (server == NULL)
       {
         my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), "server not exist");
-        goto finish;
+        goto error;
       }
       /* At present, only support alter MYSQL wrapper node */
       if (strcasecmp(server->scheme, MYSQL_WRAPPER) != 0)
       {
         my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), "only support mysql wrapper");
-        goto finish;
+        goto error;
       }
 
       break;
@@ -6257,7 +6262,7 @@ break;
     }
 
     if ((res = lex->m_sql_cmd->execute(thd)))
-      goto finish;
+      goto error;
 
     //Reset the thread OK status before changing the outcome.
     if (thd->get_stmt_da()->is_ok())
@@ -6267,12 +6272,12 @@ break;
     if (lex->tc_do_grants &&
         tc_enable_internal_grant &&
         tc_do_grants_internal())
-      goto finish;
+      goto error;
 
     if (tc_flush_routing(lex))
     {
       my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-      goto finish;
+      goto error;
     }
 
     /*
@@ -6332,7 +6337,7 @@ break;
       {
         my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
                   server_list.front()->host, server_list.front()->port);
-        goto finish;
+        goto error;
       }
 
       if (tc_restore_node_schema(lex->server_options.get_host(),
@@ -6343,7 +6348,7 @@ break;
       {
         my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
                 lex->server_options.get_host(), lex->server_options.get_port());
-        goto finish;
+        goto error;
       }
     }
 
@@ -6355,22 +6360,29 @@ break;
     if (tc_check_cluster_availability_init())
     {
       my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
-      break;
+      goto error;
     }
+
     my_ok(thd);
-    break;
+    goto finish;
   }
   case TC_SQLCOM_SHOW_PROCESSLIST:
   {
     if (!thd->security_context()->priv_user().str[0] &&
         check_global_access(thd, PROCESS_ACL))
-      break;
+      goto error;
+
     tc_show_processlist(thd, lex->verbose, lex->server_name);
-    break;
+
+    my_ok(thd);
+    goto finish;
   }
   case TC_SQLCOM_SHOW_VARIABLES:
+  {
     tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
-    break;
+    my_ok(thd);
+    goto finish;
+  }
 
   /* 5. other may be supported int the future */
   case SQLCOM_UNLOCK_TABLES:
@@ -6383,10 +6395,10 @@ break;
   case SQLCOM_SAVEPOINT:
   case SQLCOM_ALTER_DB_UPGRADE:
     my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-    goto finish;
+    goto error;
   default:
     my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-    goto finish;
+    goto error;
   }
 
   if (!tc_query_convert(thd, lex, &parse_result, shard_count, &spider_sql, &remote_sql_map))
@@ -6395,32 +6407,200 @@ break;
       NB: use server_uuid as lock string here
       we add S lock to block tdbctl flush routing(acquire X lock)
      */
-    if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED)))
-      goto finish;
-    if ((res = xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str())))
-      goto finish;
+    if (lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED))
+      goto error;
+    if (xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str()))
+      goto error;
     tc_append_before_query(thd, lex, before_sql_for_spider, before_sql_for_remote);
     tc_ddl_run(thd, before_sql_for_spider, before_sql_for_remote, spider_sql, remote_sql_map, &exec_result);
     res = tc_process_all_result(thd, &parse_result, &exec_result);
+    goto finish;
   }
 
-finish:
+error:
+  res = TRUE;
 
-	if (thd->tc_conn_init == FALSE && thd->variables.tc_admin)
-	{
-		tc_conn_free(thd->spider_conn_map);
-		tc_conn_free(thd->remote_conn_map);
-		thd->spider_conn_map.clear();
-		thd->remote_conn_map.clear();
-		thd->spider_ipport_set.clear();
-		thd->remote_ipport_map.clear();
-		thd->spider_user_map.clear();
-		thd->spider_passwd_map.clear();
-		thd->remote_user_map.clear();
-		thd->remote_passwd_map.clear();
-	}
-  /* Free tables. Set stage 'closing tables' */
+finish:
+  THD_STAGE_INFO(thd, stage_query_end);
+
+  // Cleanup EXPLAIN info
+  if (!thd->in_sub_stmt)
+  {
+    if (is_explainable_query(lex->sql_command))
+    {
+      DEBUG_SYNC(thd, "before_reset_query_plan");
+      /*
+        We want EXPLAIN CONNECTION to work until the explained statement ends,
+        thus it is only now that we may fully clean up any unit of this statement.
+      */
+      lex->unit->assert_not_fully_clean();
+    }
+    thd->query_plan.set_query_plan(SQLCOM_END, NULL, false);
+  }
+
+  DBUG_ASSERT(!thd->in_active_multi_stmt_transaction() ||
+    thd->in_multi_stmt_transaction_mode());
+
+  if (per_query_variables_backup) {
+    DBUG_ASSERT(lex->set_statement);
+    DBUG_ASSERT(!lex->var_list.is_empty());
+
+    List_iterator_fast<set_var_base> it(thd->lex->var_list);
+    set_var *var;
+
+    free_system_variables(&thd->variables, thd->m_enable_plugins);
+    thd->variables = *per_query_variables_backup;
+    my_free(per_query_variables_backup);
+    /*
+       When variables are restored after "SET STATEMENT ... FOR ..." statement
+       execution an update callback must be invoked for the system variables
+       to save special logic if it is. set_var_base class does not contain
+       reference to variable as it is just an interface class. But only
+       system variables are allowed to be used in "SET STATEMENT ... FOR ..."
+       statement, so cast from set_var_base* to set_var* can be used here.
+    */
+    while ((var = (set_var *)it++))
+    {
+      var->var->stmt_update(thd);
+    }
+
+    thd->lex->set_statement = false;
+  }
+
+  if (!thd->in_sub_stmt)
+  {
+#ifndef EMBEDDED_LIBRARY
+    mysql_audit_notify(thd,
+      first_level ? MYSQL_AUDIT_QUERY_STATUS_END :
+      MYSQL_AUDIT_QUERY_NESTED_STATUS_END,
+      first_level ? "MYSQL_AUDIT_QUERY_STATUS_END" :
+      "MYSQL_AUDIT_QUERY_NESTED_STATUS_END");
+#endif /* !EMBEDDED_LIBRARY */
+
+    /* report error issued during command execution */
+    if (thd->killed_errno())
+      thd->send_kill_message();
+    if (thd->is_error() || (thd->variables.option_bits & OPTION_MASTER_SQL_ERROR))
+      trans_rollback_stmt(thd);
+    else
+    {
+      /* If commit fails, we should be able to reset the OK status. */
+      thd->get_stmt_da()->set_overwrite_status(true);
+      trans_commit_stmt(thd);
+      thd->get_stmt_da()->set_overwrite_status(false);
+    }
+    if (thd->killed == THD::KILL_QUERY ||
+      thd->killed == THD::KILL_TIMEOUT ||
+      thd->killed == THD::KILL_BAD_DATA)
+    {
+      thd->killed = THD::NOT_KILLED;
+    }
+  }
+
+  lex->unit->cleanup(true);
+  /* Free tables */
+  THD_STAGE_INFO(thd, stage_closing_tables);
   close_thread_tables(thd);
+
+#ifndef DBUG_OFF
+  if (lex->sql_command != SQLCOM_SET_OPTION && !thd->in_sub_stmt)
+    DEBUG_SYNC(thd, "execute_command_after_close_tables");
+#endif
+
+  if (!thd->in_sub_stmt && thd->transaction_rollback_request)
+  {
+    /*
+      We are not in sub-statement and transaction rollback was requested by
+      one of storage engines (e.g. due to deadlock). Rollback transaction in
+      all storage engines including binary log.
+    */
+    trans_rollback_implicit(thd);
+    thd->mdl_context.release_transactional_locks();
+  }
+  else if (stmt_causes_implicit_commit(thd, CF_IMPLICIT_COMMIT_END))
+  {
+    /* No transaction control allowed in sub-statements. */
+    DBUG_ASSERT(!thd->in_sub_stmt);
+    /* If commit fails, we should be able to reset the OK status. */
+    thd->get_stmt_da()->set_overwrite_status(true);
+    /* Commit the normal transaction if one is active. */
+    trans_commit_implicit(thd);
+    thd->get_stmt_da()->set_overwrite_status(false);
+    thd->mdl_context.release_transactional_locks();
+  }
+  else if (!thd->in_sub_stmt && !thd->in_multi_stmt_transaction_mode())
+  {
+    /*
+      - If inside a multi-statement transaction,
+      defer the release of metadata locks until the current
+      transaction is either committed or rolled back. This prevents
+      other statements from modifying the table for the entire
+      duration of this transaction.  This provides commit ordering
+      and guarantees serializability across multiple transactions.
+      - If in autocommit mode, or outside a transactional context,
+      automatically release metadata locks of the current statement.
+    */
+    thd->mdl_context.release_transactional_locks();
+  }
+  else if (!thd->in_sub_stmt)
+  {
+    thd->mdl_context.release_statement_locks();
+  }
+
+  if (thd->variables.session_track_transaction_info > TX_TRACK_NONE)
+  {
+    ((Transaction_state_tracker *)
+      thd->session_tracker.get_tracker(TRANSACTION_INFO_TRACKER))
+      ->add_trx_state_from_thd(thd);
+  }
+
+#if defined(VALGRIND_DO_QUICK_LEAK_CHECK)
+  // Get incremental leak reports, for easier leak hunting.
+  // ./mtr --mem --mysqld='-T 4096' --valgrind-mysqld main.1st
+  // Note that with multiple connections, the report below may be misleading.
+  if (test_flags & TEST_DO_QUICK_LEAK_CHECK)
+  {
+    static unsigned long total_leaked_bytes = 0;
+    unsigned long leaked = 0;
+    unsigned long dubious MY_ATTRIBUTE((unused));
+    unsigned long reachable MY_ATTRIBUTE((unused));
+    unsigned long suppressed MY_ATTRIBUTE((unused));
+    /*
+      We could possibly use VALGRIND_DO_CHANGED_LEAK_CHECK here,
+      but that is a fairly new addition to the Valgrind api.
+      Note: we dont want to check 'reachable' until we have done shutdown,
+      and that is handled by the final report anyways.
+      We print some extra information, to tell mtr to ignore this report.
+    */
+    sql_print_information("VALGRIND_DO_QUICK_LEAK_CHECK");
+    VALGRIND_DO_QUICK_LEAK_CHECK;
+    VALGRIND_COUNT_LEAKS(leaked, dubious, reachable, suppressed);
+    if (leaked > total_leaked_bytes)
+    {
+      sql_print_error("VALGRIND_COUNT_LEAKS reports %lu leaked bytes "
+        "for query '%.*s'", leaked - total_leaked_bytes,
+        static_cast<int>(thd->query().length), thd->query().str);
+    }
+    total_leaked_bytes = leaked;
+  }
+#endif
+
+  if (!(res || thd->is_error()))
+    binlog_gtid_end_transaction(thd);
+
+  if (thd->tc_conn_init == FALSE && thd->variables.tc_admin)
+  {
+    tc_conn_free(thd->spider_conn_map);
+    tc_conn_free(thd->remote_conn_map);
+    thd->spider_conn_map.clear();
+    thd->remote_conn_map.clear();
+    thd->spider_ipport_set.clear();
+    thd->remote_ipport_map.clear();
+    thd->spider_user_map.clear();
+    thd->spider_passwd_map.clear();
+    thd->remote_user_map.clear();
+    thd->remote_passwd_map.clear();
+  }
 
   DBUG_RETURN(res || thd->is_error());
 }
@@ -6989,7 +7169,7 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
             if (thd->variables.tc_admin && !tc_is_spider_node(thd))
               my_error(ER_TCADMIN_NOT_SPIDER, MYF(0));
             else if(thd->variables.tc_admin)
-              error = tcadmin_execute_command(thd);
+              error = tcadmin_execute_command(thd, true);
             else
               error = mysql_execute_command(thd, true);
           }
