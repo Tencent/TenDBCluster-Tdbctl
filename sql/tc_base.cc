@@ -3105,7 +3105,7 @@ string tc_get_remote_grant_sql(
    port: port to primary member
 
   @retval
-   0: error
+   0: empty mysql.servers or error happend.
    1: mgr running with single-primary.
    2. not mgr or multi-primary
 
@@ -3141,30 +3141,39 @@ uint tc_get_primary_node(std::string &host, uint *port)
 
 
 /*
+  @param :
+    need_check
+      true: need to check whether current node is the first
+            tdbctl node is mysql.servers.
+            Through compare node's server_uuid to set tdbctl_is_primary.
+            For tdbctl server start, or mysql.servers modified, we need
+            call this function with need_check(true) to reset.
+            In MGR scenario, tdbctl_is_primry's value automatic set.
+      false: no need do check.
 
-  @param : flag
-	  true:  means need to judge tdbctl_is_primary
-	         tdbctl_is_primary need to be maintained when TDBCTL 
-	         in mysql.servers modified
-	  false: means no need to judge tdbctl_is_primary
-	         background thread and sql_parse only need to get tdbctl_is_primary,
-	         needn't to maintain tdbctl_is_primary
   @retval
-    -1, error
+    -1, empty mysql.servers or error happened.
     0, not primary node
     1, primary node
 */
-int tc_is_primary_tdbctl_node(bool flag)
+int tc_is_primary_tdbctl_node(bool need_check)
 {
   int ret = 0;
   string host;
   uint port = 0;
 
+  /*
+    NB: always need do this at present.
+    If MGR member go to OFFLINE, ERROR, or network partition, new elect
+    happened, tdbctl_is_primary's value changed automatic by MGR handler.
+  */
   ret = tc_get_primary_node(host, &port);
-  //mgr running with single-primary
-  if (ret == 1 || (!flag && ret == 2 ))
+
+  //ret == 1, mgr running with single-primary
+  if ((ret == 1) || !need_check)
     return tdbctl_is_primary;
 
+  //not mgr or multi-Primary
   if (ret == 2)
   {//not mgr or multi-Primary
     MYSQL *conn;
@@ -3203,7 +3212,9 @@ int tc_is_primary_tdbctl_node(bool flag)
     else
       return -1;
 
-    ret = (strcasecmp(uuid.c_str(), server_uuid) == 0) ? 1 : 0;
+    //set value
+    tdbctl_is_primary = (strcasecmp(uuid.c_str(), server_uuid) == 0) ? 1 : 0;
+    return tdbctl_is_primary;
   }
 
   return ret;

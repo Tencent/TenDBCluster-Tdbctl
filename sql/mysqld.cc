@@ -4633,6 +4633,20 @@ a file name for --log-bin-index option", opt_binlog_index_name);
   DBUG_RETURN(0);
 }
 
+static int init_tdbctl_components()
+{
+  DBUG_ENTER("init_tdbctl_components");
+
+  /* set tdbctl_is_primary's value */
+  tc_is_primary_tdbctl_node(true);
+
+  create_check_and_repaire_routing_thread();
+  create_tc_xa_repair_thread();
+  create_check_cluster_availability_thread();
+  create_partition_admin_thread();
+
+  DBUG_RETURN(0);
+}
 
 #ifndef EMBEDDED_LIBRARY
 #ifdef _WIN32
@@ -5340,10 +5354,8 @@ int mysqld_main(int argc, char **argv)
 #ifdef _WIN32
   create_shutdown_thread();
 #endif
-  create_check_and_repaire_routing_thread();
-  create_tc_xa_repair_thread();
-  create_check_cluster_availability_thread();
-  create_partition_admin_thread();
+  if (init_tdbctl_components())
+    unireg_abort(MYSQLD_ABORT_EXIT);
   start_handle_manager();
 
   create_compress_gtid_table_thread();

@@ -691,81 +691,76 @@ void tc_check_cluster_availability_thread()
 	*/
 	int res = 0;
 	ulong server_version = -1;
-	/*
-	init Tdbctl_is_primary in background thread
-	*/
-	tdbctl_is_primary = tc_is_primary_tdbctl_node(true);
-	while (1)
-	{
+
+  while (1)
+  {
 		/*
-		if tc_check_availability=1 and is primary TDBCTL
-		TODO:get tc_tdbctl_conn_primary by host and port
-		*/
-		if (tc_check_availability)
-		{
-       /*
-		   if current node is not primary, do servers_reload to get
-		   latest mysql.server
-       */
-			if (tc_is_primary_tdbctl_node(false) != 1) 
-			{
-				if (do_servers_reload())
-				{
-					sleep(tc_check_availability_interval);
-					continue;
-				}
-			}
-			/*
-			if first time do check
-			or do  tc_init_connect  and tc_check_cluster_availability error
-			or mysql.servers cache changes
-			*/
-			if (flag || res ||  check_server_version(server_version))
-			{
-				//init memory and connect
-				if (!(res = tc_init_connect(server_version)))
-					flag = 0;
-				else 
-				{
-					/*
-					fail to init memory and connect
-					if the mysql.servers cache is empty, init connect is always failed,
-					so it is need to reload when node is slave
-					*/
-					sleep(tc_check_availability_interval);
-					tc_is_available = 0;
-					continue;
-				}
-			}
+      if tc_check_availability=1 and is primary TDBCTL
+      TODO:get tc_tdbctl_conn_primary by host and port
+    */
+    if (tc_check_availability)
+    {
+      /*
+        if current node is not primary, do servers_reload to get
+        latest mysql.server
+      */
+      if (tc_is_primary_tdbctl_node() != 1)
+      {
+        if (do_servers_reload())
+        {
+          sleep(tc_check_availability_interval);
+          continue;
+        }
+      }
+      /*
+        if first time do check
+        or do  tc_init_connect  and tc_check_cluster_availability error
+        or mysql.servers cache changes
+      */
+      if (flag || res ||  check_server_version(server_version))
+      {
+        //init memory and connect
+        if (!(res = tc_init_connect(server_version)))
+          flag = 0;
+        else
+        {
+          /*
+            fail to init memory and connect
+            if the mysql.servers cache is empty, init connect is always failed,
+            so it is need to reload when node is slave
+          */
+          sleep(tc_check_availability_interval);
+          tc_is_available = 0;
+          continue;
+        }
+      }
 
-			/*
-			if init memory and connect ok
-			then start monitor
-			*/
-			if (!res) 
-			{
-				//check available for cluster			
-				res = tc_check_cluster_availability();
-				if ((tc_is_primary_tdbctl_node(false) == 1) &&
-					tc_process_monitor_log()) 
-					res = 1;
+      /*
+        if init memory and connect ok
+        then start monitor
+      */
+      if (!res)
+      {
+        //check available for cluster
+        res = tc_check_cluster_availability();
+        if ((tc_is_primary_tdbctl_node() == 1) &&
+              tc_process_monitor_log())
+          res = 1;
 
-				for (ulong i = 0; i < labs(tc_check_availability_interval - 2); ++i)
-				{
-					sleep(1);
-				}
-			}
-		}
-		else
-		{
-			if (!flag)
-			{
-				//free memory and connect
-				tc_free_connect();
-				flag = 1;
-			}
-			tc_is_available = -1;
-		}
-		sleep(2);
-	}
+        for (ulong i = 0; i < labs(tc_check_availability_interval - 2); ++i)
+          sleep(1);
+      }
+    }
+    else
+    {
+      if (!flag)
+      {
+        //free memory and connect
+        tc_free_connect();
+        flag = 1;
+      }
+      tc_is_available = -1;
+    }
+    sleep(2);
+  }
 }
