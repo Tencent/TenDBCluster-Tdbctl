@@ -427,7 +427,7 @@ my_bool check_proxy_users= 0, mysql_native_password_proxy_users= 0, sha256_passw
 volatile bool mqh_used = 0;
 my_bool opt_noacl= 0;
 my_bool sp_automatic_privileges= 1;
-my_bool tc_check_repair_routing = TRUE;
+my_bool tc_check_repair_routing = FALSE;
 my_bool tc_check_repair_trans = TRUE;
 my_bool tc_set_changed_node_read_only  = FALSE;
 my_bool tc_enable_internal_dump  = TRUE;

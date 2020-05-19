@@ -6336,7 +6336,7 @@ static Sys_var_mybool Sys_tc_check_repair_routing(
        "tc_check_repair_routing",
        "If set to TRUE, check and repair routing between tdbctl and spiders",
        GLOBAL_VAR(tc_check_repair_routing), CMD_LINE(OPT_ARG),
-       DEFAULT(TRUE));
+       DEFAULT(FALSE));
 
 static Sys_var_mybool Sys_tc_check_availability(
 	"tc_check_availability",
