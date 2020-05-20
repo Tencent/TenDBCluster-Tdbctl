@@ -4637,8 +4637,14 @@ static int init_tdbctl_components()
 {
   DBUG_ENTER("init_tdbctl_components");
 
-  /* set tdbctl_is_primary's value */
-  tc_is_primary_tdbctl_node(true);
+  //after server start ok, set tdbctl_is_primary value
+  std::thread t([]() {
+    while (server_operational_state != SERVER_OPERATING)
+      sleep(2);
+
+    tc_is_primary_tdbctl_node();
+  });
+  t.detach();
 
   create_check_and_repaire_routing_thread();
   create_tc_xa_repair_thread();
@@ -5356,6 +5362,7 @@ int mysqld_main(int argc, char **argv)
 #endif
   if (init_tdbctl_components())
     unireg_abort(MYSQLD_ABORT_EXIT);
+
   start_handle_manager();
 
   create_compress_gtid_table_thread();
