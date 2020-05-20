@@ -4642,7 +4642,7 @@ static int init_tdbctl_components()
     while (server_operational_state != SERVER_OPERATING)
       sleep(2);
 
-    tc_is_primary_tdbctl_node();
+    tc_is_primary_tdbctl_node(true);
   });
   t.detach();
 
