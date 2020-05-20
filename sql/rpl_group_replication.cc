@@ -311,9 +311,9 @@ bool get_group_replication_group_member_stats_info(
 
 /**
  @retval
-   0: error, e.g. network parition
-	 1: mgr running on single-primary
-	 2. not mgr or mgr running with multi-primary
+  0, error, e.g. network partition
+  1, mgr running on single-primary
+  2, not mgr or mgr running with multi-primary
 
 */
 unsigned int get_group_replication_primary_node_info(std::string &host, unsigned int* port)

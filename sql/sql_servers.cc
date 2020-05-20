@@ -1301,8 +1301,7 @@ static string dump_servers_to_sql()
     string ip_port;
     string primary_host = "";
     uint primary_port;
-    int	ret = tc_get_primary_node(primary_host, &primary_port);
-    if (ret != -1)
+    if (tc_get_primary_node(primary_host, &primary_port) != 0)
     {
       ss.str("");
       ss << primary_port;

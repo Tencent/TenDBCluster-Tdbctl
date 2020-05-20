@@ -3105,12 +3105,12 @@ string tc_get_remote_grant_sql(
    port: port to primary member
 
   @retval
-   0: empty mysql.servers or error happend.
+   0: empty mysql.servers or error happened.
    1: mgr running with single-primary.
    2. not mgr or multi-primary
 
   @Note
-   only when return 1, host and port[out] with value
+   only when retval=1 or 2, host and port[out] with value
 */
 uint tc_get_primary_node(std::string &host, uint *port)
 {
@@ -3123,7 +3123,7 @@ uint tc_get_primary_node(std::string &host, uint *port)
     list<FOREIGN_SERVER*> server_list;
 
     init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-	MEM_ROOT_GUARD(mem_root);
+    MEM_ROOT_GUARD(mem_root);
     get_server_by_wrapper(server_list, &mem_root, TDBCTL_WRAPPER, false);
 
     //empty, error happened
@@ -3152,7 +3152,6 @@ uint tc_get_primary_node(std::string &host, uint *port)
       false: no need do check.
 
   @retval
-    -1, empty mysql.servers or error happened.
     0, not primary node
     1, primary node
 */
@@ -3191,7 +3190,7 @@ int tc_is_primary_tdbctl_node(bool need_check)
 
     //error
     if (server_list.empty())
-      return -1;
+      return 0;
 
     //list had been sorted, use first Server_name directly.
     host = server_list.front()->host;
@@ -3202,7 +3201,7 @@ int tc_is_primary_tdbctl_node(bool need_check)
     conn = tc_conn_connect(address, user, passwd);
     if (conn == NULL) {
       my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
-      return -1;
+      return 0;
     }
 
     MYSQL_GUARD(conn);
@@ -3210,7 +3209,7 @@ int tc_is_primary_tdbctl_node(bool need_check)
     if (res && (row = mysql_fetch_row(res)))
       uuid = row[1];
     else
-      return -1;
+      return 0;
 
     //set value
     tdbctl_is_primary = (strcasecmp(uuid.c_str(), server_uuid) == 0) ? 1 : 0;
