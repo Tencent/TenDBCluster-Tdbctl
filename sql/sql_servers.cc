@@ -1034,6 +1034,7 @@ static FOREIGN_SERVER *clone_server(MEM_ROOT *mem, const FOREIGN_SERVER *server,
   buffer->scheme= server->scheme ? strdup_root(mem, server->scheme) : NULL;
   buffer->username= server->username? strdup_root(mem, server->username): NULL;
   buffer->password= server->password? strdup_root(mem, server->password): NULL;
+  buffer->sport = server->sport ? strdup_root(mem, server->sport) : NULL;
   buffer->socket= server->socket ? strdup_root(mem, server->socket) : NULL;
   buffer->owner= server->owner ? strdup_root(mem, server->owner) : NULL;
   buffer->host= server->host ? strdup_root(mem, server->host) : NULL;
@@ -1924,67 +1925,216 @@ void tc_check_and_repair_routing_thread()
   }
 }
 
-int tc_check_and_repair_routing()
+/*
+  get mysql.servers of TDBCTL without SLAVE-TDBCTL
+  and init conn_map between TDBCTL and spider 
+  which used to repair routing
+
+  @param(out)
+    tdbctl_server_map: server_map of TDBCTL
+    spider_conn_map:   conn_map of spider
+
+  @retval
+    true:              ok
+    false:             error
+*/
+bool tc_get_repair_map(MEM_ROOT* mem_root,
+  map<string, FOREIGN_SERVER*>& tdbctl_server_map,
+  map<string, MYSQL*>& spider_conn_map) 
 {
-  int ret = 0;
-  int result = 0;
-  THD *thd;
-  bool locked = false;
-  map<string, MYSQL*> spider_conn_map;
-  map<string, string> spider_user_map;
-  map<string, string> spider_passwd_map;
-  map<string, MYSQL*>::iterator its;
-  string sql = "select Server_name,Host,Db,Username,Password,Port,Socket,Wrapper,Owner "
-    "from mysql.servers order by Server_name";
-  string flush_priv_sql = "flush privileges";
-  string del_sql = "delete from mysql.servers";
-  string replace_sql = dump_servers_to_sql();
-  string repair_sql = del_sql + ";" + replace_sql + ";" + flush_priv_sql;
-  FOREIGN_SERVER* server;
-  list<FOREIGN_SERVER*> all_list;
+  bool res = false;
   ulong records;
-  tc_exec_info exec_info;
-  set<string>  spider_ipport_set;
-
-  if (!(thd = new THD))
-  {
-    sql_print_warning("init repair thread failed, skip repair");
-    result = 1;
-    goto finish;
+  FOREIGN_SERVER* server;
+  string primary_host = "";
+  uint primary_port;
+  ostringstream  sstr;
+  if (tc_get_primary_node(primary_host, &primary_port) == 0)
+  {// unknown error, such as network partition.
+    sql_print_warning("get primary node info failed");
+    return true;
   }
-  if (replace_sql.length() == 0)
-  {
-    sql_print_warning("get repair sql from mysql.servers failed, skip repair");
-    result = 1;
-    goto finish;
-  }
-
-  thd->variables.lock_wait_timeout = tc_check_repair_routing_interval;
-  spider_ipport_set = get_spider_ipport_set(
-                                      thd->mem_root,
-                                      spider_user_map, 
-                                      spider_passwd_map,
-                                      FALSE);
-
   mysql_rwlock_rdlock(&THR_LOCK_servers);
   records = servers_cache.records;
   for (ulong i = 0; i < records; i++)
   {
     if ((server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
     {
-      FOREIGN_SERVER* cur_server = clone_server(thd->mem_root, server, NULL);
-      all_list.push_back(cur_server);
+      //if this is TDBCTL
+      if (!strcasecmp(server->scheme, TDBCTL_WRAPPER))
+      {//if the TDBCTL is not primary, should not insert into tdbctl_server_map
+        if (strcmp(server->host, primary_host.c_str()) || server->port != primary_port)
+        {
+          continue;
+        }
+      }
+      FOREIGN_SERVER* cur_server = clone_server(mem_root, server, NULL);
+      tdbctl_server_map[cur_server->server_name] = cur_server;
+
+      //if this is SPIDER, should init connection,and insert into spider_conn_map
+      if (!strcasecmp(server->scheme, SPIDER_WRAPPER))
+      {
+        string host = server->host;
+        sstr.str("");
+        sstr << server->port;
+        string ports = sstr.str();
+        string ipport = host + "#" + ports;
+        MYSQL* mysql;
+        if ((mysql = tc_conn_connect(ipport, server->username, server->password)))
+          spider_conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
+        else
+        {
+          /* error */
+          res = true;
+          my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+          goto finish;
+        }
+      }
     }
   }
+finish:
   mysql_rwlock_unlock(&THR_LOCK_servers);
-  all_list.sort(server_compare);
+  return res;
+}
 
-  spider_conn_map = tc_spider_conn_connect(
-                      ret, 
-                      spider_ipport_set, 
-                      spider_user_map, 
-                      spider_passwd_map);
-  if (ret)
+
+/*
+  compare and create repair sql for routing
+  @param
+    tdbctl_server_map: server_map of TDBCTL 
+    spider_server_map: server_map of spider
+    repair_sql(out):   the sql to repair mysql.servers of spider
+
+  @retval
+    true:              need to repair
+    false:             no need to repair
+*/
+bool tc_create_repair_sql(map<string, FOREIGN_SERVER*> tdbctl_server_map,
+  map<string, FOREIGN_SERVER*>spider_server_map,
+  string& repair_sql) 
+{
+  bool res = false;
+  string replace_sql_all = "replace into mysql.servers"
+    "(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values";
+  string flush_priv_sql = "flush privileges";
+  string del_sql_all = "";
+  stringstream ss;
+  string quotation = "\"";
+  string comma = ",";
+  string::size_type len = replace_sql_all.size();
+  map<string, FOREIGN_SERVER*>::iterator tdbctl_its;
+  map<string, FOREIGN_SERVER*>::iterator spider_its;
+  for (tdbctl_its = tdbctl_server_map.begin();
+    tdbctl_its != tdbctl_server_map.end();
+    tdbctl_its++)
+  {
+    string replace_sql_cur = "";
+    string del_sql_cur = "";
+    FOREIGN_SERVER* server = tdbctl_its->second; 
+    spider_its = spider_server_map.find(tdbctl_its->first);
+    /*
+    if same , do nothing.
+    if not same or not exist, create replace_sql
+    */
+    if(spider_its!= spider_server_map.end())
+    { 
+      FOREIGN_SERVER* server_bak = spider_server_map[tdbctl_its->first];
+      spider_server_map.erase(spider_its);
+      if (!(strcmp(server->host, server_bak->host) ||
+        strcmp(server->username, server_bak->username) ||
+        strcmp(server->password, server_bak->password) ||
+        strcmp(server->db, server_bak->db) ||
+        strcmp(server->scheme, server_bak->scheme) ||
+        strcmp(server->socket, server_bak->socket) ||
+        strcmp(server->owner, server_bak->owner) ||
+        strcmp(server->sport, server_bak->sport) ||
+        server->port != server_bak->port))
+      {/*if same, do nothing*/ 
+        continue;
+      }
+    }
+    /*
+    if not exist or different, create replace_sql
+    */
+    replace_sql_cur = "(";
+    string name = quotation + server->server_name + quotation + comma;
+    string host = quotation + server->host + quotation + comma;
+    string db = quotation + server->db + quotation + comma;
+    string username = quotation + server->username + quotation + comma;
+    string password = quotation + server->password + quotation + comma;
+    int port = server->port;
+    string socket = quotation + server->socket + quotation + comma;
+    string wrapper = quotation + server->scheme + quotation + comma;
+    string owner = quotation + server->owner + quotation;
+    ss.str("");
+    ss << port;
+    string port_s = ss.str() + comma;
+    replace_sql_cur = replace_sql_cur + name + host + db + username
+      + password + port_s + socket + wrapper + owner;
+    replace_sql_cur += "),";
+    replace_sql_all += replace_sql_cur;
+    res = true;
+  }
+  /*if there are data in spider_server_map, create del_sql*/
+  if (spider_server_map.size() > 0) 
+  {
+    res = true;
+    for (spider_its = spider_server_map.begin();
+      spider_its != spider_server_map.end();
+      spider_its++)
+    {
+      FOREIGN_SERVER* server = spider_its->second;
+      string del_sql_cur = "delete from mysql.servers where Server_name=";
+      del_sql_cur += quotation + server->server_name + quotation + ";";
+      del_sql_all += del_sql_cur;
+    }
+  }
+  if (res)
+  {
+    if (del_sql_all.size())
+      repair_sql += del_sql_all;
+    
+    if (replace_sql_all.size() != len)
+    {
+      replace_sql_all.erase(replace_sql_all.end() - 1);
+      repair_sql += replace_sql_all + ";";
+    }
+    repair_sql += flush_priv_sql;
+  }
+  return res;
+}
+
+
+int tc_check_and_repair_routing()
+{
+  int result = 0;
+  map<string, MYSQL*> spider_conn_map;
+  map<string, MYSQL*>::iterator its;
+  string sql = "select Server_name,Host,Db,Username,Password,Port,Socket,Wrapper,Owner "
+    "from mysql.servers order by Server_name";
+  string flush_priv_sql = "flush privileges";
+  string replace_sql;
+  string repair_sql_all;
+  tc_exec_info exec_info;
+  map<string, FOREIGN_SERVER*> spider_server_map;
+  map<string, FOREIGN_SERVER*> tdbctl_server_map;
+  THD *thd;
+  if (!(thd = new THD))
+  {
+    sql_print_warning("init repair thread failed, skip repair");
+    result = 1;
+    goto finish;
+  }
+  if (lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
+  {
+    sql_print_error("lock for repair routing timeout");
+    result = 1;
+    goto finish;
+  }
+  replace_sql = dump_servers_to_sql();
+  repair_sql_all = replace_sql + ";" + flush_priv_sql;
+  thd->variables.lock_wait_timeout = tc_check_repair_routing_interval;
+  
+  if (tc_get_repair_map(thd->mem_root, tdbctl_server_map, spider_conn_map)) 
   {
     result = 1;
     goto finish;
@@ -1992,6 +2142,7 @@ int tc_check_and_repair_routing()
 
   for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
   {
+    string repair_sql = "";
     string ipport = its->first;
     MYSQL* mysql = its->second;
     MYSQL_RES* res;
@@ -1999,7 +2150,6 @@ int tc_check_and_repair_routing()
     if (res)
     {
       MYSQL_ROW row = NULL;
-      list<FOREIGN_SERVER*> li;
       while ((row = mysql_fetch_row(res)))
       {
         FOREIGN_SERVER tmp_server;
@@ -2016,19 +2166,11 @@ int tc_check_and_repair_routing()
         tmp_server.scheme = row[7];
         tmp_server.owner = row[8];
         cur_server = clone_server(thd->mem_root, &tmp_server, NULL);
-        li.push_back(cur_server);
+        spider_server_map[cur_server->server_name] = cur_server;
       }
-      li.sort(server_compare);
-      if (compare_server_list(all_list, li))
+      if (tc_create_repair_sql(tdbctl_server_map, spider_server_map, repair_sql))
       {
         sql_print_warning("ipport is %s, routing mismatch", ipport.c_str());
-        if (!locked)
-        {
-          if (lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
-            sql_print_warning("lock for repair routing timeout");
-          else
-            locked = true;
-        }
         if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
         {
           sql_print_error("ipport is %s, routing repair failed", ipport.c_str());
@@ -2039,13 +2181,13 @@ int tc_check_and_repair_routing()
           sql_print_information("ipport is %s, routing repair succeed", ipport.c_str());
         }
       }
-      li.clear();
+      spider_server_map.clear();
       mysql_free_result(res);
     }
     else
     {
       sql_print_warning("ipport is %s, routing mismatch", ipport.c_str());
-      if (tc_exec_sql_up(mysql, repair_sql, &exec_info))
+      if (tc_exec_sql_up(mysql, repair_sql_all, &exec_info))
       {
         sql_print_error("ipport is %s, routing repair failed", ipport.c_str());
         result = 2;
@@ -2057,15 +2199,12 @@ int tc_check_and_repair_routing()
     }
   }
 
-
 finish:
 
   tc_conn_free(spider_conn_map);
   spider_conn_map.clear();
-  spider_ipport_set.clear();
-  spider_user_map.clear();
-  spider_passwd_map.clear();
-  all_list.clear();
+  tdbctl_server_map.clear();
+  spider_server_map.clear();
   delete thd;
   return result;
 }
