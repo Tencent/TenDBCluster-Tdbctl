@@ -533,9 +533,8 @@ ulonglong denied_connections= 0;
 	-1 for unknown
   if init connection error or check error then tc_is_available=0
   if check ok then tc_is_available=1
-	if disable monitor then tc_is_available=-1
 */
-int tc_is_available = -1;
+int tc_is_available = 0;
 
 /**
   Limit of the total number of prepared statements in the server.

@@ -758,7 +758,7 @@ void tc_check_cluster_availability_thread()
         tc_free_connect();
         flag = 1;
       }
-      tc_is_available = -1;
+      tc_is_available = 0;
     }
     sleep(2);
   }
