@@ -6936,24 +6936,19 @@ void THD::reset_for_next_command()
 }
 
 /*
-  whether the query is from spider node in mysql.servers
+  judge whether the query is from spider node by compare ip and host
+  if not, the query will be refused when tc_admin=1
 
   @retval
   false: not spider node in mysql.servers
   true:  spider node in mysql.servers
 */
-bool tc_is_spider_node(THD* thd) 
+bool tc_is_query_from_spider(THD* thd) 
 {
-  int ret = 1;
-  bool res = false;
-  string user="";
   string ip="";
   string host="";
   if (thd->m_security_ctx)
   {
-    if (thd->m_security_ctx->user().length)
-      user = thd->m_security_ctx->user().str;
-
     if (thd->m_security_ctx->ip().length)
       ip = thd->m_security_ctx->ip().str;
 
@@ -6979,12 +6974,11 @@ bool tc_is_spider_node(THD* thd)
     if (!(strcasecmp((char *)(hosts.data()), (char *)(host.data())))
         || !strcasecmp((char *)(hosts.data()), (char *)(ip.data()))) 
     {
-      res = true;
-      return res;
+      return true;
     }
   }
 
-  return res;
+  return false;
 }
 
 /**
@@ -7230,7 +7224,7 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
             Non - clustered spider node,
             unable to execute request under tc_admin = 1
             */
-            if (thd->variables.tc_admin && !tc_is_spider_node(thd))
+            if (thd->variables.tc_admin && !tc_is_query_from_spider(thd))
               my_error(ER_TCADMIN_NOT_SPIDER, MYF(0));
             /*
             Non - primary TDBCTL node,
