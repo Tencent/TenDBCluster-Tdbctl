@@ -6969,18 +6969,6 @@ bool tc_is_spider_node(THD* thd)
         TRUE);
 
   /*
-  get username of current TDBCTL node from mysql.servers
-  */
-  string tdbctl_username = tc_get_user_name(ret, TDBCTL_WRAPPER, false);
-  if (ret)
-    return res;
-  /*
-  compare username of current TDBCTL node in mysql.servers and current user
-  */
-  if (strcasecmp((char *)(tdbctl_username.data()), (char *)(user.data())))
-    return res;
-	
-  /*
   compare ip of current TDBCTL node in mysql.servers and current user
   */
   for (its = thd->spider_user_map.begin(); its != thd->spider_user_map.end(); its++)
