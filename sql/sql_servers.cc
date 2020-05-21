@@ -1437,13 +1437,9 @@ int tc_set_changed_remote_read_only()
     }
     if (tc_exec_sql_paral(sql, conn_map, result_map, remote_user_map, remote_passwd_map, FALSE))
     {// error 
-      time_t to_tm_time = (time_t)time((time_t*)0);
-      struct tm lt;
-      struct tm* l_time = localtime_r(&to_tm_time, &lt);
-      fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR TDBCTL] "
-        "failed to set remote data node read only %s, and some error happened when modify spider routing \n",
-        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-        l_time->tm_min, l_time->tm_sec, remote_ipport_map.begin()->second.c_str());
+			sql_print_error("TDBCTL: failed to set remote data node read only %s, "
+				"and some error happened when modify spider routing ",
+				remote_ipport_map.begin()->second.c_str());
       result = 1;
     }
     else
@@ -2270,9 +2266,6 @@ int get_remote_changed_servers(
     string ipport = its->first;
     MYSQL* mysql = its->second;
     MYSQL_RES* res;
-    time_t to_tm_time = (time_t)time((time_t*)0);
-    struct tm lt;
-    struct tm* l_time = localtime_r(&to_tm_time, &lt);
     res = tc_exec_sql_with_result(mysql, sql);
     if (res)
     {
@@ -2317,10 +2310,7 @@ int get_remote_changed_servers(
     }
     else
     {
-      fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN TDBCTL] "
-        "ipport is %s, routing mismatch\n",
-      l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday, l_time->tm_hour,
-      l_time->tm_min, l_time->tm_sec, ipport.c_str());
+			sql_print_warning("TDBCTL: ipport is %s, routing mismatch", ipport.c_str());
       result = 2;
     }
     break;
