@@ -6444,3 +6444,10 @@ static Sys_var_long Sys_tc_is_primary(
 	"where the node is primary,-1 for unknown,0 for not-primary,1 for primary",
 	GLOBAL_VAR(tdbctl_is_primary), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(-1, 1), DEFAULT(0), BLOCK_SIZE(1));
+
+static Sys_var_charptr Sys_tc_skip_dump_db(
+  "tc_skip_dump_db_list",
+  "the list of database's schema will ignore sync to new add spider node",
+  READ_ONLY GLOBAL_VAR(tc_skip_dump_db_list),
+  CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET,
+  DEFAULT("performance_schema,information_schema,mysql,test,db_infobase"));

@@ -448,6 +448,7 @@ at present: must get tdbctl_is_primary by tc_is_primary_tdbctl_node
 because tdbctl_is_primary it not maintained when network partition
 */
 long tdbctl_is_primary = 0;
+char *tc_skip_dump_db_list;
 ulong tc_max_prepared_time = 60;
 ulong opt_binlog_rows_event_max_size;
 const char *binlog_checksum_default= "NONE";

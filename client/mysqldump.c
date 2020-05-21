@@ -108,6 +108,7 @@ static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0,
                 quick= 1, extended_insert= 1,
                 lock_tables= 1, opt_force= 0, flush_logs= 0,
                 flush_privileges= 0,
+                opt_add_not_exists= 0,
                 opt_drop=1,opt_keywords=0,opt_lock=1,opt_compress=0,
                 create_options=1,opt_quoted=0,opt_databases=0,
                 opt_alldbs=0,opt_create_db=0,opt_lock_all_tables=0,
@@ -252,6 +253,9 @@ static struct my_option my_long_options[] =
    0},
   {"add-drop-table", OPT_DROP, "Add a DROP TABLE before each create.",
    &opt_drop, &opt_drop, 0, GET_BOOL, NO_ARG, 1, 0, 0, 0, 0,
+   0},
+  {"add-not-exists", OPT_DROP, "Add an IF NOT EXISTS for CREATE TABLE.",
+   &opt_add_not_exists, &opt_add_not_exists, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0,
    0},
   {"add-drop-trigger", 0, "Add a DROP TRIGGER before each create.",
    &opt_drop_trigger, &opt_drop_trigger, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0,
@@ -3708,12 +3712,12 @@ static uint get_table_structure(char *table, char *db, char *table_type,
 
       is_log_table= general_log_or_slow_log_tables(db, table);
       is_replication_metadata_table= replication_metadata_tables(db, table);
-      if (is_log_table || is_replication_metadata_table)
+      if (is_log_table || is_replication_metadata_table || opt_add_not_exists)
         row[1]+= 13; /* strlen("CREATE TABLE ")= 13 */
       if (opt_compatible_mode & 3)
       {
         fprintf(sql_file,
-                (is_log_table || is_replication_metadata_table) ?
+                (is_log_table || is_replication_metadata_table || opt_add_not_exists) ?
                 "CREATE TABLE IF NOT EXISTS %s;\n" : "%s;\n", row[1]);
       }
       else
@@ -3723,7 +3727,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
                 "/*!40101 SET character_set_client = utf8 */;\n"
                 "%s%s;\n"
                 "/*!40101 SET character_set_client = @saved_cs_client */;\n",
-                (is_log_table || is_replication_metadata_table) ?
+                (is_log_table || is_replication_metadata_table || opt_add_not_exists) ?
                 "CREATE TABLE IF NOT EXISTS " : "", row[1]);
       }
 
