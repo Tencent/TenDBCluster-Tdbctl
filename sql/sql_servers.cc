@@ -1263,6 +1263,18 @@ static string dump_servers_to_sql()
     return "";
   }
 
+  /*
+    Need delete all TDBCTL Wrapper in spider's mysql.servers first.
+    Otherwise, in failure scenario, new elected primary node will be
+    flushed to spider, and multi tdbctl exists(include old and failure tdbctl),
+    which may leader to spider work abnormal.
+  */
+  ss.str("");
+  ss << "delete from mysql.servers where Wrapper='";
+  ss << TDBCTL_WRAPPER;
+  ss << "';";
+  replace_sql_all.insert(0, ss.str());
+
   for (ulong i = 0; i < records; i++)
   {
     server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i);
@@ -1310,7 +1322,8 @@ static string dump_servers_to_sql()
       if (tdbctl_sql_map.count(ip_port) == 1)
         //add tdbctl insert sql
         replace_sql_all += tdbctl_sql_map[ip_port];
-      else {
+      else
+      {
         sql_print_warning("primary node not in mysql.servers, null sql returned");
         mysql_rwlock_unlock(&THR_LOCK_servers);
         return "";
