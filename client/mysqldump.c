@@ -228,6 +228,7 @@ TYPELIB compatible_mode_typelib= {array_elements(compatible_mode_names) - 1,
                                   "", compatible_mode_names, NULL};
 
 HASH ignore_table;
+HASH ignore_database;
 static HASH processed_compression_dictionaries;
 
 static LIST *skipped_keys_list;
@@ -401,6 +402,11 @@ static struct my_option my_long_options[] =
    "error numbers to be ignored if encountered during dump.",
    &opt_ignore_error, &opt_ignore_error, 0, GET_STR_ALLOC, REQUIRED_ARG, 0,
    0, 0, 0, 0, 0},
+  {"ignore-database", OPT_IGNORE_DATABASE,
+   "Do not dump the specified database. To specify more than one database to ignore, "
+   "use the directive multiple times, once for each database. Only takes effect "
+   "when used together with --all-databases|-A",
+   0, 0, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"ignore-table", OPT_IGNORE_TABLE,
    "Do not dump the specified table. To specify more than one table to ignore, "
    "use the directive multiple times, once for each table.  Each table must "
@@ -974,6 +980,11 @@ get_one_option(int optid, const struct my_option *opt MY_ATTRIBUTE((unused)),
   case (int) OPT_TABLES:
     opt_databases=0;
     break;
+  case (int)OPT_IGNORE_DATABASE:
+    if (my_hash_insert(&ignore_database, (uchar*)my_strdup(PSI_NOT_INSTRUMENTED,
+                                                           argument, MYF(0))))
+      exit(EX_EOM);
+    break;
   case (int) OPT_IGNORE_TABLE:
   {
     if (!strchr(argument, '.'))
@@ -1087,6 +1098,10 @@ static int get_options(int *argc, char ***argv)
 
   defaults_argv= *argv;
 
+  if (my_hash_init(&ignore_database, charset_info, 16, 0, 0,
+                   (my_hash_get_key)get_table_key, my_free, 0,
+                   PSI_NOT_INSTRUMENTED))
+    return(EX_EOM);
   if (my_hash_init(&ignore_table, charset_info, 16, 0, 0,
                    (my_hash_get_key) get_table_key, my_free, 0,
                    PSI_NOT_INSTRUMENTED))
@@ -1188,6 +1203,14 @@ static int get_options(int *argc, char ***argv)
             my_progname);
     return(EX_USAGE);
   }
+  if (ignore_database.records && !opt_alldbs)
+  {
+    fprintf(stderr,
+      "%s: --ignore-database can only be used together with --all-databases.\n",
+      my_progname);
+    return(EX_USAGE);
+  }
+
   if (strcmp(default_charset, charset_info->csname) &&
       !(charset_info= get_charset_by_csname(default_charset,
                                             MY_CS_PRIMARY, MYF(MY_WME))))
@@ -1688,6 +1711,8 @@ static void free_resources()
   if (md_result_file && md_result_file != stdout)
     my_fclose(md_result_file, MYF(0));
   my_free(opt_password);
+  if (my_hash_inited(&ignore_database))
+    my_hash_free(&ignore_database);
   if (my_hash_inited(&ignore_table))
     my_hash_free(&ignore_table);
   if (my_hash_inited(&processed_compression_dictionaries))
@@ -5304,6 +5329,11 @@ is_ndbinfo(MYSQL* mysql, const char* dbname)
   return 0;
 }
 
+/* Return 1 if we should copy the database */
+my_bool include_database(const uchar *hash_key, size_t len)
+{
+  return !my_hash_search(&ignore_database, hash_key, len);
+}
 
 static int dump_all_databases()
 {
@@ -5330,8 +5360,9 @@ static int dump_all_databases()
     if (is_ndbinfo(mysql, row[0]))
       continue;
 
-    if (dump_all_tables_in_db(row[0]))
-      result=1;
+    if (include_database(row[0], strlen(row[0])))
+      if (dump_all_tables_in_db(row[0]))
+        result = 1;
   }
   mysql_free_result(tableres);
   if (seen_views)
@@ -5360,8 +5391,9 @@ static int dump_all_databases()
       if (is_ndbinfo(mysql, row[0]))
         continue;
 
-      if (dump_all_views_in_db(row[0]))
-        result=1;
+      if (include_database(row[0], strlen(row[0])))
+        if (dump_all_views_in_db(row[0]))
+          result = 1;
     }
     mysql_free_result(tableres);
   }
@@ -7018,6 +7050,7 @@ int main(int argc, char **argv)
 
   compatible_mode_normal_str[0]= 0;
   default_charset= (char *)mysql_universal_client_charset;
+  memset(&ignore_database, 0, sizeof(ignore_database));
   memset(&ignore_table, 0, sizeof(ignore_table));
 
   exit_code= get_options(&argc, &argv);
