@@ -858,8 +858,7 @@ void tc_partition_admin_thread()
   while (1)
   {
     /* TODO:get tc_tdbctl_conn_primary by host and port */
-    if (tc_partition_admin &&
-        (tc_is_primary_tdbctl_node() == 1))
+    if (tc_partition_admin && tdbctl_is_primary)
     {
       for (ulong i = 0; i <= tc_partition_admin_interval; ++i)
       {

@@ -3141,21 +3141,16 @@ uint tc_get_primary_node(std::string &host, uint *port)
 
 
 /*
-  @param :
-    need_check
-      true: need to check whether current node is the first
-            tdbctl node is mysql.servers.
-            Through compare node's server_uuid to set tdbctl_is_primary.
-            For tdbctl server start, or mysql.servers modified, we need
-            call this function with need_check(true) to reset.
-            In MGR scenario, tdbctl_is_primry's value automatic set.
-      false: no need do check.
-
   @retval
     0, not primary node
     1, primary node
+
+  @Note
+    anytime call this function, should consider deadlock.
+    if we call this in mysql_execute_command, MGR's work thread
+    may deadlock when do command internal use Sql_service_command_interface
 */
-int tc_is_primary_tdbctl_node(bool need_check)
+int tc_is_primary_tdbctl_node()
 {
   int ret = 0;
   string host;
@@ -3169,7 +3164,7 @@ int tc_is_primary_tdbctl_node(bool need_check)
   ret = tc_get_primary_node(host, &port);
 
   //ret == 1, mgr running with single-primary
-  if ((ret == 1) || !need_check)
+  if (ret == 1)
     return tdbctl_is_primary;
 
   //not mgr or multi-Primary

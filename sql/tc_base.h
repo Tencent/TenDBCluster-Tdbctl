@@ -416,7 +416,7 @@ enum_ident_wrapper_check tc_check_wrapper_name(LEX_STRING *org_name);
 extern char *report_host;
 extern uint report_port;
 
-int tc_is_primary_tdbctl_node(bool need_check = false);
+int tc_is_primary_tdbctl_node();
 uint tc_get_primary_node(std::string &host, uint *port);
 bool check_server_version(ulong& server_version);
 void free_thd_connection(THD *thd);
