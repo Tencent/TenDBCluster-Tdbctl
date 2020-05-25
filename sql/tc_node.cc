@@ -26,6 +26,7 @@ int tc_dump_node_schema(
 {
   string space = " ";
   string dump_cmd, dump_bin, dump_options;
+  string ipport = string(host) + "#" + to_string(port);
 
 #if defined (_WIN32)
   dump_bin = "mysqldump";
@@ -33,19 +34,32 @@ int tc_dump_node_schema(
   dump_bin = mysql_home_ptr;
   dump_bin += "/bin/mysqldump";
 #endif
-  dump_options = "--single-transaction --no-autocommit=FALSE  --skip-opt --create-options  --routines  --quick --no-data --all-databases";
+  dump_options = "--single-transaction --no-autocommit=FALSE  --skip-opt --create-options --routines "
+                "--quick --no-data --all-databases --add-not-exists";
   dump_options += space + "-r" + file + space + "--log-error=" + file;
 	dump_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port) + space+ "-h" + host;
+  if (tc_skip_dump_db_list)
+  {
+    size_t pos = 0;
+    string dbs = tc_skip_dump_db_list;
+    string delimiter = ",";
+    string token;
+    while ((pos = dbs.find(delimiter)) != std::string::npos) {
+      token = dbs.substr(0, pos);
+      dump_options += space + "--ignore-database=" + token;
+      dbs.erase(0, pos + delimiter.length());
+    }
+    dump_options += space + "--ignore-database=" + token;
+  }
 
-  string ipport = string(host) + "#" + to_string(port);
   MYSQL *conn = tc_conn_connect(ipport, user, password);
   if (conn == NULL)
   {
     my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0), user, port);
     return 1;
   }
+  MYSQL_GUARD(conn);
   string charset = tc_get_variable_value(conn, "character_set_server");
-  mysql_close(conn);
   dump_options += space + "--default-character-set=" + charset;
 
   dump_cmd = dump_bin + space + dump_options;
@@ -55,6 +69,8 @@ int tc_dump_node_schema(
     sql_print_warning("detail information in file %s.", file);
     return 1;
   }
+
+  sql_print_information("success dump schema to file %s.", file);
 
   return 0;
 }
@@ -90,5 +106,6 @@ int tc_restore_node_schema(
     return 1;
   }
 
+  sql_print_information("success restore schema to node %s#%", host, port);
   return 0;
 }

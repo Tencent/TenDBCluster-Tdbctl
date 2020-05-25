@@ -2965,7 +2965,7 @@ mysql_execute_command(THD *thd, bool first_level)
     }
   }
   /*Non - primary TDBCTL node, unable to execute TDBCTL SQL*/
-  if (tc_is_primary_tdbctl_node() != 1 &&
+  if (!tdbctl_is_primary &&
     (sql_command_flags[lex->sql_command] & CF_DISALLOW_IN_NO_PRIMARY))
   {
     my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
@@ -7230,8 +7230,7 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
             Non - primary TDBCTL node,
             unable to execute request under tc_admin = 1
             */
-            else if (thd->variables.tc_admin &&
-             (tc_is_primary_tdbctl_node() != 1))
+            else if (thd->variables.tc_admin && !tdbctl_is_primary)
               my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
             else if(thd->variables.tc_admin)
               error = tcadmin_execute_command(thd, true);
