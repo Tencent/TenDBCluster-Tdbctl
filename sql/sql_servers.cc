@@ -319,14 +319,18 @@ end:
   mysql_rwlock_unlock(&THR_LOCK_servers);
 
   /*
-  if modify tdbclt in mysql.servers, then modify_tdbctl_flag=true;
+  if dml or alter tdbclt in mysql.servers, then modify_tdbctl_flag=true;
   need to maintain Tdbctl_is_primary
+  if create node or drop node, need to update maintain Tdbctl_is_primary directly
+
+  if global_modify_server_version<=1 ,means mysqld init,
+  unable to maintain tdbctl_is_primary
   */
-  if (modify_tdbctl_flag)
+  if (modify_tdbctl_flag && global_modify_server_version > 1) 
   {
     tdbctl_is_primary = tc_is_primary_tdbctl_node();
-    modify_tdbctl_flag = false;
   }
+  modify_tdbctl_flag = false;
   delete_redundant_routings();
   DBUG_RETURN(return_val);
 }
@@ -782,6 +786,16 @@ bool Sql_cmd_create_server::execute(THD *thd)
 
   mysql_rwlock_unlock(&THR_LOCK_servers);
 
+  if (modify_tdbctl_flag)
+  {
+    /*
+    tc_is_primary_tdbctl_node need to get THR_LOCK_servers,
+    so must maintain tdbctl_is_primary after unlock
+    */
+    tdbctl_is_primary = tc_is_primary_tdbctl_node();
+    modify_tdbctl_flag = false;
+  }
+
   if (error)
     trans_rollback_stmt(thd);
   else
@@ -957,6 +971,15 @@ bool Sql_cmd_drop_server::execute(THD *thd)
 
   mysql_rwlock_unlock(&THR_LOCK_servers);
 
+  if (modify_tdbctl_flag)
+  {
+    /*
+      tc_is_primary_tdbctl_node need to get THR_LOCK_servers,
+      so must maintain tdbctl_is_primary after unlock
+    */
+    tdbctl_is_primary = tc_is_primary_tdbctl_node();
+    modify_tdbctl_flag = false;
+  }
   if (error)
     trans_rollback_stmt(thd);
   else
@@ -2300,6 +2323,7 @@ bool update_server_version(bool* version_updated)
   if (share_records != share_records_bak)
   {
     *version_updated = TRUE;
+    modify_tdbctl_flag = true;
   }
   DBUG_ENTER("replace_server_version");
   for (ulong i = 0; i < share_records; i++)
