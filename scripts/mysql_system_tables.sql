@@ -88,9 +88,9 @@ CREATE TABLE IF NOT EXISTS ndb_binlog_index (Position BIGINT UNSIGNED NOT NULL, 
 
 --Create  for cluster admin
 CREATE DATABASE IF NOT EXISTS cluster_admin;
-CREATE TABLE IF NOT EXISTS cluster_admin.cluster_heartbeat_log(id bigint(20) NOT NULL, time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, tdbctl_name char(64) NOT NULL DEFAULT '', server_name  char(64)  NOT NULL DEFAULT '',  host char(255) NOT NULL DEFAULT '', code int default 0, message VARCHAR(1024) NOT NULL DEFAULT '', PRIMARY KEY (id,`tdbctl_name`), index spt(server_name)) ENGINE=InnoDB STATS_PERSISTENT=0;
+CREATE TABLE IF NOT EXISTS cluster_admin.cluster_heartbeat_log(id bigint(20) NOT NULL,chunk_id bigint(20) DEFAULT 0, time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, tdbctl_name char(64) NOT NULL DEFAULT '', server_name  char(64)  NOT NULL DEFAULT '',  host char(255) NOT NULL DEFAULT '', code int default 0, message VARCHAR(1024) NOT NULL DEFAULT '', PRIMARY KEY (id,`tdbctl_name`), index spt(server_name)) ENGINE=InnoDB STATS_PERSISTENT=0;
 
-create or replace view cluster_admin.v_cluster_heartbeat_log  as select  id,time,server_name,host,code,message from cluster_admin.  cluster_heartbeat_log  where tdbctl_name='';
+create or replace view cluster_admin.v_cluster_heartbeat_log as select id,chunk_id,time,server_name,host,code,message from cluster_admin.cluster_heartbeat_log as a where chunk_id=(select max(chunk_id) from cluster_admin.cluster_heartbeat_log ) and tdbctl_name='';
 
 CREATE TABLE IF NOT EXISTS cluster_admin.tc_partiton_admin_log ( uid int(11) NOT NULL AUTO_INCREMENT, db_name char(64) NOT NULL DEFAULT '', tb_name char(64) NOT NULL DEFAULT '', server_name char(64) NOT NULL DEFAULT '', host char(255) NOT NULL DEFAULT '', code int DEFAULT 0, message VARCHAR(1024) NOT NULL DEFAULT '', updatetime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE  CURRENT_TIMESTAMP, KEY `uk_db_tb` (`db_name`,`tb_name`), PRIMARY KEY (`uid`)) ENGINE=InnoDB STATS_PERSISTENT=0;
 
