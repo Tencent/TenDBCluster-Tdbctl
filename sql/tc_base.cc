@@ -3195,7 +3195,8 @@ int tc_is_primary_tdbctl_node()
     address = host + "#" + to_string(port);
     conn = tc_conn_connect(address, user, passwd);
     if (conn == NULL) {
-      my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), address.c_str());
+      sql_print_warning("CONNECT ERROR : error happened when connect to %s",
+        address.c_str());
       return 0;
     }
 

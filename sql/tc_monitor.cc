@@ -42,6 +42,7 @@ map<string, string> tdbctl_user_map;
 map<string, string> tdbctl_passwd_map;
 string  tdbctl_server_name="";
 string  lock_time_sql="";
+string  tdbctl_session_variable_sql = "";
 MYSQL *tdbctl_primary_conn = NULL;
 MEM_ROOT mem_root;
 
@@ -83,10 +84,12 @@ int set_mysql_options(int &error_code, string &message)
   ss.str("");
   ss << tc_check_availability_interval;
   lock_time_sql += ss.str();
+  tdbctl_session_variable_sql = "set binlog_format=ROW;";
+  tdbctl_session_variable_sql += lock_time_sql;
   mysql_options(tdbctl_primary_conn, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
   mysql_options(tdbctl_primary_conn, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
   mysql_options(tdbctl_primary_conn, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
-  if (tc_exec_sql_without_result(tdbctl_primary_conn, lock_time_sql, &exec_info))
+  if (tc_exec_sql_without_result(tdbctl_primary_conn, tdbctl_session_variable_sql, &exec_info))
   {
     result = 2;
     error_code = exec_info.err_code;

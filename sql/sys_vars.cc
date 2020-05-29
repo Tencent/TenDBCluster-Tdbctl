@@ -6410,7 +6410,7 @@ static Sys_var_mybool Sys_sort_when_partition_prefix_order(
   CMD_LINE(OPT_ARG), DEFAULT(TRUE));
 
 static Sys_var_ulong Sys_max__commit_logs(
-	"max_cluster_heartbeat_log",
+	"tc_max_cluster_heartbeat_log",
 	"The max rows of cluster_heartbeat_log",
 	GLOBAL_VAR(max_heartbeat_log), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(10, ULONG_MAX), DEFAULT(1000000), BLOCK_SIZE(1));

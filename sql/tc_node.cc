@@ -106,6 +106,6 @@ int tc_restore_node_schema(
     return 1;
   }
 
-  sql_print_information("success restore schema to node %s#%", host, port);
+  sql_print_information("success restore schema to node %s#%d", host, port);
   return 0;
 }

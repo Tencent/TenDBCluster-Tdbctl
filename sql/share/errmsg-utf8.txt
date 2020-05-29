@@ -7831,7 +7831,7 @@ ER_TCADMIN_RENAME_TABLE
   eng "RENAME TABLE ERROR: %s"
 
 ER_TCADMIN_UNSUPPORT_SQL_TYPE
-  eng "UNSUPPORT SQL TYPE: %s"
+  eng "UNSUPPORT SQL TYPE: %s WHEN TC_ADMIN=1"
 
 ER_TCADMIN_CONNECT_ERROR
   eng "CONNECT ERROR: error happened when connect to %s"
@@ -7849,7 +7849,7 @@ ER_TCADMIN_INIT_MONITOR_ERROR
   eng "failed to init monitor"
 
 ER_TCADMIN_NOT_SPIDER
-  eng "EXECUTE ERROR: must be the spider in the cluster when tc_admin=1"
+  eng "EXECUTE ERROR: query must be from spider in mysql.servers when tc_admin=1"
 
 ER_TCADMIN_DUMP_NODE_ERROR
   eng "DUMP ERROR: backup node %s#%d's schema failed"
