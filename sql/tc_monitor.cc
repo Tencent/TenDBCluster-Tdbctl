@@ -44,8 +44,6 @@ map<string, string> tdbctl_ipport_map;
 map<string, string> tdbctl_user_map;
 map<string, string> tdbctl_passwd_map;
 string  tdbctl_server_name="";
-string  lock_time_sql="";
-string  tdbctl_session_variable_sql = "";
 MYSQL *tdbctl_primary_conn = NULL;
 MEM_ROOT mem_root;
 
@@ -74,6 +72,12 @@ int set_mysql_options(int &error_code, string &message)
   int result = 0;
   stringstream ss;
   tc_exec_info exec_info;
+  MYSQL* spider_conn;
+  string  tdbctl_session_variable_sql = "";
+  string  spider_session_variables_sql = "";
+  string  lock_time_sql = "set lock_wait_timeout=";
+  string  spider_net_read_timeout_sql = "set spider_net_read_timeout=";
+  string  spider_net_write_timeout_sql = "set spider_net_write_timeout=";
   ulong read_timeout = 600;
   ulong write_timeout = 600;
   ulong connect_timeout = 60;
@@ -83,12 +87,25 @@ int set_mysql_options(int &error_code, string &message)
     write_timeout : tc_check_availability_interval;
   connect_timeout = connect_timeout < tc_check_availability_interval ?
     connect_timeout : tc_check_availability_interval;
-  lock_time_sql = "set lock_wait_timeout=";
   ss.str("");
   ss << tc_check_availability_interval;
   lock_time_sql += ss.str();
-  tdbctl_session_variable_sql = "set binlog_format=ROW;";
+  spider_net_read_timeout_sql += ss.str();
+  spider_net_write_timeout_sql += ss.str();
+
+  /*init for tdbctl_session_variable_sql*/
+  tdbctl_session_variable_sql = "set binlog_format=statement;";
   tdbctl_session_variable_sql += lock_time_sql;
+
+  /*init for spider_session_variables_sql*/
+  spider_session_variables_sql += lock_time_sql;
+  spider_session_variables_sql += ";";
+  spider_session_variables_sql += spider_net_read_timeout_sql;
+  spider_session_variables_sql += ";";
+  spider_session_variables_sql += spider_net_write_timeout_sql;
+  spider_session_variables_sql += ";";
+
+  /*set variables for tdbctl_primary_conn*/
   mysql_options(tdbctl_primary_conn, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
   mysql_options(tdbctl_primary_conn, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
   mysql_options(tdbctl_primary_conn, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
@@ -102,13 +119,16 @@ int set_mysql_options(int &error_code, string &message)
     exec_info.err_msg = "";
     return result;
   }
+ 
+  /*set variables for spider_conn*/
   map<string, MYSQL*>::iterator its;
   for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
   {
-    mysql_options(its->second, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
-    mysql_options(its->second, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
-    mysql_options(its->second, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
-    if (tc_exec_sql_without_result(its->second, lock_time_sql, &exec_info))
+    spider_conn = its->second;
+    mysql_options(spider_conn, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
+    mysql_options(spider_conn, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
+    mysql_options(spider_conn, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
+    if (tc_exec_sql_without_result(spider_conn, spider_session_variables_sql, &exec_info))
     {
       result = 2;
       error_code = exec_info.err_code;
