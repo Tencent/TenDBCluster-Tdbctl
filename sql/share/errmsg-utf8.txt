@@ -7819,25 +7819,25 @@ ER_BINLOG_UNCOMPRESS_ERROR
   eng "Uncompress the compressed binlog failed"
 
 ER_TCADMIN_CREATE_TABLE
-  eng "CREATE TABLE ERROR: %s"
+  eng "CREATE TABLE FAILED: %s"
 
 ER_TCADMIN_ALTER_TABLE
-  eng "ALTER TABLE ERROR: %s"
+  eng "ALTER TABLE FAILED: %s"
 
 ER_TCADMIN_CREATE_DROP_INDEX
-  eng "CREATE/DROP INDEX ERROR: %s"
+  eng "CREATE/DROP INDEX FAILED: %s"
 
 ER_TCADMIN_RENAME_TABLE
-  eng "RENAME TABLE ERROR: %s"
+  eng "RENAME TABLE FAILED: %s"
 
 ER_TCADMIN_UNSUPPORT_SQL_TYPE
   eng "UNSUPPORT SQL TYPE: %s WHEN TC_ADMIN=1"
 
 ER_TCADMIN_CONNECT_ERROR
-  eng "CONNECT ERROR: error happened when connect to %s"
+  eng "CONNECT FAILED: connect to %s failed"
 
 ER_TCADMIN_EXECUTE_ERROR
-  eng "DETAIL ERROR INFO: %s"
+  eng "DETAIL FAILED INFO: %s"
 
 ER_TCADMIN_FLUSH_ROUTING_ERROR
   eng "failed to flush routing"
@@ -7849,34 +7849,34 @@ ER_TCADMIN_INIT_MONITOR_ERROR
   eng "failed to init monitor"
 
 ER_TCADMIN_NOT_SPIDER
-  eng "EXECUTE ERROR: query must be from spider in mysql.servers when tc_admin=1"
+  eng "EXECUTE FAILED: query must be from spider in mysql.servers when tc_admin=1"
 
 ER_TCADMIN_DUMP_NODE_ERROR
-  eng "DUMP ERROR: backup node %s#%d's schema failed"
+  eng "DUMP FAILED: backup node %s#%d's schema failed"
 
 ER_TCADMIN_RESTORE_NODE_ERROR
-  eng "RESTORE ERROR: restore schema to node %s#%d failed"
+  eng "RESTORE FAILED: restore schema to node %s#%d failed"
 
 ER_TCADMIN_CREATE_NODE_ERROR
-  eng "CREATE NODE ERROR: %s"
+  eng "CREATE NODE FAILED: %s"
 
 ER_TCADMIN_ALTER_NODE_ERROR
-  eng "ALTER NODE ERROR: %s"
+  eng "ALTER NODE FAILED: %s"
 
 ER_TCADMIN_DROP_NODE_ERROR
-  eng "DROP NODE ERROR: %s"
+  eng "DROP NODE FAILED: %s"
 
 ER_TCADMIN_WRONG_WRAPPER_NAME
   eng "Incorrect wrapper name '%-.100s': %s"
 
 ER_TCADMIN_INTERNAL_GRANT_ERROR
-  eng "INTERNAL GRANT ERROR: %s"
+  eng "INTERNAL GRANT FAILED: %s"
 
 ER_TCADMIN_NOT_AVAILABLE
-  eng "EXECUTE ERROR: cluster is not available"
+  eng "EXECUTE FAILED: cluster is not available"
 
 ER_TCADMIN_NOT_PRIMARY
-  eng "EXECUTE ERROR: the tdbctl is not primary node"
+  eng "EXECUTE FAILED: the current tdbctl is not primary node"
 #
 # End of MyRocks specific messages
 #

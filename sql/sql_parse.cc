@@ -2968,6 +2968,7 @@ mysql_execute_command(THD *thd, bool first_level)
   if (!tdbctl_is_primary &&
     (sql_command_flags[lex->sql_command] & CF_DISALLOW_IN_NO_PRIMARY))
   {
+    sql_print_warning(ER(ER_TCADMIN_NOT_PRIMARY));
     my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
     goto finish;
   }
@@ -5769,6 +5770,7 @@ tcadmin_execute_command(THD* thd, bool first_level)
   if (tc_check_availability && tc_is_available != 1 &&
     (sql_command_flags[lex->sql_command] & CF_DISALLOW_IN_UNAVAILAVLE))
   {
+    sql_print_warning(ER(ER_TCADMIN_NOT_AVAILABLE));
     my_error(ER_TCADMIN_NOT_AVAILABLE, MYF(0));
     goto finish;
   }
@@ -7225,13 +7227,19 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
             unable to execute request under tc_admin = 1
             */
             if (thd->variables.tc_admin && !tc_is_query_from_spider(thd))
+            {
+              sql_print_warning(ER(ER_TCADMIN_NOT_SPIDER));
               my_error(ER_TCADMIN_NOT_SPIDER, MYF(0));
+            }       
             /*
             Non - primary TDBCTL node,
             unable to execute request under tc_admin = 1
             */
             else if (thd->variables.tc_admin && !tdbctl_is_primary)
+            {
+              sql_print_warning(ER(ER_TCADMIN_NOT_PRIMARY));
               my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
+            }
             else if(thd->variables.tc_admin)
               error = tcadmin_execute_command(thd, true);
             else
