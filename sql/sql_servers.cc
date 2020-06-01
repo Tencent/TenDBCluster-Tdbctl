@@ -1110,7 +1110,8 @@ ulong get_servers_count()
 }
 
 /*
-@param with_slave if true, server_list include SPIDER_SLAVE
+  @param
+  with_slave: if true, server_list include SPIDER_SLAVE
 */
 ulong get_servers_count_by_wrapper(const char* wrapper_name, bool with_slave)
 {
@@ -2312,6 +2313,60 @@ bool backup_server_cache()
   DBUG_RETURN(FALSE);
 }
 
+/*
+  @NOTE
+    compare the num of server in mysql.servers when server_reload
+  @param
+    with_slave: if true, server_list include SERVER_SLAVE
+    with_lock:  if true, get num with lock
+*/
+bool compare_server_num_by_warpper(const char* wrapper_name, bool with_slave,
+  bool with_lock)
+{
+  FOREIGN_SERVER* server = NULL;
+  ulong ret = 0;
+  ulong ret_bak = 0;
+  string wrapper_slave = wrapper_name;
+  if (with_slave)
+    wrapper_slave += "_SLAVE";
+  if(with_lock)
+    mysql_rwlock_rdlock(&THR_LOCK_servers);
+  ulong records = servers_cache.records;
+  ulong records_bak = servers_cache_bak.records;
+
+  if (records != 0)
+  {
+    for (ulong i = 0; i < records; i++)
+    {
+      if (!(server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i)))
+        server = (FOREIGN_SERVER*)NULL;
+      else
+      {
+        if (!strcasecmp(server->scheme, wrapper_name) ||
+          !strcasecmp(server->scheme, wrapper_slave.c_str()))
+          ++ret;
+      }
+    }
+  }
+  if (records_bak != 0)
+  {
+    for (ulong i = 0; i < records_bak; i++)
+    {
+      if (!(server = (FOREIGN_SERVER*)my_hash_element(&servers_cache_bak, i)))
+        server = (FOREIGN_SERVER*)NULL;
+      else
+      {
+        if (!strcasecmp(server->scheme, wrapper_name) ||
+          !strcasecmp(server->scheme, wrapper_slave.c_str()))
+          ++ret_bak;
+      }
+    }
+  }
+
+  if (with_lock)
+    mysql_rwlock_unlock(&THR_LOCK_servers);
+  return ret != ret_bak;
+}
 
 
 bool update_server_version(bool* version_updated)
@@ -2320,11 +2375,19 @@ bool update_server_version(bool* version_updated)
   FOREIGN_SERVER* server;
   ulong share_records = servers_cache.records;
   ulong share_records_bak = servers_cache_bak.records;
-  if (share_records != share_records_bak)
+  if (compare_server_num_by_warpper(TDBCTL_WRAPPER, false, false))
   {
     *version_updated = TRUE;
     modify_tdbctl_flag = true;
   }
+  else
+  {
+    if (share_records != share_records_bak)
+    {
+      *version_updated = TRUE;
+    }
+  }
+
   DBUG_ENTER("replace_server_version");
   for (ulong i = 0; i < share_records; i++)
   {/* foreach share */
@@ -2357,6 +2420,16 @@ bool update_server_version(bool* version_updated)
       }
       server->version = server_bak->version;
     }
+    else/*if insert new server into mysql.servers*/
+    {
+      *version_updated = TRUE;
+      if (!modify_tdbctl_flag &&
+        !native_strncasecmp(server->server_name, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix)))
+      {
+        modify_tdbctl_flag = true;
+      }
+    }
+
   }
   DBUG_RETURN(FALSE);
 }
