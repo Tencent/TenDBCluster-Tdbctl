@@ -1618,7 +1618,7 @@ int tc_do_grants_internal()
       spider_result_map, spider_user_map, spider_passwd_map, FALSE))
   {/* return, close conn, reconnect + retry all */
     error = 1;
-    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "spider do grant failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), concat_result_map(spider_result_map).c_str());
     goto exit;
   }
 
@@ -1631,7 +1631,7 @@ int tc_do_grants_internal()
       remote_result_map, remote_user_map, remote_passwd_map, FALSE))
   {/* return, close conn, reconnect + retry all */
     error = 1;
-    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "remote do grant failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), concat_result_map(remote_result_map).c_str());
     goto exit;
   }
 
@@ -1643,7 +1643,7 @@ int tc_do_grants_internal()
     tdbctl_result_map, tdbctl_user_map, tdbctl_passwd_map, FALSE))
   {
     error = 1;
-    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "internal grant: tdbctl do grant failed");
+    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), concat_result_map(tdbctl_result_map).c_str());
     goto exit;
   }
 

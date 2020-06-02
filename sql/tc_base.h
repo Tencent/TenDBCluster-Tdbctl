@@ -399,6 +399,7 @@ string tc_get_remote_grant_sql(
 my_time_t string_to_timestamp(const string s);
 void init_result_map(map<string, tc_exec_info>& result_map, set<string> &ipport_set);
 void init_result_map2(map<string, tc_exec_info>& result_map, map<string, string> &ipport_map);
+string concat_result_map(map<string, tc_exec_info> result_map);
 
 string tc_get_variable_value(MYSQL *conn, const char *variable);
 map<string, MYSQL_RES*> tc_exec_sql_paral_by_wrapper(string exec_sql, string wrapper_name, bool with_slave);

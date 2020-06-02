@@ -2888,6 +2888,17 @@ void init_result_map2(map<string, tc_exec_info>& result_map,
   });
 }
 
+string concat_result_map(map<string, tc_exec_info> result_map)
+{
+  string result;
+  std::for_each(result_map.begin(), result_map.end(), [&](std::pair<string, tc_exec_info>its) {
+    if (its.second.err_code != 0)
+      result += its.first + its.second.err_msg;
+  });
+
+  return result;
+}
+
 /*
   get mysql variable value
 */
