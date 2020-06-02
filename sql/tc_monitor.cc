@@ -26,7 +26,10 @@
 #include "tc_monitor.h"
 
 static int64 current_id = 0;
+static int64 current_chunk_id = 0;
 static bool current_id_init = FALSE;
+static bool current_chunk_id_init = FALSE;
+string str_chunk_id;
 static PSI_memory_key key_memory_monitor;
 map<string, MYSQL*> spider_conn_map;
 /*
@@ -41,8 +44,6 @@ map<string, string> tdbctl_ipport_map;
 map<string, string> tdbctl_user_map;
 map<string, string> tdbctl_passwd_map;
 string  tdbctl_server_name="";
-string  lock_time_sql="";
-string  tdbctl_session_variable_sql = "";
 MYSQL *tdbctl_primary_conn = NULL;
 MEM_ROOT mem_root;
 
@@ -71,6 +72,12 @@ int set_mysql_options(int &error_code, string &message)
   int result = 0;
   stringstream ss;
   tc_exec_info exec_info;
+  MYSQL* spider_conn;
+  string  tdbctl_session_variable_sql = "";
+  string  spider_session_variables_sql = "";
+  string  lock_time_sql = "set lock_wait_timeout=";
+  string  spider_net_read_timeout_sql = "set spider_net_read_timeout=";
+  string  spider_net_write_timeout_sql = "set spider_net_write_timeout=";
   ulong read_timeout = 600;
   ulong write_timeout = 600;
   ulong connect_timeout = 60;
@@ -80,12 +87,25 @@ int set_mysql_options(int &error_code, string &message)
     write_timeout : tc_check_availability_interval;
   connect_timeout = connect_timeout < tc_check_availability_interval ?
     connect_timeout : tc_check_availability_interval;
-  lock_time_sql = "set lock_wait_timeout=";
   ss.str("");
   ss << tc_check_availability_interval;
   lock_time_sql += ss.str();
-  tdbctl_session_variable_sql = "set binlog_format=ROW;";
+  spider_net_read_timeout_sql += ss.str();
+  spider_net_write_timeout_sql += ss.str();
+
+  /*init for tdbctl_session_variable_sql*/
+  tdbctl_session_variable_sql = "set binlog_format=statement;";
   tdbctl_session_variable_sql += lock_time_sql;
+
+  /*init for spider_session_variables_sql*/
+  spider_session_variables_sql += lock_time_sql;
+  spider_session_variables_sql += ";";
+  spider_session_variables_sql += spider_net_read_timeout_sql;
+  spider_session_variables_sql += ";";
+  spider_session_variables_sql += spider_net_write_timeout_sql;
+  spider_session_variables_sql += ";";
+
+  /*set variables for tdbctl_primary_conn*/
   mysql_options(tdbctl_primary_conn, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
   mysql_options(tdbctl_primary_conn, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
   mysql_options(tdbctl_primary_conn, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
@@ -99,13 +119,16 @@ int set_mysql_options(int &error_code, string &message)
     exec_info.err_msg = "";
     return result;
   }
+ 
+  /*set variables for spider_conn*/
   map<string, MYSQL*>::iterator its;
   for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
   {
-    mysql_options(its->second, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
-    mysql_options(its->second, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
-    mysql_options(its->second, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
-    if (tc_exec_sql_without_result(its->second, lock_time_sql, &exec_info))
+    spider_conn = its->second;
+    mysql_options(spider_conn, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
+    mysql_options(spider_conn, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
+    mysql_options(spider_conn, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
+    if (tc_exec_sql_without_result(spider_conn, spider_session_variables_sql, &exec_info))
     {
       result = 2;
       error_code = exec_info.err_code;
@@ -166,6 +189,7 @@ int tc_init_connect(ulong& server_version)
   }
   server_version = get_modify_server_version();
   current_id_init = FALSE;
+  current_chunk_id_init = FALSE;
   return ret;
 finish:
   tc_free_connect();
@@ -303,40 +327,62 @@ finish:
 }
 
 /*
-check_cluster_availability
-1.update cluster cluster_monitor.cluster_heartbeat table
-2.log result in TDBCTL: cluster_admin.cluster_heartbeat_log
-*/
-int tc_check_cluster_availability()
-{
-  int result = 0;
-  tc_exec_info exec_info;
-  stringstream ss;
-  map<string, MYSQL*>::iterator its;
+  use chunk_id to distinguish monitor cycle
 
-  //init for sql
-  string check_heartbeat_sql = "update cluster_monitor.cluster_heartbeat set k=(k+1)%1024";
-  string heartbeat_log_sql_pre = "replace into cluster_admin.cluster_heartbeat_log( "
-    "id, tdbctl_name, server_name, host, code, message) values(";
-  string quotation = "\"";
-  string spider_server_name = "";
-  string host = "";
+  @NOTE:only primary TDBCTL do tc_generate_chunk_id
+*/
+string tc_generate_chunk_id()
+{
+  string str_id = "";
+  stringstream ss;
+  if (!current_chunk_id_init)
+  {
+    MYSQL_RES* res;
+    string sql_max_id = "select max(chunk_id) from cluster_admin.cluster_heartbeat_log";
+    MYSQL_ROW row = NULL;
+    res = tc_exec_sql_with_result(tdbctl_primary_conn, sql_max_id);
+    if (res && (row = mysql_fetch_row(res)))
+    {
+      current_chunk_id = row[0] ? atoi(row[0]) : 0;
+      current_chunk_id_init = true;
+    }
+    else
+    {
+      goto finish;
+    }
+  }
+  ++current_chunk_id;
+  ss.str("");
+  ss << current_chunk_id;
+  str_id = ss.str();
+finish:
+  return str_id;
+}
+
+/*
+  check availability of one spider node
+
+  @param(out): result:
+    0 for ok
+    1 for the spider is not available
+    2 for log failed 
+
+  @NOTE:
+    1.update cluster cluster_monitor.cluster_heartbeat table
+    2.log result in TDBCTL: cluster_admin.cluster_heartbeat_log
+*/
+void tc_exec_check_sql(MYSQL* mysql, string check_heartbeat_sql,
+  string host, string spider_server_name, int result)
+{
   string error_code = "0";
   string message = "";
-  string str_id = tc_generate_id();
-  if (str_id.size() < 1)
+  if (mysql)
   {
-    result = 2;
-    goto finish;
-  }
-  for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
-  { 
-    host = its->first;
-    spider_server_name = spider_server_name_map[its->first];
-    MYSQL* spider_conn = its->second;
-    if (tc_exec_sql_without_result(spider_conn, check_heartbeat_sql, &exec_info))
+    stringstream ss;
+    tc_exec_info exec_info;
+    if (tc_exec_sql_without_result(mysql, check_heartbeat_sql, &exec_info))
     {
-      result = 1;
+      result = result ? result : 1;
       ss.str("");
       ss << exec_info.err_code;
       error_code = ss.str();
@@ -345,24 +391,73 @@ int tc_check_cluster_availability()
       exec_info.row_affect = 0;
       exec_info.err_msg = "";
     }
-    if (tc_monitor_log(tdbctl_server_name, spider_server_name, host, error_code, message)) 
-    {
-      result = 2;
-    }
   }
-finish:
+  else
+  {
+    error_code = "2013";
+    message = "mysql is an null pointer";
+  }
+  if (tc_monitor_log(tdbctl_server_name, spider_server_name, host,
+    error_code, message))
+  {
+    result = 2;
+  }
+}
+
+/*
+  check availability of all spider node in parallel mode
+   
+  @NOTE:
+    do tc_exec_check_sql parallel
+*/
+int tc_check_cluster_availability()
+{
+  int result = 0;
+  int count = spider_conn_map.size();
+  int i = 0;
+
+  //init for sql
+  string check_heartbeat_sql = "update cluster_monitor.cluster_heartbeat set k=(k+1)%1024";
+  string spider_server_name = "";
+  string host = "";
+
+  MYSQL* spider_conn;
+  map<string, MYSQL*>::iterator its;
+  thread* thread_array = new thread[count];
+  for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
+  {
+    host = its->first;
+    spider_conn = its->second;
+    spider_server_name = spider_server_name_map[its->first];
+    thread tmp_t(tc_exec_check_sql, spider_conn, check_heartbeat_sql, host,
+      spider_server_name, result);
+    thread_array[i] = move(tmp_t);
+    i++;
+  }
+
+  for (int i = 0; i < count; i++)
+  {
+    if (thread_array[i].joinable())
+      thread_array[i].join();
+  }
+
+  delete[] thread_array;
   if (result == 2)
   {
-    sql_print_warning("TDBCTL MONITOR: select or replace cluster_heartbeat_log failed");
+    sql_print_warning("TDBCTL MONITOR: select or replace"
+      " cluster_heartbeat_log failed");
   }
   return result;
 }
 
 /*
-result:
-0 ok
-1 monitor error
-2 select or replace cluster_heartbeat_log  error, need to record error_log
+  @NOTE:
+  process monitor log by PRIMARY TDBCTL
+
+  @retval:
+  0 ok
+  1 monitor error
+  2 select or replace cluster_heartbeat_log  error, need to record error_log
 */
 int tc_process_monitor_log()
 {
@@ -374,8 +469,10 @@ int tc_process_monitor_log()
   int num_ok;
   // num of TDBCTL which monitor error
   int num_error;
-  //record the time of process result
+  //record the times of process result
   ulong t = 0;
+  string spider_host;
+  string spider_server_name;
   tc_exec_info exec_info;
   MYSQL_RES* res;
   MYSQL_ROW row = NULL;
@@ -399,6 +496,11 @@ int tc_process_monitor_log()
   select_sql += quotation;
   select_sql += time_string;
   select_sql += quotation;
+  /*use str_chunk_id to  get the records logged in the same cycle*/
+  str_chunk_id = tc_generate_chunk_id();
+  if (str_chunk_id.size() < 1)
+    return 2;
+  
   map<string, string> spider_server_name_map_tmp = spider_server_name_map;
   while (spider_server_name_map_tmp.size() > 0 && t < tc_check_availability_interval)
   {
@@ -412,7 +514,9 @@ int tc_process_monitor_log()
       time>\"2020-04-25 20:11:17\" and server_name=\"SPIDER0\""
       */
       string select_num_all = select_sql + " and server_name=";
-      select_num_all += quotation + its->second + quotation;
+      spider_host = its->first;
+      spider_server_name = its->second;
+      select_num_all += quotation + spider_server_name + quotation;
       res = tc_exec_sql_with_result(tdbctl_primary_conn, select_num_all);
       if (res && (row = mysql_fetch_row(res)))
       {
@@ -433,7 +537,7 @@ int tc_process_monitor_log()
         if (num_ok > 0)
         {
           //log ok for spider node
-          if (!(tc_master_monitor_log(true, time_string, its->second)))
+          if (!(tc_master_monitor_log(true, time_string, spider_server_name, spider_host)))
           {
             spider_server_name_map_tmp.erase(its++);
             continue;
@@ -451,7 +555,7 @@ int tc_process_monitor_log()
           {
             //log error for spider node
             cluster_monitor_reuslt = false;
-            if (!(tc_master_monitor_log(false, time_string, its->second)))
+            if (!(tc_master_monitor_log(false, time_string, spider_server_name, spider_host)))
             {
               spider_server_name_map_tmp.erase(its++);
               continue;
@@ -478,8 +582,10 @@ int tc_process_monitor_log()
     cluster_monitor_reuslt = false;
     for (its = spider_server_name_map_tmp.begin(); its != spider_server_name_map_tmp.end(); ++its)
     {
+      spider_host = its->first;
+      spider_server_name = its->second;
       string select_num_all = select_sql + " and server_name= ";
-      select_num_all += quotation + its->second + quotation;
+      select_num_all += quotation + spider_server_name + quotation;
 
       string select_num_error = select_num_all + " and code>0 ";
       res = tc_exec_sql_with_result(tdbctl_primary_conn, select_num_error);
@@ -495,15 +601,16 @@ int tc_process_monitor_log()
       //if there is and record, then re-use it
       if (num_error)
       {
-        if (tc_master_monitor_log(false, time_string, its->second))
+        if (tc_master_monitor_log(false, time_string, spider_server_name, spider_host))
         {
           result = 2;
           continue;
         }
       }
-      else/*log with unknown*/
+      else/*no record of the spider node,then log with unknown by master*/
       {
-        if (tc_monitor_log("",its->second, its->first, "1", "unknown, can't get result"))
+        if (tc_monitor_log("", spider_server_name, spider_host,
+          "1", "unknown, can't get result"))
         {
           result = 2;
           continue;
@@ -538,48 +645,85 @@ int tc_process_monitor_log()
 }
 
 /*
-log in cluster_admin.cluster_heartbeat_log by master_tdbctl
-flag
-0 for error
-1 for ok
+  log in cluster_admin.cluster_heartbeat_log by PRIMARY  TDBCTL
+  
+  @param
+    flag: 0 for error, 1 for ok
 */
-int tc_master_monitor_log(bool flag, string time_string, string spider_server_name)
+int tc_master_monitor_log(bool flag, string time_string, string spider_server_name, string spider_host)
 {
   int result = 0;
+  MYSQL_ROW row = NULL;
+  MYSQL_RES* res;
+  string code;
+  string message;
   tc_exec_info exec_info;
+  string str_id; 
+  string select_sql;
   string quotation = "\"";
-  string replace_sql = "replace into cluster_admin.cluster_heartbeat_log "
-    " (id,server_name,host,code,message) select ";
-  string str_id = tc_generate_id();
+  string replace_sql;
+
+  /*init select_sql to get  code and  message*/
+  if (flag)
+  {
+    select_sql = "select code, message from"
+      " cluster_admin.cluster_heartbeat_log where code=0  and time>";
+  }
+  else
+  {
+    select_sql = "select code, message from"
+      " cluster_admin.cluster_heartbeat_log where code>0  and time>";
+  }
+  select_sql += quotation;
+  select_sql += time_string;
+  select_sql += quotation;
+  select_sql += " and server_name=";
+  select_sql += quotation;
+  select_sql += spider_server_name;
+  select_sql += quotation;
+  select_sql += " limit 1";
+
+  res = tc_exec_sql_with_result(tdbctl_primary_conn, select_sql);
+  if (res && (row = mysql_fetch_row(res)))
+  {
+    code = row[0];
+    message = row[1];
+  }
+  else
+  {
+    result = 2;
+    goto finish;
+  }
+
+  /*init replace_sql to log with chunk_id*/
+  replace_sql = "replace into cluster_admin.cluster_heartbeat_log "
+    " (id,chunk_id,server_name,host,code,message) values(";
+  str_id = tc_generate_id();
   if (str_id.size() < 1)
   {
     result = 2;
     goto finish;
   }
   replace_sql += str_id;
-  replace_sql += " as id,server_name,host,code,message from "
-    " cluster_admin.cluster_heartbeat_log where time>";
-  replace_sql += quotation;
-  replace_sql += time_string;
-  replace_sql += quotation;
-  replace_sql += " and server_name=";
+  replace_sql += ",";
+  replace_sql += str_chunk_id;
+  replace_sql += ",";
   replace_sql += quotation;
   replace_sql += spider_server_name;
   replace_sql += quotation;
-  if (flag)
-  {
-    replace_sql += " and code=0 limit 1";
-  }
-  else 
-  {
-    replace_sql += " and code>0 limit 1";
-  }
-  /*
-  replace into cluster_admin.cluster_heartbeat_log (id,server_name,host,code,message)
-  select 33840 as id,server_name,host,code,message from
-  cluster_admin.cluster_heartbeat_log where time>'2020-04-25 20:22:28'
-  and server_name="SPIDER0" and code>0 limit 1
-  */
+  replace_sql += ",";
+  replace_sql += quotation;
+  replace_sql += spider_host;
+  replace_sql += quotation;
+  replace_sql += ",";
+  replace_sql += code;
+  replace_sql += ",";
+  replace_sql += quotation;
+  replace_sql += message;
+  replace_sql += quotation;
+  replace_sql += ")";
+
+  /*log with chunk_id*/
   if (tc_exec_sql_without_result(tdbctl_primary_conn, replace_sql, &exec_info))
   {
     result = 3;
@@ -593,15 +737,33 @@ finish:
   return result;
 }
 
+/*
+  if tdbctl_name is empty,means log by primary TDBCTL,
+  because no TDBCTL record log or log for cluster.
+
+  if tdbctl_name is not empty,means log by no-primary TDBCTL
+*/
 int tc_monitor_log(string tdbctl_name, string spider_server_name, string host,
   string error_code, string message) 
 {
   int result = 0;
   tc_exec_info exec_info;
   string quotation = "\"";
-  string heartbeat_log_sql = "replace into cluster_admin.cluster_heartbeat_log( "
-    "id, tdbctl_name, server_name, host, code, message) values(";
-  string str_id = tc_generate_id();
+  string heartbeat_log_sql; 
+  string str_id;
+  if (tdbctl_name.size() > 0) 
+  {//log by common TDBCTL
+    heartbeat_log_sql = "replace into cluster_admin.cluster_heartbeat_log( "
+      "id, tdbctl_name, server_name, host, code, message) values(";
+  }
+  else
+  {//log bu PRIMARY TDBCTL
+    heartbeat_log_sql = "replace into cluster_admin.cluster_heartbeat_log( "
+      "chunk_id, id, tdbctl_name, server_name, host, code, message) values(";
+    heartbeat_log_sql += str_chunk_id;
+    heartbeat_log_sql += ",";
+  }
+  str_id = tc_generate_id();
   if (str_id.size() < 1)
   {
     result = 2;
@@ -629,6 +791,12 @@ int tc_monitor_log(string tdbctl_name, string spider_server_name, string host,
   heartbeat_log_sql += quotation;
   heartbeat_log_sql += ")";
   /*
+  for primary TDBCTL
+  heartbeat_log_sql = "replace into cluster_admin.cluster_heartbeat_log
+  ( chunk_id, id, tdbctl_name, server_name, host, code, message)
+  values(100,33839,\"TDBCTL0\",\"SPIDER0\",\"127.0.0.1#5000\",0,\"\")"
+
+  for no-primary TDBCTL
   heartbeat_log_sql = "replace into cluster_admin.cluster_heartbeat_log
   ( id, tdbctl_name, server_name, host, code, message)
   values(33839,\"TDBCTL0\",\"SPIDER0\",\"127.0.0.1#5000\",0,\"\")"
@@ -748,7 +916,7 @@ void tc_check_cluster_availability_thread()
         if (tdbctl_is_primary && tc_process_monitor_log())
           res = 1;
 
-        for (ulong i = 0; i < labs(tc_check_availability_interval - 2); ++i)
+        for (ulong i = 0; i < tc_check_availability_interval - 2; ++i)
           sleep(1);
       }
     }
