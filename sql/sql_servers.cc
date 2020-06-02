@@ -1591,7 +1591,7 @@ int tc_do_grants_internal()
       goto exit;
 
     //no need to replication to slave.
-    tdbctl_do_sql = "set tc_admin = off;set sql_log_bin = off";
+    tdbctl_do_sql = "set tc_admin = off;set sql_log_bin = off;";
   }
   else
   {
