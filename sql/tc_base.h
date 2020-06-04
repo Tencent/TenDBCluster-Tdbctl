@@ -421,4 +421,17 @@ int tc_is_primary_tdbctl_node();
 uint tc_get_primary_node(std::string &host, uint *port);
 bool check_server_version(ulong& server_version);
 void free_thd_connection(THD *thd);
+
+int checked_getaddrinfo(const char *nodename, const char *servname, const struct addrinfo *hints, struct addrinfo **res);
+
+/**
+ This function translates hostnames to IP addresses.
+
+ @param[in] host The hostname to translate.
+ @param[out] ip  The IP address after translation.
+ @return false on success, true otherwise.
+ */
+bool
+get_ipv4_addr_from_hostname(const std::string& host, std::string& ip);
+
 #endif /* TC_BASE_INCLUDED */

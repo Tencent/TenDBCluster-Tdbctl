@@ -13,7 +13,7 @@ usage(){
     echo -e " --test			do mysql-test-run"
     echo -e " --debug		compile with debug info"
     echo -e "--------------------------------------------------------"
-    echo -e "  version		default 3.1"
+    echo -e "  version		default 2.0"
     echo -e "  debug			default to false"
     echo -e "  directory		default to /usr/local/mysql"
     echo -e "  boost			default to /home/mysql/boost"
@@ -66,7 +66,7 @@ do
 	esac
 done
 
-suffix="tdbctl-$version"
+suffix="-tdbctl-$version"
 
 if [ $debug == 1 ]
 then
