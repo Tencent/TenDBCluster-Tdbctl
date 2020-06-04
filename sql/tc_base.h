@@ -277,7 +277,7 @@ map<string, MYSQL*> tc_spider_conn_connect(
 );
 
 MYSQL* tc_spider_conn_single(
-	int &ret,
+	string &err_msg,
 	set<string> spider_ipport_set,
 	map<string, string> spider_user_map,
 	map<string, string> spider_passwd_map

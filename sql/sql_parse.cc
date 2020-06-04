@@ -125,7 +125,12 @@
 #include <iostream>
 #include <string>
 #include <regex>
+#ifndef WIN32
 #include <arpa/inet.h>
+#else
+#include <WinSock2.h>
+#endif
+
 using std::max;
 
 /**
@@ -5532,9 +5537,10 @@ end_with_restore_list:
   }
   case TC_SQLCOM_MONITOR_INIT:
   {
-    if (tc_check_cluster_availability_init())
+    string err_msg;
+    if (tc_check_cluster_availability_init(err_msg))
     {
-      my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
+      my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0), err_msg.c_str());
       goto error;
     }
     my_ok(thd);
@@ -6428,9 +6434,10 @@ tcadmin_execute_command(THD* thd, bool first_level)
   }
   case TC_SQLCOM_MONITOR_INIT:
   {
-    if (tc_check_cluster_availability_init())
+    string err_msg;
+    if (tc_check_cluster_availability_init(err_msg))
     {
-      my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0));
+      my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0), err_msg.c_str());
       goto error;
     }
 
@@ -7208,26 +7215,29 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
           }
           else
           {
-            /*
-            Non - clustered spider node,
-            unable to execute request under tc_admin = 1
-            */
-            if (thd->variables.tc_admin && !tc_is_query_from_spider(thd))
+            if (thd->variables.tc_admin)
             {
-              sql_print_warning(ER(ER_TCADMIN_NOT_SPIDER));
-              my_error(ER_TCADMIN_NOT_SPIDER, MYF(0));
-            }       
-            /*
-            Non - primary TDBCTL node,
-            unable to execute request under tc_admin = 1
-            */
-            else if (thd->variables.tc_admin && !tdbctl_is_primary)
-            {
-              sql_print_warning(ER(ER_TCADMIN_NOT_PRIMARY));
-              my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
+              if (!tc_is_query_from_spider(thd))
+              {
+                /*
+                Non - clustered spider node,
+                unable to execute request under tc_admin = 1
+                */
+                sql_print_warning(ER(ER_TCADMIN_NOT_SPIDER));
+                my_error(ER_TCADMIN_NOT_SPIDER, MYF(0));
+              }
+              else if (!tdbctl_is_primary)
+              {
+                /*
+                Non - primary TDBCTL node,
+                unable to execute request under tc_admin = 1
+                */
+                sql_print_warning(ER(ER_TCADMIN_NOT_PRIMARY));
+                my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
+              }
+              else
+                error = tcadmin_execute_command(thd, true);
             }
-            else if(thd->variables.tc_admin)
-              error = tcadmin_execute_command(thd, true);
             else
               error = mysql_execute_command(thd, true);
           }

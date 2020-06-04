@@ -6342,7 +6342,7 @@ static Sys_var_mybool Sys_tc_check_availability(
 	"tc_check_availability",
 	"If set to TRUE, check the availability of the cluster, and record in system table",
 	GLOBAL_VAR(tc_check_availability), CMD_LINE(OPT_ARG),
-	DEFAULT(TRUE));
+	DEFAULT(FALSE));
 
 static Sys_var_ulong Sys_tc_check_repair_routing_interval(
       "tc_check_repair_routing_interval",
