@@ -126,8 +126,9 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
 
   /*
   init for update SQL in TDBCTL
+  cluster_admin.tc_partiton_admin_config need  Sync to slave 
   */
-  string update_sql_cur = "update cluster_admin.tc_partiton_admin_config set "
+  string update_sql_cur = "set sql_log_bin=1;update cluster_admin.tc_partiton_admin_config set "
     " is_partitioned = 1 where db_name =";
   string update_config_sql = "";
   string quotation = "\"";
@@ -638,7 +639,8 @@ int tc_partiton_log(MYSQL* tdbctl_primary_conn, tc_exec_info* exec_info,
   string error_code, string message) 
 {
   int result = 0;
-  string log_sql = "insert into cluster_admin.tc_partiton_admin_log( "
+  //cluster_admin.tc_partiton_admin_log need not sync to slave
+  string log_sql = "set sql_log_bin=0;insert into cluster_admin.tc_partiton_admin_log( "
     " db_name,tb_name,server_name,host,code,message) values(";
   string quotation = "\"";
 
