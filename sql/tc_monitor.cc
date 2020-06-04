@@ -210,22 +210,61 @@ void create_check_cluster_availability_thread()
 
 
 /*
-init schema and data for cluster by random spider  
+  init schema and data for cluster by random spider  
 */
-int tc_check_cluster_availability_init()
+int tc_check_cluster_availability_init(string& err_msg)
 {
-  int result = 0;
   int ret = 0;
+  int result = 0;
   stringstream ss;
   tc_exec_info exec_info;
-  MEM_ROOT mem_root;
+  
   map<string, string> spider_user_map;
   map<string, string> spider_passwd_map;
   set<string>  spider_ipport_set;
   MYSQL* spider_single_conn = NULL;
+
+  map<string, string> tdbctl_ipport_map;
+  map<string, string> tdbctl_user_map;
+  map<string, string> tdbctl_passwd_map;
+  MYSQL *tdbctl_primary_conn = NULL;
+
+  MEM_ROOT mem_root;
   init_sql_alloc(key_memory_monitor, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
 
-  //init for sql
+
+
+  //init sql for create schema on TDBCTL
+  string tdbclt_init_sql = "set tc_admin=0;";
+  tdbclt_init_sql += "CREATE DATABASE IF NOT EXISTS cluster_admin;";
+  tdbclt_init_sql += "CREATE TABLE IF NOT EXISTS cluster_admin.cluster_heartbeat_log"
+    " (id bigint(20) NOT NULL,chunk_id bigint(20) DEFAULT 0, "
+    " time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+    " tdbctl_name char(64) NOT NULL DEFAULT '', server_name  char(64)  NOT NULL DEFAULT '',"
+    " host char(255) NOT NULL DEFAULT '', code int default 0,"
+    " message VARCHAR(1024) NOT NULL DEFAULT '', PRIMARY KEY (id,`tdbctl_name`), "
+    " index spt(server_name)) ENGINE=InnoDB STATS_PERSISTENT=0;";
+  tdbclt_init_sql += "create or replace view cluster_admin.v_cluster_heartbeat_log as"
+    " select id,chunk_id,time,server_name,host,code,message "
+    " from cluster_admin.cluster_heartbeat_log as a where chunk_id=(select max(chunk_id) "
+    " from cluster_admin.cluster_heartbeat_log ) and tdbctl_name='';";
+  tdbclt_init_sql += "CREATE TABLE IF NOT EXISTS cluster_admin.tc_partiton_admin_log"
+    " ( uid int(11) NOT NULL AUTO_INCREMENT, db_name char(64) NOT NULL DEFAULT '',"
+    " tb_name char(64) NOT NULL DEFAULT '', server_name char(64) NOT NULL DEFAULT '',"
+    " host char(255) NOT NULL DEFAULT '', code int DEFAULT 0,"
+    " message VARCHAR(1024) NOT NULL DEFAULT '', "
+    " updatetime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE  CURRENT_TIMESTAMP,"
+    " KEY `uk_db_tb` (`db_name`,`tb_name`), PRIMARY KEY (`uid`)) ENGINE=InnoDB STATS_PERSISTENT=0;";
+  tdbclt_init_sql += "CREATE TABLE IF NOT EXISTS cluster_admin.tc_partiton_admin_config"
+    " ( db_name char(64) NOT NULL DEFAULT '', tb_name char(64) NOT NULL DEFAULT '',"
+    " partition_column char(64) DEFAULT 'thedate', expiration_time int(11) DEFAULT NULL,"
+    " partition_column_type char(64) NOT NULL DEFAULT 'int',"
+    " interval_time int(11) DEFAULT '1' COMMENT 'interval', "
+    " remote_hash_algorithm char(64) DEFAULT 'list', is_partitioned int(11) DEFAULT '0',"
+    " updatetime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE  CURRENT_TIMESTAMP,"
+    " PRIMARY KEY (`db_name`,`tb_name`)) ENGINE=InnoDB STATS_PERSISTENT=0;";
+
+  //init sql for create schema on spider
   string sql = "set ddl_execute_by_ctl = on";
   string create_db_sql = "create database if not exists cluster_monitor";
   string drop_table_sql = "drop table if exists cluster_monitor.cluster_heartbeat";
@@ -243,6 +282,8 @@ int tc_check_cluster_availability_init()
   vector<string>vec(num,"");
   if (num <= 0)
   {
+    result = 1;
+    err_msg = "no mysql in mysql.servers";
     goto finish;
   }
   for (ulong i = 0;num_tmp>0;++i) 
@@ -267,7 +308,35 @@ int tc_check_cluster_availability_init()
   replace_sql.erase(replace_sql.end() - 1);
   init_sql = sql + ";" + create_db_sql + ";" + drop_table_sql + ";" +
     create_table_sql + ";" + replace_sql;
-  
+
+
+  //init connection for TDCBTL
+  tdbctl_ipport_map = get_tdbctl_ipport_map(
+    &mem_root,
+    tdbctl_user_map,
+    tdbctl_passwd_map);
+
+  tdbctl_primary_conn = tc_tdbctl_conn_primary(
+    ret,
+    tdbctl_ipport_map,
+    tdbctl_user_map,
+    tdbctl_passwd_map);
+  if (ret)
+  {
+    result = 1;
+    err_msg = "tc connect to primary node failed";
+    goto finish;
+  }
+
+  // init schema for TDBCTL
+  if (tc_exec_sql_without_result(tdbctl_primary_conn, tdbclt_init_sql, &exec_info))
+  {
+    err_msg = exec_info.err_msg;
+    result = 1;
+    goto finish;
+  }
+
+  //init connection for spider
   spider_ipport_set = get_spider_ipport_set(
     &mem_root,
     spider_user_map,
@@ -275,22 +344,38 @@ int tc_check_cluster_availability_init()
     FALSE);
 
   spider_single_conn = tc_spider_conn_single(
-    ret,
+    err_msg,
     spider_ipport_set,
     spider_user_map,
     spider_passwd_map);
-  if (ret)
+  if (err_msg.size())
   {
     result = 1;
     goto finish;
   }
+
+  //init schema and data for spider
   if (tc_exec_sql_without_result(spider_single_conn, init_sql, &exec_info))
   {
-    result = 2;
+    err_msg = exec_info.err_msg;
+    result = 1;
     goto finish;
   }
+
 finish:
-  mysql_close(spider_single_conn);
+  if (spider_single_conn)
+  {
+    mysql_close(spider_single_conn);
+    spider_single_conn = NULL;
+  }
+  if (tdbctl_primary_conn)
+  {
+    mysql_close(tdbctl_primary_conn);
+    tdbctl_primary_conn = NULL;
+  }
+  tdbctl_ipport_map.clear();
+  tdbctl_user_map.clear();
+  tdbctl_passwd_map.clear();
   spider_ipport_set.clear();
   spider_user_map.clear();
   spider_passwd_map.clear();

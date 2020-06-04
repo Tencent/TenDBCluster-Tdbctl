@@ -25,7 +25,12 @@
 #include <thread>
 #include <mutex>
 #include "rpl_slave.h"
+#ifndef WIN32
 #include <arpa/inet.h>
+#else
+#include <WinSock2.h>
+#endif
+
 
 using namespace std;
 
@@ -2464,7 +2469,7 @@ map<string, MYSQL*> tc_spider_conn_connect(
 }
 
 MYSQL* tc_spider_conn_single(
-	int &ret,
+	string &err_msg,
 	set<string> spider_ipport_set,
 	map<string, string> spider_user_map,
 	map<string, string> spider_passwd_map
@@ -2472,19 +2477,20 @@ MYSQL* tc_spider_conn_single(
 {
   MYSQL* mysql = NULL;
   set<string>::iterator its;
+  char buff[1024];
   if (spider_ipport_set.size())
   {
-    // ipport_c must like 1.1.1.1#3306
+    // ipport must like 1.1.1.1#3306
     string ipport = *(spider_ipport_set.begin());
     if (!(mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])))
     {
       /* error */
-      ret = 1;
-      my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+      sprintf(buff, ER(ER_TCADMIN_CONNECT_ERROR), ipport.c_str());
+      err_msg = buff;
     }
   }
   else
-    ret = 1;
+    err_msg = "no spider in mysql.servers";
 
   return mysql;
 }
