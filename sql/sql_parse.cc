@@ -6938,7 +6938,7 @@ void THD::reset_for_next_command()
 }
 
 /*
-  judge whether the query is from spider node by compare ip and host
+  judge whether the query is from spider node by compare IP address.
   if not, the query will be refused when tc_admin=1
 
   @retval
@@ -6947,38 +6947,23 @@ void THD::reset_for_next_command()
 */
 bool tc_is_query_from_spider(THD* thd) 
 {
-  string ip="";
-  string host="";
-  if (thd->m_security_ctx)
-  {
-    if (thd->m_security_ctx->ip().length)
-      ip = thd->m_security_ctx->ip().str;
+  string query_ip = "";
+  list<FOREIGN_SERVER*> server_list;
 
-    if (thd->m_security_ctx->host().length)
-      host = thd->m_security_ctx->host().str;
-  }
+  if (thd->m_security_ctx && thd->m_security_ctx->ip().length)
+    query_ip = thd->m_security_ctx->ip().str;
 
-  map<string, string>::iterator its;
-  thd->spider_ipport_set = get_spider_ipport_set(
-        thd->mem_root,
-        thd->spider_user_map,
-        thd->spider_passwd_map,
-        TRUE);
-
-  /*
-  compare ip of current TDBCTL node in mysql.servers and current user
-  */
-  for (its = thd->spider_user_map.begin(); its != thd->spider_user_map.end(); its++)
-  {
-    string ipport = its->first;
-    ulong pos = ipport.find("#");
-    string hosts = ipport.substr(0, pos);
-    if (!(strcasecmp((char *)(hosts.data()), (char *)(host.data())))
-        || !strcasecmp((char *)(hosts.data()), (char *)(ip.data()))) 
-    {
-      return true;
+  get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, TRUE);
+  if (std::find_if(server_list.begin(), server_list.end(), [&](FOREIGN_SERVER *server) -> bool {
+    string host = server->host;
+    if (inet_addr(server->host) == INADDR_NONE)
+    {//not ip, try to translate domain to ip
+      if (get_ipv4_addr_from_hostname(server->host, host))
+        sql_print_warning("Unable to translate hostname %s to IP address", server->host);
     }
-  }
+    return strcasecmp(host.c_str(), query_ip.c_str()) == 0;
+  }) != server_list.end())
+    return true;
 
   return false;
 }
