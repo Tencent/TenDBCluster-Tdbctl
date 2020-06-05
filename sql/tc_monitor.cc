@@ -94,7 +94,7 @@ int set_mysql_options(int &error_code, string &message)
   spider_net_write_timeout_sql += ss.str();
 
   /*init for tdbctl_session_variable_sql*/
-  tdbctl_session_variable_sql = "set binlog_format=statement;";
+  tdbctl_session_variable_sql = "set sql_log_bin=0;";
   tdbctl_session_variable_sql += lock_time_sql;
 
   /*init for spider_session_variables_sql*/
