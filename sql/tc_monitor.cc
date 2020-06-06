@@ -266,15 +266,15 @@ int tc_check_cluster_availability_init(string& err_msg)
 
   //init sql for create schema on spider
   string sql = "set ddl_execute_by_ctl = on";
-  string create_db_sql = "create database if not exists cluster_monitor";
-  string drop_table_sql = "drop table if exists cluster_monitor.cluster_heartbeat";
-  string create_table_sql = "create table if not exists cluster_monitor.cluster_heartbeat( "
+  string create_db_sql = "create database if not exists cluster_admin";
+  string drop_table_sql = "drop table if exists cluster_admin.cluster_heartbeat";
+  string create_table_sql = "create table if not exists cluster_admin.cluster_heartbeat( "
     "uid int(11) NOT NULL, "
     "time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
     "k int(11) DEFAULT 0, "
     "PRIMARY KEY(uid) "
     ") ENGINE = InnoDB ";
-  string replace_sql = "replace into   cluster_monitor.cluster_heartbeat(uid) values";
+  string replace_sql = "replace into   cluster_admin.cluster_heartbeat(uid) values";
   string init_sql = "";
   string replace_sql_cur = "";
   ulong num = get_servers_count_by_wrapper(MYSQL_WRAPPER, FALSE);
@@ -453,7 +453,7 @@ finish:
     2 for log failed 
 
   @NOTE:
-    1.update cluster cluster_monitor.cluster_heartbeat table
+    1.update cluster cluster_admin.cluster_heartbeat table
     2.log result in TDBCTL: cluster_admin.cluster_heartbeat_log
 */
 void tc_exec_check_sql(MYSQL* mysql, string check_heartbeat_sql,
@@ -502,7 +502,7 @@ int tc_check_cluster_availability()
   int i = 0;
 
   //init for sql
-  string check_heartbeat_sql = "update cluster_monitor.cluster_heartbeat set k=(k+1)%1024";
+  string check_heartbeat_sql = "update cluster_admin.cluster_heartbeat set k=(k+1)%1024";
   string spider_server_name = "";
   string host = "";
 
