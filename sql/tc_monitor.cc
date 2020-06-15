@@ -457,7 +457,7 @@ finish:
     2.log result in TDBCTL: cluster_admin.cluster_heartbeat_log
 */
 void tc_exec_check_sql(MYSQL* mysql, string check_heartbeat_sql,
-  string host, string spider_server_name, int result)
+  string host, string spider_server_name, int* result)
 {
   string error_code = "0";
   string message = "";
@@ -467,7 +467,7 @@ void tc_exec_check_sql(MYSQL* mysql, string check_heartbeat_sql,
     tc_exec_info exec_info;
     if (tc_exec_sql_without_result(mysql, check_heartbeat_sql, &exec_info))
     {
-      result = result ? result : 1;
+      *result = *result ? *result : 1;
       ss.str("");
       ss << exec_info.err_code;
       error_code = ss.str();
@@ -481,11 +481,12 @@ void tc_exec_check_sql(MYSQL* mysql, string check_heartbeat_sql,
   {
     error_code = "2013";
     message = "mysql is an null pointer";
+    *result = 2;
   }
   if (tc_monitor_log(tdbctl_server_name, spider_server_name, host,
     error_code, message))
   {
-    result = 2;
+    *result = 2;
   }
 }
 
@@ -515,7 +516,7 @@ int tc_check_cluster_availability()
     spider_conn = its->second;
     spider_server_name = spider_server_name_map[its->first];
     thread tmp_t(tc_exec_check_sql, spider_conn, check_heartbeat_sql, host,
-      spider_server_name, result);
+      spider_server_name, &result);
     thread_array[i] = move(tmp_t);
     i++;
   }
@@ -538,6 +539,8 @@ int tc_check_cluster_availability()
 /*
   @NOTE:
   process monitor log by PRIMARY TDBCTL
+  any TDBCTL vote ok for the spider node, the spider node log with ok
+  any spider node is error, the cluster will be unavailable
 
   @retval:
   0 ok
@@ -547,6 +550,7 @@ int tc_check_cluster_availability()
 int tc_process_monitor_log()
 {
   int result = 0;
+  //if any spider is error,the cluster_monitor_reuslt=false
   bool cluster_monitor_reuslt = true;
   int tdbctl_num = tdbctl_ipport_map.size();
   int num_all;
@@ -622,7 +626,12 @@ int tc_process_monitor_log()
         if (num_ok > 0)
         {
           //log ok for spider node
-          if (!(tc_master_monitor_log(true, time_string, spider_server_name, spider_host)))
+          if (tc_master_monitor_log(true, time_string, spider_server_name, spider_host))
+          {
+            //failed to log
+            result = 1;
+          }
+          else
           {
             spider_server_name_map_tmp.erase(its++);
             continue;
@@ -638,8 +647,9 @@ int tc_process_monitor_log()
           }
           if (num_error == tdbctl_num) 
           {
-            //log error for spider node
+            result = 1;
             cluster_monitor_reuslt = false;
+            //log error for spider node
             if (!(tc_master_monitor_log(false, time_string, spider_server_name, spider_host)))
             {
               spider_server_name_map_tmp.erase(its++);
@@ -664,6 +674,7 @@ int tc_process_monitor_log()
   */
   if (spider_server_name_map_tmp.size() > 0)
   {
+    result = 1;
     cluster_monitor_reuslt = false;
     for (its = spider_server_name_map_tmp.begin(); its != spider_server_name_map_tmp.end(); ++its)
     {
@@ -702,6 +713,7 @@ int tc_process_monitor_log()
         }
       }
     }
+    spider_server_name_map_tmp.clear();
   }
 
   if (cluster_monitor_reuslt) 
