@@ -64,7 +64,7 @@ void tc_show_processlist(THD *thd, bool verbose, const char *server_name)
 	field_list.push_back(new Item_int(NAME_STRING("Id"),
 		0, MY_INT64_NUM_DECIMAL_DIGITS));
 	field_list.push_back(new Item_empty_string("User", USERNAME_CHAR_LENGTH));
-	field_list.push_back(new Item_empty_string("Host", LIST_PROCESS_HOST_LEN));
+	field_list.push_back(new Item_empty_string("Host", HOSTNAME_LENGTH));
 	field_list.push_back(field = new Item_empty_string("db", NAME_CHAR_LEN));
 	field->maybe_null = 1;
 	field_list.push_back(new Item_empty_string("Command", 16));
