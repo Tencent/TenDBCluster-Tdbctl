@@ -159,6 +159,8 @@ int tc_remote_admin_partition(MYSQL *tdbctl_primary_conn,
   }
 
   MYSQL_RES* res = tc_exec_sql_with_result(tdbctl_primary_conn, get_partition_sql);
+  //use to free result.
+  MYSQL_RES_GUARD(res);
   if (res)
   {
     MYSQL_ROW row = NULL;
@@ -279,6 +281,8 @@ int get_min_partition(MYSQL* mysql, string remote_db, string tb_name, string& mi
     " NOT NULL order by PARTITION_DESCRIPTION";
 
   MYSQL_RES* res = tc_exec_sql_with_result(mysql, get_min_partition_sql);
+  //use to free result.
+  MYSQL_RES_GUARD(res);
   MYSQL_ROW row = NULL;
   if (res && (row = mysql_fetch_row(res)))
   {
@@ -306,6 +310,8 @@ int get_min_max_partition(MYSQL* mysql, string remote_db, string tb_name, string
     " NOT NULL order by PARTITION_DESCRIPTION";
 
   MYSQL_RES* res = tc_exec_sql_with_result(mysql, get_min_max_partition_sql);
+  //use to free result.
+  MYSQL_RES_GUARD(res);
   MYSQL_ROW row = NULL;
   if (res && (row = mysql_fetch_row(res)))
   {
@@ -816,6 +822,8 @@ int check_table_is_partitioned(MYSQL* mysql, string remote_db, string tb_name,
     quotation + " and TABLE_NAME=" + quotation + tb_name + quotation;
   string check_sql = check_sql_cur1 + remote_db_table_sql + check_sql_cur2;
   MYSQL_RES* res = tc_exec_sql_with_result(mysql, check_sql);
+  //use to free result.
+  MYSQL_RES_GUARD(res);
   MYSQL_ROW row = NULL;
   if (res && (row = mysql_fetch_row(res)))
   {

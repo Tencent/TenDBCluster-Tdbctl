@@ -393,6 +393,8 @@ string tc_generate_id()
     string sql_max_id = "select max(id) from cluster_admin.cluster_heartbeat_log";
     MYSQL_ROW row = NULL;
     res = tc_exec_sql_with_result(tdbctl_primary_conn, sql_max_id);
+    //use to free result.
+    MYSQL_RES_GUARD(res);
     if (res && (row = mysql_fetch_row(res)))
     {
       current_id = row[0] ? atoi(row[0]) : 0;
@@ -426,6 +428,8 @@ string tc_generate_chunk_id()
     string sql_max_id = "select max(chunk_id) from cluster_admin.cluster_heartbeat_log";
     MYSQL_ROW row = NULL;
     res = tc_exec_sql_with_result(tdbctl_primary_conn, sql_max_id);
+    //use to free result.
+    MYSQL_RES_GUARD(res);
     if (res && (row = mysql_fetch_row(res)))
     {
       current_chunk_id = row[0] ? atoi(row[0]) : 0;
@@ -562,8 +566,7 @@ int tc_process_monitor_log()
   ulong t = 0;
   string spider_host;
   string spider_server_name;
-  tc_exec_info exec_info;
-  MYSQL_RES* res;
+  tc_exec_info exec_info; 
   MYSQL_ROW row = NULL;
   map<string, string>::iterator its;
   time_t to_tm_time = (time_t)time((time_t*)0);
@@ -606,7 +609,10 @@ int tc_process_monitor_log()
       spider_host = its->first;
       spider_server_name = its->second;
       select_num_all += quotation + spider_server_name + quotation;
+      MYSQL_RES* res; 
       res = tc_exec_sql_with_result(tdbctl_primary_conn, select_num_all);
+      //use to free result.
+      MYSQL_RES_GUARD(res);
       if (res && (row = mysql_fetch_row(res)))
       {
         num_all = row[0] ? atoi(row[0]) : 0;    
@@ -619,6 +625,8 @@ int tc_process_monitor_log()
         */
         string select_num_ok = select_num_all + " and code=0";
         res = tc_exec_sql_with_result(tdbctl_primary_conn, select_num_ok);
+        //use to free result.
+        MYSQL_RES_GUARD(res);
         if (res && (row = mysql_fetch_row(res)))
         {
           num_ok = row[0] ? atoi(row[0]) : 0;
@@ -641,6 +649,8 @@ int tc_process_monitor_log()
         {
           string select_num_error = select_num_all + " and code>0";
           res = tc_exec_sql_with_result(tdbctl_primary_conn, select_num_error);
+          //use to free result.
+          MYSQL_RES_GUARD(res);
           if (res && (row = mysql_fetch_row(res)))
           {
             num_error = row[0] ? atoi(row[0]) : 0;
@@ -684,7 +694,10 @@ int tc_process_monitor_log()
       select_num_all += quotation + spider_server_name + quotation;
 
       string select_num_error = select_num_all + " and code>0 ";
+      MYSQL_RES* res;
       res = tc_exec_sql_with_result(tdbctl_primary_conn, select_num_error);
+      //use to free result.
+      MYSQL_RES_GUARD(res);
       if (res && (row = mysql_fetch_row(res)))
       {
         num_error = row[0] ? atoi(row[0]) : 0;
@@ -781,6 +794,8 @@ int tc_master_monitor_log(bool flag, string time_string, string spider_server_na
   select_sql += " limit 1";
 
   res = tc_exec_sql_with_result(tdbctl_primary_conn, select_sql);
+  //use to free result.
+  MYSQL_RES_GUARD(res);
   if (res && (row = mysql_fetch_row(res)))
   {
     code = row[0];
