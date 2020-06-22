@@ -47,7 +47,11 @@ static void protocol_store_field(Protocol *protocol, MYSQL_FIELD field, const ch
 void tc_show_processlist(THD *thd, bool verbose, const char *server_name)
 {
 	map<string, MYSQL_RES*> result_map;
-	string show_sql = (verbose ? "SHOW FULL PROCESSLIST" : "SHOW PROCESSLIST");
+	string show_sql = (verbose ? 
+    "select ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO from "
+    " information_schema.processlist" :
+    "select ID,USER,HOST,DB,COMMAND,TIME,STATE,substring(Info,1,100) "
+    "from information_schema.processlist");
 
 	Item *field;
 	List<Item> field_list;
@@ -70,12 +74,6 @@ void tc_show_processlist(THD *thd, bool verbose, const char *server_name)
 	field->maybe_null = 1;
 	field_list.push_back(field = new Item_empty_string("Info", max_query_length));
 	field->maybe_null = 1;
-	field_list.push_back(field = new Item_return_int("Rows_sent",
-		MY_INT64_NUM_DECIMAL_DIGITS,
-		MYSQL_TYPE_LONGLONG));
-	field_list.push_back(field = new Item_return_int("Rows_examined",
-		MY_INT64_NUM_DECIMAL_DIGITS,
-		MYSQL_TYPE_LONGLONG));
 	if (thd->send_result_metadata(&field_list,
 		Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
 		DBUG_VOID_RETURN;
