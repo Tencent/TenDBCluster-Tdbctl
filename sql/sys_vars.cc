@@ -6451,3 +6451,9 @@ static Sys_var_charptr Sys_tc_skip_dump_db(
   READ_ONLY GLOBAL_VAR(tc_skip_dump_db_list),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET,
   DEFAULT("performance_schema,information_schema,mysql,test,db_infobase"));
+
+static Sys_var_mybool Sys_tc_restrict_query_from_spider(
+  "tc_restrict_query_from_spider",
+  "when tc_admin=1 , the query must be from spider node",
+  GLOBAL_VAR(tc_restrict_query_from_spider), CMD_LINE(OPT_ARG),
+  DEFAULT(TRUE));

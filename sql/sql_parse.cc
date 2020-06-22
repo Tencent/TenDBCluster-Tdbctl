@@ -7217,7 +7217,8 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
           {
             if (thd->variables.tc_admin)
             {
-              if (!tc_is_query_from_spider(thd))
+              if (tc_restrict_query_from_spider &&
+                !tc_is_query_from_spider(thd))
               {
                 /*
                 Non - clustered spider node,
