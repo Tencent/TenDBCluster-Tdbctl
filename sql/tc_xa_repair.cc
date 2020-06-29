@@ -73,6 +73,11 @@ void tc_check_and_repair_trans()
     remote_passwd_map, "xa rollback ", rollback_set);
 
   free_root(&mem_root, MYF(0));
+  tc_conn_free(remote_conn_map);
+  remote_conn_map.clear();
+  remote_user_map.clear();
+  remote_passwd_map.clear();
+  remote_ipport_map.clear();
 }
 
 void tc_get_remote_prepared_trans(

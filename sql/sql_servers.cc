@@ -1388,8 +1388,11 @@ bool get_servers_rollback_sql()
   }
 
   string sql = "select * from mysql.servers";
-
-
+  tc_conn_free(spider_conn_map);
+  spider_conn_map.clear();
+  spider_user_map.clear();
+  spider_passwd_map.clear();
+  spider_ipport_set.clear();
   return FALSE;
 }
 
@@ -1479,6 +1482,8 @@ int tc_set_changed_remote_read_only()
     result = 0;
   }
 
+  tc_conn_free(conn_map);
+  conn_map.clear();
   diff_server_list.clear();
   remote_passwd_map.clear();
   remote_user_map.clear();

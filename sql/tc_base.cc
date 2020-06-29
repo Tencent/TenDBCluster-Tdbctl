@@ -2256,6 +2256,8 @@ map<string, string> get_server_uuid_map(
 		}
 		MYSQL_GUARD(conn);
 		res = tc_exec_sql_with_result(conn, sql);
+		//use to free result.
+		MYSQL_RES_GUARD(res);
 		if (res && (row = mysql_fetch_row(res)))
 		{
 			uuid = row[1];
@@ -2629,6 +2631,7 @@ bool tc_conn_free(map<string, MYSQL*> &conn_map)
       mysql = NULL;
     }
   }
+  conn_map.clear();
   return FALSE;
 }
 
@@ -2916,6 +2919,8 @@ string tc_get_variable_value(MYSQL *conn, const char *variable)
   char sql[256];
   sprintf(sql, "select @@%s", variable);
   res = tc_exec_sql_with_result(conn, sql);
+  //use to free result.
+  MYSQL_RES_GUARD(res);
   if (res && (row = mysql_fetch_row(res)))
     return row[0];
 
@@ -3220,6 +3225,8 @@ int tc_is_primary_tdbctl_node()
 
     MYSQL_GUARD(conn);
     res = tc_exec_sql_with_result(conn, sql);
+    //use to free result.
+    MYSQL_RES_GUARD(res);
     if (res && (row = mysql_fetch_row(res)))
       uuid = row[1];
     else

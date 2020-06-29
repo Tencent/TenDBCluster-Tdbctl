@@ -7217,7 +7217,8 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
           {
             if (thd->variables.tc_admin)
             {
-              if (!tc_is_query_from_spider(thd))
+              if (tc_restrict_query_from_spider &&
+                !tc_is_query_from_spider(thd))
               {
                 /*
                 Non - clustered spider node,
@@ -7235,7 +7236,10 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
                 sql_print_warning(ER(ER_TCADMIN_NOT_PRIMARY));
                 my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
               }
-              else
+              /*
+              The user must have super permission
+              */
+              else if(!check_global_access(thd, SUPER_ACL))
                 error = tcadmin_execute_command(thd, true);
             }
             else
