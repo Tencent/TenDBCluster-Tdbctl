@@ -950,6 +950,7 @@ void free_thd_connection(THD *thd)
   thd->spider_passwd_map.clear();
   thd->remote_user_map.clear();
   thd->remote_passwd_map.clear();
+  thd->tc_conn_init = FALSE;
 }
 
 #ifndef EMBEDDED_LIBRARY

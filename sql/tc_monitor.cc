@@ -461,35 +461,30 @@ finish:
     2.log result in TDBCTL: cluster_admin.cluster_heartbeat_log
 */
 void tc_exec_check_sql(MYSQL* mysql, string check_heartbeat_sql,
-  string host, string spider_server_name, int* result)
+  string host, string spider_server_name, int* result, 
+  tc_exec_info* exec_info)
 {
   string error_code = "0";
   string message = "";
   if (mysql)
   {
     stringstream ss;
-    tc_exec_info exec_info;
-    if (tc_exec_sql_without_result(mysql, check_heartbeat_sql, &exec_info))
+    if (tc_exec_sql_without_result(mysql, check_heartbeat_sql, exec_info))
     {
       *result = *result ? *result : 1;
       ss.str("");
-      ss << exec_info.err_code;
+      ss << exec_info->err_code;
       error_code = ss.str();
-      message = exec_info.err_msg;
-      exec_info.err_code = 0;
-      exec_info.row_affect = 0;
-      exec_info.err_msg = "";
+      message = exec_info->err_msg;
+      exec_info->err_code = 0;
+      exec_info->row_affect = 0;
+      exec_info->err_msg = "";
     }
   }
   else
   {
     error_code = "2013";
     message = "mysql is an null pointer";
-    *result = 2;
-  }
-  if (tc_monitor_log(tdbctl_server_name, spider_server_name, host,
-    error_code, message))
-  {
     *result = 2;
   }
 }
@@ -505,22 +500,36 @@ int tc_check_cluster_availability()
   int result = 0;
   int count = spider_conn_map.size();
   int i = 0;
+  stringstream ss;
 
   //init for sql
   string check_heartbeat_sql = "update cluster_admin.cluster_heartbeat set k=(k+1)%1024";
   string spider_server_name = "";
   string host = "";
 
-  MYSQL* spider_conn;
+
+  /* init for exec result: result_map */
   map<string, MYSQL*>::iterator its;
+  map<string, tc_exec_info> result_map;
+  for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
+  {
+    string host = its->first;
+    tc_exec_info exec_info;
+    exec_info.err_code = 0;
+    exec_info.row_affect = 0;
+    exec_info.err_msg = "";
+    result_map.insert(pair<string, tc_exec_info>(host, exec_info));
+  }
+
+  MYSQL* spider_conn;
   thread* thread_array = new thread[count];
   for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
   {
     host = its->first;
     spider_conn = its->second;
-    spider_server_name = spider_server_name_map[its->first];
+    spider_server_name = spider_server_name_map[host];
     thread tmp_t(tc_exec_check_sql, spider_conn, check_heartbeat_sql, host,
-      spider_server_name, &result);
+      spider_server_name, &result, &result_map[host]);
     thread_array[i] = move(tmp_t);
     i++;
   }
@@ -530,13 +539,31 @@ int tc_check_cluster_availability()
     if (thread_array[i].joinable())
       thread_array[i].join();
   }
+  //get result and log
+  map<string, tc_exec_info>::iterator its2;
+  for (its2 = result_map.begin(); its2 != result_map.end(); its2++)
+  {
+    string host = its2->first;
+    tc_exec_info exec_info = its2->second;
+    ss.str("");
+    ss << exec_info.err_code;
+    string error_code = ss.str();
+    spider_server_name = spider_server_name_map[host];
+    if (tc_monitor_log(tdbctl_server_name, spider_server_name, host,
+      error_code, exec_info.err_msg))
+    {
+      result = 2;
+    }
+  }
 
-  delete[] thread_array;
+
   if (result == 2)
   {
     sql_print_warning("TDBCTL MONITOR: select or replace"
       " cluster_heartbeat_log failed");
   }
+  delete[] thread_array;
+  result_map.clear();
   return result;
 }
 
