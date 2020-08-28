@@ -551,8 +551,6 @@ bool Server_options::insert_into_cache() const
 
   /* set to 0 if not specified */
   server->port= m_port != PORT_NOT_SET ? m_port : 0;
-  /* if not do this, while we get port from server_caches, may core dump */
-  server->sport = strdup_root(&mem, std::to_string(server->port).c_str());
   server->version = 0;
   /*
   maintain for create server
@@ -2092,7 +2090,6 @@ bool tc_create_repair_sql(map<string, FOREIGN_SERVER*> tdbctl_server_map,
         strcmp(server->scheme, server_bak->scheme) ||
         strcmp(server->socket, server_bak->socket) ||
         strcmp(server->owner, server_bak->owner) ||
-        strcmp(server->sport, server_bak->sport) ||
         server->port != server_bak->port))
       {/*if same, do nothing*/ 
         continue;
@@ -2300,15 +2297,15 @@ int back_up_one_server(FOREIGN_SERVER* server)
   DBUG_ENTER("insert_into_servers_cache_version");
   /* construct  FOREIGN_SERVER_V */
   FOREIGN_SERVER* tmp = (FOREIGN_SERVER*)alloc_root(&mem_bak, sizeof(FOREIGN_SERVER));
-  tmp->server_name = strdup_root(&mem_bak, server->server_name);
-  tmp->host = strdup_root(&mem_bak, server->host);
-  tmp->username = strdup_root(&mem_bak, server->username);
-  tmp->password = strdup_root(&mem_bak, server->password);
-  tmp->db = strdup_root(&mem_bak, server->db);
-  tmp->scheme = strdup_root(&mem_bak, server->scheme);
-  tmp->socket = strdup_root(&mem_bak, server->socket);
-  tmp->owner = strdup_root(&mem_bak, server->owner);
-  tmp->sport = strdup_root(&mem_bak, server->sport);
+  tmp->server_name = safe_strdup_root(&mem_bak, server->server_name);
+  tmp->host = safe_strdup_root(&mem_bak, server->host);
+  tmp->username = safe_strdup_root(&mem_bak, server->username);
+  tmp->password = safe_strdup_root(&mem_bak, server->password);
+  tmp->db = safe_strdup_root(&mem_bak, server->db);
+  tmp->scheme = safe_strdup_root(&mem_bak, server->scheme);
+  tmp->socket = safe_strdup_root(&mem_bak, server->socket);
+  tmp->owner = safe_strdup_root(&mem_bak, server->owner);
+  tmp->sport = safe_strdup_root(&mem_bak, server->sport);
   tmp->port = server->port;
   tmp->server_name_length = server->server_name_length;
   tmp->version = server->version;
@@ -2426,7 +2423,6 @@ bool update_server_version(bool* version_updated)
         strcmp(server->scheme, server_bak->scheme) ||
         strcmp(server->socket, server_bak->socket) ||
         strcmp(server->owner, server_bak->owner) ||
-        strcmp(server->sport, server_bak->sport) ||
         server->port != server_bak->port)
       {/* not equal: 1.update server_v; 2.version++ */
         server_bak->version++;
