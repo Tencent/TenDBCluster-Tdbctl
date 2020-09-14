@@ -5358,7 +5358,7 @@ end_with_restore_list:
       }
 
       /* get an unique server_name by wrapper */
-      string server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme(), TRUE);
+      string server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme());
       DBUG_ASSERT(server_name.length() != 0);
       lex->server_options.m_server_name.length = server_name.length();
       lex->server_options.m_server_name.str =
@@ -6261,7 +6261,7 @@ tcadmin_execute_command(THD* thd, bool first_level)
       }
 
       /* get an unique server_name by wrapper */
-      string server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme(), TRUE);
+      string server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme());
       DBUG_ASSERT(server_name.length() != 0);
       lex->server_options.m_server_name.length = server_name.length();
       lex->server_options.m_server_name.str =
