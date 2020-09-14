@@ -58,8 +58,7 @@ FOREIGN_SERVER* get_server_by_name(
 );
 
 std::string get_new_server_name_by_wrapper(
-		const char* wrapper_name,
-		bool with_slave
+		const char* wrapper_name
 );
 
 const char *get_wrapper_prefix_by_wrapper(

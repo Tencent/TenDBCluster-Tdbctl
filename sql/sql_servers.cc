@@ -1198,19 +1198,19 @@ void get_server_by_wrapper(
    frequent ADD/DROP node
 */
 string get_new_server_name_by_wrapper(
-    const char* wrapper_name,
-    bool with_slave
+    const char* wrapper_name
 )
 {
   ostringstream server_name;
-  string wrapper_slave = wrapper_name;
   ulong records = 0;
   ulong max_suffix_num = 0;
+  //whether wrapper is spider or spider_slave
+  bool is_spider = false;
 
   server_name.str("");
   server_name << get_wrapper_prefix_by_wrapper(wrapper_name);
-  if (with_slave)
-    wrapper_slave +=  "_SLAVE";
+  if (strcasecmp(server_name.str().c_str(), tdbctl_spider_wrapper_prefix) == 0)
+    is_spider = true;
 
   mysql_rwlock_rdlock(&THR_LOCK_servers);
   records = servers_cache.records;
@@ -1221,7 +1221,8 @@ string get_new_server_name_by_wrapper(
     {
       //for spider, total SPIDER and SPIDER_SLAVE's server_name must be unique
       if (!strcasecmp(server->scheme, wrapper_name) ||
-          (with_slave && !strcasecmp(server->scheme, wrapper_slave.c_str())))
+          (is_spider && !strcasecmp(server->scheme, SPIDER_WRAPPER) ||
+          !strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER)))
       {
         ulong suffix_num = 0;
         string prefix = server->server_name;
