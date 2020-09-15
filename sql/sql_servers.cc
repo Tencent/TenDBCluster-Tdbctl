@@ -1552,8 +1552,8 @@ int tc_do_grants_internal()
   {
     error = 0;
     push_warning_printf(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_INTERNAL_GRANT_ERROR,
-                        "skip do internal grant, at least exist one spider,\
-                        tdbctl and mysql wrapper type in mysql.servers");
+                        "skip do internal grant, at least exist one spider,"
+                        "tdbctl and mysql wrapper type in mysql.servers");
     goto exit;
   }
 

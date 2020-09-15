@@ -5385,9 +5385,8 @@ end_with_restore_list:
         goto error;
       }
 
-      //Only flush mysql.servers to this new added spider.
-      if (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0 ||
-        strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)
+      //Only flush mysql.servers to this new added spider, exclude spider_slave
+      if (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) 
         lex->tc_flush_type = FLUSH_ROUTING_BY_SERVER;
 
       break;
