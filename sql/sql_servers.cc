@@ -1226,7 +1226,7 @@ string get_new_server_name_by_wrapper(
       {
         ulong suffix_num = 0;
         string prefix = server->server_name;
-        regex pattern(wrapper_name, regex::icase);
+        regex pattern(server_name.str().c_str(), regex::icase);
         prefix = regex_replace(prefix, pattern, "");
         suffix_num = std::atol(prefix.c_str());
         if (max_suffix_num <= suffix_num)
