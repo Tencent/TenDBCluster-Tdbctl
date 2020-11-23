@@ -6663,6 +6663,9 @@ row_blob_compress_alloc(/* 函数返回压缩后的结果 */
 )
 {
 	byte *compbuf;
+	int res;
+	int n = 0;
+	byte head;
 
 	ut_a(len <= 0xFFFFFFFF);
 	ut_a(blob_compress_length > 0);
@@ -6684,11 +6687,8 @@ row_blob_compress_alloc(/* 函数返回压缩后的结果 */
 		*complen=len + 1;
 	}
 	else
-	{//否则，进行压缩处理
-		int res;
-		int n = 0;
-		byte head;
-
+	{ 
+		/*否则，进行压缩处理 */
 		*complen=  len + len/5 + 12 + 5; // 压缩长度总小于1.2倍原长度+12， 5表示（首字节+最长4字节长度）
 
 		memset(&head, 0, 1);
@@ -6741,7 +6741,8 @@ row_blob_compress_alloc(/* 函数返回压缩后的结果 */
 			return compbuf;
 		}
 		else
-		{// 成功压缩
+		{
+			/* 成功压缩 */
 			row_blob_compress_head_write(&head, 1, n, 0);
 			memcpy(compbuf, &head, 1);
 			*complen += n+1;
