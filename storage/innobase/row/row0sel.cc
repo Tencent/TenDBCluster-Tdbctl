@@ -3189,10 +3189,9 @@ row_sel_store_mysql_field_func(
 					prebuilt->blob_heap = mem_heap_create(
 							UNIV_PAGE_SIZE);
 				}
-				//解压的话，在这里面改变data所指的值
-				if (dict_col_is_compressed(&prebuilt->table->cols[pos_in_mysql]))
-				{
-					//blob字段有压缩属性，处理压缩数据
+				/* 解压的话，在这里面改变data所指的值 */
+				if (dict_col_is_compressed(&prebuilt->table->cols[pos_in_mysql])) {
+					/* blob字段有压缩属性，处理压缩数据 */
 					byte* org_data = (byte*)data;
 					ulint org_len = len;
 
@@ -3210,8 +3209,8 @@ row_sel_store_mysql_field_func(
 						fprintf(stderr, " [InnoDB compress ERROR] BLOB UNCOMPRESS FAILED, table_name : %s\n",
 								(prebuilt->table->name).m_name);
 					}
-				}
-				else{//blob字段没压缩发生，即普通blob字段，按原方式处理
+				} else {
+					/* blob字段没压缩发生，即普通blob字段，按原方式处理 */
 					data = static_cast<byte*>(
 							mem_heap_dup(prebuilt->blob_heap, data, len));
 				}
@@ -3260,10 +3259,10 @@ row_sel_store_mysql_field_func(
 				prebuilt->blob_heap = mem_heap_create(
 						UNIV_PAGE_SIZE);
 			}
-			//解压的话，在这里面改变data所指的值
+			/* 解压的话，在这里面改变data所指的值 */
 			if (dict_col_is_compressed(&prebuilt->table->cols[pos_in_mysql]))
 			{
-				//blob字段有压缩属性，处理压缩数据
+				/* blob字段有压缩属性，处理压缩数据 */
 				byte* org_data = (byte*)data;
 				ulint org_len = len;
 
@@ -3281,8 +3280,8 @@ row_sel_store_mysql_field_func(
 					fprintf(stderr, " [InnoDB compress ERROR] BLOB UNCOMPRESS FAILED, table_name : %s\n",
 							(prebuilt->table->name).m_name);
 				}
-			}
-			else{//blob字段没压缩发生，即普通blob字段，按原方式处理
+			} else {
+				/* blob字段没压缩发生，即普通blob字段，按原方式处理 */
 				data = static_cast<byte*>(
 						mem_heap_dup(prebuilt->blob_heap, data, len));
 			}
