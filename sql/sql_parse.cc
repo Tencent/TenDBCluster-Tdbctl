@@ -5773,6 +5773,9 @@ tcadmin_execute_command(THD* thd, bool first_level)
   string before_sql_for_remote;
   map<string, string> remote_sql_map;
   int shard_count;
+  tspider_shard_func shard_func = tspider_shard_func_crc32;
+  tspider_shard_type shard_type = tspider_shard_type_list;
+  bool is_unsigned_key = false;
   /*when cluster is not available, it is forbidden to DDL or grant*/
   if (tc_check_availability && tc_is_available != 1 &&
     (sql_command_flags[lex->sql_command] & CF_DISALLOW_IN_UNAVAILAVLE))
@@ -5823,6 +5826,15 @@ tcadmin_execute_command(THD* thd, bool first_level)
   shard_count = thd->remote_ipport_map.size();
 
   tc_parse_result_init(&parse_result);
+	
+  /* if shard_count == 0, we should stop here */
+  if (shard_count == 0) {
+    my_error(ER_TCADMIN_NO_REMOTE_DB_FOUND, MYF(0), "No Remote DB has been found");
+    parse_result.result = TRUE;
+    parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE COMMENT";
+    goto error;
+  }
+
   /* tc sql parse */
   switch (lex->sql_command) {
     /* 1. DML or unsupported DDL or DDL don't need tcadmin to execute */
@@ -5998,7 +6010,7 @@ tcadmin_execute_command(THD* thd, bool first_level)
     parse_result.query_string = thd->query();
     parse_result.db_name = tc_get_cur_dbname(thd, lex);
     parse_result.table_name = tc_get_cur_tbname(thd, lex);
-    parse_result.result = tc_parse_getkey_for_spider(thd, key_name, result_info, sizeof(result_info), &parse_result.is_with_unique);
+    parse_result.result = tc_parse_getkey_for_spider(thd, key_name, result_info, sizeof(result_info), &parse_result.is_with_unique, &is_unsigned_key);
     parse_result.result_info = result_info;
     parse_result.shard_key = key_name;
 
@@ -6037,6 +6049,54 @@ tcadmin_execute_command(THD* thd, bool first_level)
       }
     }
 
+    // handle user table comment (shard_count, shard_func, shard_type, etc.)
+    if (lex->create_info.comment.str) 
+    {
+      int ret = parse_get_spider_user_comment(
+        lex->create_info.comment.str,
+        &shard_count,
+        &shard_func,
+        &shard_type
+      );
+
+      if (ret != TCADMIN_PARSE_TABLE_COMMENT_OK) 
+      {
+        switch (ret) {
+        case TCADMIN_PARSE_TABLE_COMMENT_UNSUPPORTED:
+          parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT;
+          parse_result.result = TRUE;
+          parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE COMMENT";
+          break;
+        case TCADMIN_PARSE_SHARD_COUNT_INVALID:
+          parse_result.result = TRUE;
+          parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD COUNT COMMENT";
+          my_error(ER_TCADMIN_SHARD_COUNT_NOT_VALID, MYF(0), parse_result.result_info.c_str());
+          goto error;
+          break;
+        case TCADMIN_PARSE_SHARD_FUNCTION_INVALID:
+          parse_result.result = TRUE;
+          parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD FUNCTION COMMENT";
+          my_error(ER_TCADMIN_SHARD_FUNC_NOT_VALID, MYF(0), parse_result.result_info.c_str());
+          goto error;
+          break;
+        case TCADMIN_PARSE_SHARD_TYPE_INVALID:
+          parse_result.result = TRUE;
+          parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD TYPE COMMENT";
+          my_error(ER_TCADMIN_SHARD_TYPE_NOT_VALID, MYF(0), parse_result.result_info.c_str());
+          goto error;
+          break;
+        case TCADMIN_PARSE_TABLE_COMMENT_ERROR:
+        default:
+          /* handle TCADMIN_PARSE_TABLE_COMMENT_ERROR here */
+          parse_result.result = TRUE;
+          parse_result.result_info = "ERROR: SQL CREATE TABLE WITH ERROR TABLE COMMENT";
+          my_error(ER_TCADMIN_SHARD_COMMENT_ERROR, MYF(0), parse_result.result_info.c_str());
+          goto error;
+          break;
+        }
+      }
+    }
+
     if (lex->create_info.options & HA_LEX_CREATE_TABLE_LIKE)
     {
       parse_result.new_db_name = tc_get_new_dbname(thd, lex);
@@ -6056,15 +6116,6 @@ tcadmin_execute_command(THD* thd, bool first_level)
       parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_CONNECT_STRING;
       parse_result.result = TRUE;
       parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE CONNECT STRING";
-    }
-    else if (lex->create_info.comment.str &&
-      (parse_get_shard_key_for_spider(lex->create_info.comment.str, buf, sizeof(buf)) &&
-        parse_get_config_table_for_spider(lex->create_info.comment.str, buf, sizeof(buf)))
-      )
-    {// invalid table comment
-      parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT;
-      parse_result.result = TRUE;
-      parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE COMMENT";
     }
     else if (create_table_with_field_charset)
     {// table with other filed charset
@@ -6176,6 +6227,53 @@ tcadmin_execute_command(THD* thd, bool first_level)
   }
   case SQLCOM_DROP_TABLE:
   {
+    // handle user table comment (shard_count, shard_func, shard_type, etc.)
+    // if (lex->create_info.comment.str) 
+    // {
+    //   int ret = parse_get_spider_user_comment(
+    //     lex->create_info.comment.str,
+    //     &shard_count,
+    //     &shard_func,
+    //     &shard_type
+    //   );
+
+    //   if (ret != TCADMIN_PARSE_TABLE_COMMENT_OK) 
+    //   {
+    //     switch (ret) {
+    //     case TCADMIN_PARSE_TABLE_COMMENT_UNSUPPORTED:
+    //       parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT;
+    //       parse_result.result = TRUE;
+    //       parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE COMMENT";
+    //       break;
+    //     case TCADMIN_PARSE_SHARD_COUNT_INVALID:
+    //       parse_result.result = TRUE;
+    //       parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD COUNT COMMENT";
+    //       my_error(ER_TCADMIN_SHARD_COUNT_NOT_VALID, MYF(0), parse_result.result_info.c_str());
+    //       goto error;
+    //       break;
+    //     case TCADMIN_PARSE_SHARD_FUNCTION_INVALID:
+    //       parse_result.result = TRUE;
+    //       parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD FUNCTION COMMENT";
+    //       my_error(ER_TCADMIN_SHARD_FUNC_NOT_VALID, MYF(0), parse_result.result_info.c_str());
+    //       goto error;
+    //       break;
+    //     case TCADMIN_PARSE_SHARD_TYPE_INVALID:
+    //       parse_result.result = TRUE;
+    //       parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD TYPE COMMENT";
+    //       my_error(ER_TCADMIN_SHARD_TYPE_NOT_VALID, MYF(0), parse_result.result_info.c_str());
+    //       goto error;
+    //       break;
+    //     case TCADMIN_PARSE_TABLE_COMMENT_ERROR:
+    //     default:
+    //       /* handle TCADMIN_PARSE_TABLE_COMMENT_ERROR here */
+    //       parse_result.result = TRUE;
+    //       parse_result.result_info = "ERROR: SQL CREATE TABLE WITH ERROR TABLE COMMENT";
+    //       my_error(ER_TCADMIN_SHARD_COMMENT_ERROR, MYF(0), parse_result.result_info.c_str());
+    //       goto error;
+    //       break;
+    //     }
+    //   }
+    // }
     parse_result.query_string = thd->query();
     parse_result.db_name = tc_get_cur_dbname(thd, lex);
     parse_result.table_name = tc_get_cur_tbname(thd, lex);
@@ -6479,7 +6577,7 @@ tcadmin_execute_command(THD* thd, bool first_level)
     goto error;
   }
 
-  if (!tc_query_convert(thd, lex, &parse_result, shard_count, &spider_sql, &remote_sql_map))
+  if (!tc_query_convert(thd, lex, &parse_result, shard_count, shard_func, shard_type, is_unsigned_key, &spider_sql, &remote_sql_map))
   {
     /*
       NB: use server_uuid as lock string here
@@ -6490,7 +6588,7 @@ tcadmin_execute_command(THD* thd, bool first_level)
     if (xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str()))
       goto error;
     tc_append_before_query(thd, lex, before_sql_for_spider, before_sql_for_remote);
-    tc_ddl_run(thd, before_sql_for_spider, before_sql_for_remote, spider_sql, remote_sql_map, &exec_result);
+    tc_ddl_run(thd, lex, before_sql_for_spider, before_sql_for_remote, spider_sql, remote_sql_map, &exec_result);
     res = tc_process_all_result(thd, &parse_result, &exec_result);
     goto finish;
   }

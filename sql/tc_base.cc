@@ -733,8 +733,174 @@ int parse_get_config_table_for_spider(
     return 0;
 }
 
+// parse table comment
+// get shard_count, shard_function, shard_type, etc.
+int parse_get_spider_user_comment(
+    const char*   table_comment,
+    int*    shard_count,
+    tspider_shard_func*    shard_func,
+    tspider_shard_type*    shard_type
+) {
+    /* stage indicators */
+    enum stage_indicator {TRIM = 0, PARSE_KEY = 1, PARSE_VALUE = 2, PARSE_DONE = 3};
+    
+    const int buf_len = 16;
+    char keyword_buf[buf_len], value_buf[buf_len];
+    const char* pos = table_comment;
+    const char* begin = NULL;
+    uint len = 0;
+    int stage = 0;
+    int ret = TCADMIN_PARSE_TABLE_COMMENT_OK;
+    int get_key = 0, get_value = 0;
+    
+    /* example: shard_count "1", shard_method "crc32", shard_type "list" */
+    while (pos && *pos != '\0') {
+        switch (stage) {
+        case TRIM:
+            while (*pos != '\0' && (*pos == ' ' || *pos == '\t')) { pos++; }
+            if ((*pos == '\0') || (get_key && get_value)) { stage = PARSE_DONE; }
+            else if (get_key) { stage = PARSE_VALUE; }
+            else { stage = PARSE_KEY; }
+            break;
+        case PARSE_KEY:
+            begin = pos;
+            while (*pos != '\0' && *pos != ' ' && *pos != '\t') { pos++; }
+            if (*pos == '\0' || begin >= pos) {
+                return TCADMIN_PARSE_TABLE_COMMENT_ERROR;
+            }
+            len = ((buf_len - 1) > (uint)(pos - begin)) ? (uint)(pos - begin) : (buf_len - 1);
+            strncpy(keyword_buf, begin, len);
+            keyword_buf[len] = '\0';
+            /* validate keyword_buf */
+            if (!tcadmin_validate_comment_keyword(keyword_buf)) { return TCADMIN_PARSE_TABLE_COMMENT_UNSUPPORTED; }
+            get_key = 1;
+            stage = TRIM;    
+            break;
+        case PARSE_VALUE:
+            if (*pos != '"') { return TCADMIN_PARSE_TABLE_COMMENT_ERROR; }
+            pos++;  /* skip beginning '"' */
+            begin = pos;
+            pos = strstr(begin, "\"");
+            if (!pos || (pos - begin) <= 0) { return TCADMIN_PARSE_TABLE_COMMENT_ERROR; }
+            len = ((buf_len - 1) > (uint)(pos - begin)) ? (uint)(pos - begin) : (buf_len - 1);
+            strncpy(value_buf, begin, len);
+            value_buf[len] = '\0';
+            /* validate and fill value */
+            ret = tcadmin_validate_and_fill_value(keyword_buf, value_buf, shard_count, shard_func, shard_type);
+        	/* if ret != OK, return ret */
+            if (ret != TCADMIN_PARSE_TABLE_COMMENT_OK) { goto parse_all_done; }
+            pos++; /* skip ending '"' */
+            get_value = 1;
+            stage = TRIM;
+            break;
+        case PARSE_DONE:
+            if (*pos == ',') { 
+                /* parse next (key, value) pair */
+                stage = TRIM; 
+                get_key = 0;
+                get_value = 0;
+                pos++;
+            } else {
+                return TCADMIN_PARSE_TABLE_COMMENT_ERROR;
+            }
+            break;
+        default:
+            /* code should not reach here */
+            break;
+        }
+    }
+parse_all_done:
+    return ret;
+}
+
+// return if tdbctl and tspider support this keyword
+int tcadmin_validate_comment_keyword(const char* buf) {
+    char shard_cnt[] = "shard_count";
+    char shard_func[] = "shard_func";
+    char shard_type[] = "shard_type";
+    char shard_key[] = "shard_key";
+    char config_table[] = "config_table";
+    return (
+        (!strcasecmp(buf, shard_cnt)) ||
+        (!strcasecmp(buf, shard_func)) ||
+        (!strcasecmp(buf, shard_type)) ||
+        (!strcasecmp(buf, shard_key)) ||
+        (!strcasecmp(buf, config_table))
+    );
+}
+
+// validate the value for keyword
+// currently, five keywords are allowed
+// 1. shard_count, value should be 0 or 1 or # of remote DBs
+// 2. shard_func, should be "crc32" or "crc32_ci" or "none"
+// 3. shard_type, should be "list" or "range"
+// 4. shard_key, don't process value here
+// 5. config_table, let tspider to handle it
+// If the keyword not in the above 5, return UNSUPPORTED
+int tcadmin_validate_and_fill_value(
+    const char* key_buf,
+    const char* value_buf,
+    int* shard_count,
+    tspider_shard_func* shard_func,
+    tspider_shard_type* shard_type
+) {
+    char str_shard_cnt[] = "shard_count";
+    char str_shard_func[] = "shard_func";
+    char str_shard_type[] = "shard_type";
+	char str_shard_key[] = "shard_key";
+	char str_config_table[] = "config_table";
+    char str_crc32[] = "crc32";
+    char str_crc32_ci[] = "crc32_ci";
+    char str_none[] = "none";
+    char str_type_list[] = "list";
+    char str_type_range[] = "range";
+    int cnt;
+
+    if (!strcasecmp(key_buf, str_shard_cnt)) {
+        /* count, only 0, 1, original shar_count are valid */
+        cnt = atoi(value_buf);
+        /* since atoi fails also return 0, we need to manually check "0" */
+        if ((strlen(value_buf) == 1 && value_buf[0] == '0')) {
+            /* do nothing, leave shard_count as it was */
+        } else {
+            if (cnt == 0) { return TCADMIN_PARSE_TABLE_COMMENT_ERROR; }
+            if (cnt == 1) {
+                *shard_count = 1;
+            } else if (cnt != *shard_count) {
+                return TCADMIN_PARSE_SHARD_COUNT_INVALID;
+            } /* else do nothing, leave shard_count as it was */
+        }
+    } else if (!strcasecmp(key_buf, str_shard_func)) {
+        /* function, only 'crc32' and 'none' are supported */
+        if (!strcasecmp(value_buf, str_crc32)) {
+            *shard_func = tspider_shard_func_crc32;
+        } else if (!strcasecmp(value_buf, str_crc32_ci)) {
+            *shard_func = tspider_shard_func_crc32_ci;
+        } else if (!strcasecmp(value_buf, str_none)) {
+            *shard_func = tspider_shard_func_none;
+        } else {
+            return TCADMIN_PARSE_SHARD_FUNCTION_INVALID;
+        }
+    } else if (!strcasecmp(key_buf, str_shard_type)) {
+        /* type, only 'list' and 'range' are supported */
+        if (!strcasecmp(value_buf, str_type_list)) {
+            *shard_type = tspider_shard_type_list;
+        } else if (!strcasecmp(value_buf, str_type_range)) {
+            *shard_type = tspider_shard_type_range;
+        } else {
+            return TCADMIN_PARSE_SHARD_TYPE_INVALID;
+        }
+    } else if (strcasecmp(key_buf, str_shard_key) && (strcasecmp(key_buf, str_config_table))) {
+    	  /* if it is neither `shard_key` nor `config_table`, then the comment is not supported */
+    	  /* if it is `shard_key`, process it later */
+    	  /* if it is `config_table`, let tspider handle it */
+        return TCADMIN_PARSE_TABLE_COMMENT_UNSUPPORTED;
+    }
+    return TCADMIN_PARSE_TABLE_COMMENT_OK;
+}
+
 // buf_len means length of key_name ... result, etc
-bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_len, bool *is_unique_key)
+bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_len, bool *is_unique_key, bool *is_unsigned_key)
 {
     LEX* lex = thd->lex;
     List_iterator<Create_field> it_field = lex->alter_info.create_list;
@@ -828,7 +994,7 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
 					*/
                     snprintf(result, buf_len, "%s", "ERROR: too more unique key with the different pre key");
                     strcpy(key_name, "");
-                    return 1;
+                    return TRUE;
                 }
 
                 strcpy(key_name, column->field_name.str);
@@ -918,8 +1084,19 @@ bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_
         }
     }
 
+	// get if key is a unsigned type
+  List_iterator<Create_field> list_field = lex->alter_info.create_list;
+  Create_field *tmp_field;
 
-	//specify shard_key or contains index
+    while ((tmp_field = list_field++))
+    {
+        if (!strcmp(tmp_field->field_name, key_name))
+        {
+            *is_unsigned_key = tmp_field->flags & UNSIGNED_FLAG;
+            break;
+        }
+    }
+	  //specify shard_key or contains index
     if (has_shard_key || level > 0)
         return FALSE;
 
@@ -1149,7 +1326,58 @@ string tc_get_only_spider_ddl(TC_PARSE_RESULT *tc_parse_result_t, int shard_coun
     return sql;
 }
 
-string tc_get_spider_create_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+string tcadmin_get_shard_range_by_index(int index, int shard_count, bool is_unsigned) {
+    string ret;
+    ostringstream sstr;
+    /* index should always be less than shard_count, at most equal than shard_count - 1*/
+    if (index == shard_count - 1) 
+    {
+        ret = "MAXVALUE";
+    }
+    else 
+    {
+        if (is_unsigned)
+        {   /* If shard_count == 1, it should not come here */
+            unsigned int range = INT_MAX / shard_count;
+            unsigned int ret_val = range * (index + 1);
+            sstr << ret_val;
+            ret = sstr.str();
+        }
+        else 
+        {
+            int zero_line = (shard_count - 1) / 2;
+            int below_zero_cnt = zero_line + 1;
+            int above_zero_cnt = shard_count - below_zero_cnt;
+            int ret_val = 0;
+            if (index == zero_line)
+            {
+                ret = "0";
+            }            
+            else if (index < zero_line)
+            {
+                ret_val = INT_MIN / below_zero_cnt * (below_zero_cnt - 1 - index);
+                sstr << ret_val;
+                ret = sstr.str();
+            }
+            else
+            {
+                ret_val = INT_MAX / above_zero_cnt * (index - zero_line);
+                sstr << ret_val;
+                ret = sstr.str();
+            }
+            
+        }
+    }
+    return ret;
+}
+
+string tc_get_spider_create_table(
+    TC_PARSE_RESULT *tc_parse_result_t, 
+    int shard_count, 
+    tspider_shard_func shard_func,
+    tspider_shard_type shard_type,
+    bool is_unsigned_key
+)
 {
     ostringstream  sstr;
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
@@ -1158,9 +1386,8 @@ string tc_get_spider_create_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_
     string db_name = tc_parse_result_t->db_name;
     string tb_name = tc_parse_result_t->table_name;
     string connection_string;
-    string partiton_hash_by = " partition by list(crc32(";
+    string partiton_by = " partition by ";
     string spider_partition_count_str;
-    
 
     regex pattern1("ENGINE\\s*=\\s*MyISAM", regex::icase);
     regex pattern2("ENGINE\\s*=\\s*InnoDB", regex::icase);
@@ -1177,21 +1404,54 @@ string tc_get_spider_create_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_
 
     sstr << shard_count;
     spider_partition_count_str = sstr.str();
-    partiton_hash_by = partiton_hash_by + "`" + hash_key + "`" + ")%" + spider_partition_count_str + ") (";
+    if (shard_type == tspider_shard_type_list) 
+    {
+        partiton_by = partiton_by + "list(";
+    } 
+    else 
+    {   /* tspider_shard_type_range */
+        partiton_by = partiton_by + "range(";
+    }
+    if (shard_func == tspider_shard_func_crc32) 
+    {
+        is_unsigned_key = true;
+        partiton_by = partiton_by + "crc32(" + 
+            "`" + hash_key + "`" + ")%" + spider_partition_count_str + ") (";
+    }
+    else if (shard_func == tspider_shard_func_crc32_ci)
+    {
+        is_unsigned_key = true;
+        partiton_by = partiton_by + "crc32_ci(" + 
+            "`" + hash_key + "`" + ")%" + spider_partition_count_str + ") (";
+    }
+    else 
+    {   /* tspider_shard_func_none */
+        partiton_by = partiton_by + 
+            "`" + hash_key + "`" + "%" + spider_partition_count_str + ") (";
+    }
 
-    spider_create_sql = spider_create_sql + partiton_hash_by;
+    spider_create_sql = spider_create_sql + partiton_by;
     for (int i = 0; i < shard_count; i++)
     {
         sstr.str("");
         sstr << i;
         string hash_value = sstr.str();
+        string range_value;
         string server_info;
         string pt_sql;
         string server_name = server_name_pre + hash_value;
         server_info = "server \"" + server_name + "\"";
-        pt_sql = "PARTITION pt" + hash_value + " values in (" + hash_value + ") COMMENT = 'database \"" 
-            + db_name + "_" + hash_value + "\", table \"" + tb_name + "\", " + server_info +  "\' ENGINE = SPIDER";
-
+        if (shard_type == tspider_shard_type_list) 
+        {
+            pt_sql = "PARTITION pt" + hash_value + " values in (" + hash_value + ") COMMENT = 'database \"" 
+                + db_name + "_" + hash_value + "\", table \"" + tb_name + "\", " + server_info +  "\' ENGINE = SPIDER";
+        }
+        else
+        {   /* range */
+            pt_sql = "PARTITION pt" + hash_value + " values less than (" + tcadmin_get_shard_range_by_index(i, shard_count, is_unsigned_key) 
+                + ") COMMENT = 'database \"" 
+                + db_name + "_" + hash_value + "\", table \"" + tb_name + "\", " + server_info +  "\' ENGINE = SPIDER";
+        }
         if (i < shard_count - 1)
         {
             pt_sql = pt_sql + ",";
@@ -1623,6 +1883,9 @@ bool tc_query_convert(
   LEX *lex, 
   TC_PARSE_RESULT *tc_parse_result_t, 
   int shard_count, 
+  tspider_shard_func shard_func,
+  tspider_shard_type shard_type,
+  bool is_unsigned_key,
   string *spider_sql, 
   map<string, string> *remote_sql_map
 )
@@ -1764,7 +2027,7 @@ bool tc_query_convert(
         /* 3. DDL need dispatch to spider and remote mysql */
     case SQLCOM_CREATE_TABLE:
     {
-        *spider_sql = tc_get_spider_create_table(tc_parse_result_t, shard_count);
+        *spider_sql = tc_get_spider_create_table(tc_parse_result_t, shard_count, shard_func, shard_type, is_unsigned_key);
         *remote_sql_map = tc_get_remote_create_table(tc_parse_result_t, shard_count);
         break;
     }
@@ -1923,7 +2186,6 @@ bool tc_spider_ddl_run_paral(
     thread *thread_array = new thread[spider_count];
     map<string, int> ret_map;
     int i = 0;
-    bool result = FALSE;
 
     map<string, MYSQL*>::iterator its;
     for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
@@ -1963,7 +2225,7 @@ bool tc_spider_ddl_run_paral(
     //    exec_result->spider_result_info.insert(pair<string, tc_exec_info>(ipport, exec_info));
     //}
     delete[] thread_array;
-    return result;
+    return exec_result->result;
 }
 
 bool tc_remotedb_ddl_run_paral(
@@ -1979,10 +2241,13 @@ bool tc_remotedb_ddl_run_paral(
     thread *thread_array = new thread[remote_count];
     map<string, int> ret_map;
     int i = 0;
-    bool result = FALSE;
 
     if (remote_sql_map.size() == 0)
-        return result;
+    {
+        exec_info.err_msg = "No Remote DB has been found.";
+        exec_result->remote_result_info.insert(pair<string, tc_exec_info>("", exec_info));
+        return TRUE;
+    }
 
     map<string, string>::iterator its;
     for (its = remote_ipport_map.begin(); its != remote_ipport_map.end(); its++)
@@ -2028,12 +2293,13 @@ bool tc_remotedb_ddl_run_paral(
     //    exec_result->remote_result_info.insert(pair<string, tc_exec_info>(ipport, exec_info));
     //}
     delete[] thread_array;
-    return result;
+    return exec_result->result;
 }
 
 
 bool tc_ddl_run(
   THD *thd, 
+  LEX *lex,
   string before_sql_for_spider, 
   string before_sql_for_remote, 
   string spider_sql, 
@@ -2041,7 +2307,7 @@ bool tc_ddl_run(
   tc_execute_result *exec_result
 )
 {
-    bool spider_run_first = FALSE;
+    bool spider_run_first = tc_spider_run_first(thd, lex);
     exec_result->result = FALSE;
     if (spider_run_first)
     {/* drop table/database/column */

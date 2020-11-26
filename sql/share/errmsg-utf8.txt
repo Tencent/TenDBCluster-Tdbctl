@@ -7877,6 +7877,22 @@ ER_TCADMIN_NOT_AVAILABLE
 
 ER_TCADMIN_NOT_PRIMARY
   eng "EXECUTE FAILED: the current tdbctl is not primary node"
+
+ER_TCADMIN_SHARD_COMMENT_ERROR
+  eng "Invalid table comment"
+
+ER_TCADMIN_SHARD_COUNT_NOT_VALID
+  eng "Invalid shard_count, must be 0 or 1 or # of backends"
+
+ER_TCADMIN_SHARD_FUNC_NOT_VALID
+  eng "Invalid shard_func, must be crc32 or none"
+
+ER_TCADMIN_SHARD_TYPE_NOT_VALID
+  eng "Invalid shard_func, must be list or range"
+
+ER_TCADMIN_NO_REMOTE_DB_FOUND
+  eng "EXECUTE FAILED No remote db found"
+
 #
 # End of MyRocks specific messages
 #
