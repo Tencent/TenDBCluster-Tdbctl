@@ -25,6 +25,17 @@ using namespace std;
 //value of server_name in cluster_monitor.cluster_heartbeat
 #define CLUSTER_FLAG "cluster"
 
+//some user define shard errors
+#define TCADMIN_PARSE_TABLE_COMMENT_OK 0
+#define TCADMIN_PARSE_TABLE_COMMENT_ERROR 1
+#define TCADMIN_PARSE_TABLE_COMMENT_UNSUPPORTED 2
+#define TCADMIN_PARSE_SHARD_COUNT_INVALID 3
+#define TCADMIN_PARSE_SHARD_FUNCTION_INVALID 4
+#define TCADMIN_PARSE_SHARD_TYPE_INVALID 5
+
+enum tspider_shard_func { tspider_shard_func_crc32, tspider_shard_func_crc32_ci, tspider_shard_func_none };
+enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
+
 //mysql guard to free mysql connection
 #define MYSQL_GUARD(p) std::shared_ptr<MYSQL> p##p(p, \
 [](MYSQL *p) {mysql_close(p);});
@@ -88,6 +99,23 @@ typedef struct tc_parse_result
 void tc_parse_result_init(TC_PARSE_RESULT *parse_result_t);
 bool is_add_or_drop_unique_key(THD *thd, LEX *lex);
 
+int parse_get_spider_user_comment(
+  const char* comment, 
+  int* shard_count,
+  tspider_shard_func* shard_func,
+  tspider_shard_type* shard_type
+);
+
+int tcadmin_validate_comment_keyword(const char* buf);
+
+int tcadmin_validate_and_fill_value(
+  const char* key_buf,
+  const char* value_buf,
+  int* shard_count,
+  tspider_shard_func* shard_func,
+  tspider_shard_type* shard_type
+);
+
 /*
 sub convert_spider_use_db() {
 sub convert_spider_set_db() {
@@ -100,7 +128,8 @@ bool tc_parse_getkey_for_spider(
   char *key_name, 
   char *result, 
   int buf_len, 
-  bool *is_unique_key
+  bool *is_unique_key,
+  bool *is_unsigned_key
 );
 
 string tc_get_only_spider_ddl_withdb(
@@ -113,9 +142,18 @@ string tc_get_only_spider_ddl(
   int shard_count
 );
 
+string tcadmin_get_shard_range_by_index(
+  int index, 
+  int shard_count, 
+  bool is_unsigned
+);
+
 string tc_get_spider_create_table(
   TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+  int shard_count,
+  tspider_shard_func shard_func,
+  tspider_shard_type shard_type,
+  bool is_unsigned_key
 );
 
 map<string, string> tc_get_remote_create_table(
@@ -224,6 +262,9 @@ bool tc_query_convert(
   LEX *lex, 
   TC_PARSE_RESULT *tc_parse_result_t, 
   int shard_count, 
+  tspider_shard_func shard_func,
+  tspider_shard_type shard_type,
+  bool is_unsigned_key,
   string *spider_create_sql, 
   map<string, string> *remote_create_sql
 );
@@ -241,8 +282,16 @@ bool tc_remotedb_ddl_run_async(
   tc_execute_result *exec_result
 );
 
+inline bool tc_spider_run_first(THD *thd, LEX *lex) {
+    enum_sql_command sqlcom = tc_get_sql_type(thd, lex);
+    return (sqlcom == SQLCOM_CREATE_TABLE) ||
+           (sqlcom == SQLCOM_DROP_TABLE) ||
+           (sqlcom == SQLCOM_DROP_DB);
+}
+
 bool tc_ddl_run(
   THD *thd, 
+  LEX *lex,
   string before_sql_for_spider, 
   string before_sql_for_remote, 
   string spider_sql, 
