@@ -1175,49 +1175,62 @@ bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESU
 
 bool tc_process_all_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESULT* exec_result)
 {
+  string err_msg;
+  ostringstream  sstr;
+
   if (exec_result->result)
   {/* error happened */
-    string err_msg = "\n";
-    ostringstream  sstr;
-    map<string, string> remote_ipport_map = thd->remote_ipport_map;
-
-    for (map<string, tc_exec_info>::iterator iter = exec_result->spider_result_info.begin(); iter != exec_result->spider_result_info.end(); iter++)
+    map<string, tc_exec_info>::iterator its;
+    string spider_err_msg_pre = "\nSpider Node Error:\n";
+    string remote_err_msg_pre = "Data Node Error:\n";
+    string spider_err_msg = "";
+    string remote_err_msg = "";
+    for (its = exec_result->spider_result_info.begin(); its != exec_result->spider_result_info.end(); its++)
     {
-      string ipport = iter->first;
-      tc_exec_info exec_info = iter->second;
+      string ipport = its->first;
+      tc_exec_info exec_info = its->second;
       if (exec_info.err_code)
       {
         sstr.str("");
         sstr << exec_info.err_code;
-        err_msg += "Spider@" + ipport + ": (Error ";
-        err_msg += sstr.str();
-        err_msg +=  ": " + exec_info.err_msg + ")\n";
+        spider_err_msg = spider_err_msg + "Host," + ipport + ";  Error Code,";
+        spider_err_msg = spider_err_msg + sstr.str() + "; ";
+        spider_err_msg = spider_err_msg + "Error Message," + exec_info.err_msg.c_str();
+        spider_err_msg = spider_err_msg + "\n";
       }
     }
 
-    for (map<string, string>::iterator iter = remote_ipport_map.begin(); iter != remote_ipport_map.end(); iter++) {
-      string name = iter->first;
-      string ipport = iter->second;
-      
-      if (exec_result->remote_result_info.find(ipport) != exec_result->remote_result_info.end()) {
-        tc_exec_info exec_info = exec_result->remote_result_info[ipport];
-        if (exec_info.err_code) {
-          sstr.str("");
-          sstr << exec_info.err_code;
-          err_msg += "Remote@" + name + ": (Error ";
-          err_msg += sstr.str();
-          err_msg += ": " + exec_info.err_msg + ")\n";
-        }
+    for (its = exec_result->remote_result_info.begin(); its != exec_result->remote_result_info.end(); its++)
+    {
+      string ipport = its->first;
+      tc_exec_info exec_info = its->second;
+      if (exec_info.err_code)
+      {
+        sstr.str("");
+        sstr << exec_info.err_code;
+        remote_err_msg = remote_err_msg + "Host," + ipport + ";  Error Code,";
+        remote_err_msg = remote_err_msg + sstr.str() + "; ";
+        remote_err_msg = remote_err_msg + "Error Message," + exec_info.err_msg.c_str();
+        remote_err_msg = remote_err_msg + "\n";
       }
     }
 
-    if (err_msg.length() > strlen("\n")) {
-      err_msg.erase(err_msg.length() - 1); // remove the last newline character
-    } else {
-      err_msg = "\nNo details provided";
+    if (spider_err_msg.size() > 0)
+    {
+      spider_err_msg = spider_err_msg_pre + spider_err_msg;
+      if (remote_err_msg.size() == 0)
+      {
+        string tmp_msg(spider_err_msg.c_str(), spider_err_msg.size() - 1);
+        spider_err_msg = tmp_msg;
+      }
     }
-
-    my_long_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), err_msg.c_str());
+    if (remote_err_msg.size() > 0)
+    {
+      string tmp_msg(remote_err_msg.c_str(), remote_err_msg.size() - 1);
+      remote_err_msg = remote_err_msg_pre + tmp_msg;
+    }
+    err_msg = spider_err_msg + remote_err_msg;
+    my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), err_msg.c_str());
     return TRUE;
   }
   my_ok(thd);

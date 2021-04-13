@@ -7837,7 +7837,7 @@ ER_TCADMIN_CONNECT_ERROR
   eng "CONNECT FAILED: connect to %s failed"
 
 ER_TCADMIN_EXECUTE_ERROR
-  eng "Execution failed: %s"
+  eng "DETAIL FAILED INFO: %s"
 
 ER_TCADMIN_FLUSH_ROUTING_ERROR
   eng "failed to flush routing"

@@ -211,30 +211,6 @@ void my_error(int nr, myf MyFlags, ...)
   DBUG_VOID_RETURN;
 }
 
-/**
-  Sibling of my_error(), with error message buffer extended to 5120 bytes. 
-*/
-void my_long_error(int nr, myf MyFlags, ...)
-{
-  const char *format;
-  va_list args;
-  char ebuff[5120];
-  DBUG_ENTER("my_long_error");
-  DBUG_PRINT("my", ("nr: %d  MyFlags: %d  errno: %d", nr, MyFlags, errno));
-
-  if (!(format = my_get_err_msg(nr)))
-    (void) my_snprintf(ebuff, sizeof(ebuff), "Unknown error %d", nr);
-  else
-  {
-    va_start(args,MyFlags);
-    (void) my_vsnprintf_ex(&my_charset_utf8_general_ci, ebuff,
-                           sizeof(ebuff), format, args);
-    va_end(args);
-  }
-  (*error_handler_hook)(nr, ebuff, MyFlags);
-  DBUG_VOID_RETURN;
-}
-
 
 /**
   Print an error message.
