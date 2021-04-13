@@ -346,7 +346,7 @@ MYSQL *tc_tdbctl_conn_primary(
 	map<string, string> &tdbctl_passwd_map
 );
 
-int tc_do_grants_internal();
+int tc_do_grants_internal(LEX *lex);
 
 
 set<string> get_spider_ipport_set(
