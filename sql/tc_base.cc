@@ -2624,6 +2624,7 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
   uint port = atoi(ports.c_str());
   uint connect_retry_count = 3;
   uint real_connect_option = 0;
+  uint ssl_mode = SSL_MODE_DISABLED;
   MYSQL* mysql;
 
   if (user.length() == 0 && passwd.length() == 0)
@@ -2638,6 +2639,7 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
     mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
     mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
     mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
+    mysql_options(mysql, MYSQL_OPT_SSL_MODE, &ssl_mode);
     real_connect_option = CLIENT_INTERACTIVE | CLIENT_MULTI_STATEMENTS;
     if (!mysql_real_connect(mysql, hosts.c_str(), user.c_str(), passwd.c_str(), "", port, NULL, real_connect_option))
     {
