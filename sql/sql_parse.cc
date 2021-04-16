@@ -5450,7 +5450,7 @@ end_with_restore_list:
   flush:
     if (lex->tc_do_grants &&
       tc_enable_internal_grant &&
-      tc_do_grants_internal())
+      tc_do_grants_internal(lex))
       goto error;
 
     if (tc_flush_routing(lex))
@@ -6446,7 +6446,7 @@ tcadmin_execute_command(THD* thd, bool first_level)
   flush:
     if (lex->tc_do_grants &&
         tc_enable_internal_grant &&
-        tc_do_grants_internal())
+        tc_do_grants_internal(lex))
       goto error;
 
     if (tc_flush_routing(lex))

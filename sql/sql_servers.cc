@@ -1506,7 +1506,7 @@ int tc_set_changed_remote_read_only()
   RETURN VALUE
     zero is success, no zero for error.
 */
-int tc_do_grants_internal()
+int tc_do_grants_internal(LEX *lex)
 {
   int ret, error = 0;
   MEM_ROOT mem_root;
@@ -1538,14 +1538,25 @@ int tc_do_grants_internal()
       spider_user_map,
       spider_passwd_map,
       FALSE);
-  map<string, string> remote_ipport_map = get_remote_ipport_map(
-      &mem_root,
-      remote_user_map,
-      remote_passwd_map);
   map<string, string> tdbctl_ipport_map = get_tdbctl_ipport_map(
       &mem_root,
       tdbctl_user_map,
       tdbctl_passwd_map);
+
+  map<string, string> remote_ipport_map;
+  bool on_alter_node = (lex->sql_command == TC_SQLCOM_ALTER_NODE);
+  if (on_alter_node) {
+	string slave_ipport = string(lex->server_options.get_host()) + "#" + to_string(lex->server_options.get_port());
+	remote_ipport_map.insert(pair<string, string>(lex->server_options.m_server_name.str, slave_ipport));
+	remote_user_map.insert(pair<string, string>(slave_ipport, lex->server_options.get_username()));
+	remote_passwd_map.insert(pair<string, string>(slave_ipport, lex->server_options.get_password()));
+  }
+  else {
+	remote_ipport_map = get_remote_ipport_map(
+		&mem_root,
+		remote_user_map,
+		remote_passwd_map);
+  }
 
   if (spider_ipport_set.empty() ||
       remote_ipport_map.empty() || tdbctl_ipport_map.empty())
@@ -1612,6 +1623,21 @@ int tc_do_grants_internal()
   if (error)
     goto exit;
 
+  //remote do grant
+  init_result_map2(remote_result_map, remote_ipport_map);
+  remote_do_sql = tc_get_remote_grant_sql(spider_ipport_set, spider_user_map,
+	  spider_passwd_map, remote_ipport_map, remote_user_map, remote_passwd_map,
+	  tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
+  if (tc_exec_sql_paral(remote_do_sql, remote_conn_map,
+	  remote_result_map, remote_user_map, remote_passwd_map, FALSE))
+  {/* return, close conn, reconnect + retry all */
+	  error = 1;
+	  my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), concat_result_map(remote_result_map).c_str());
+	  goto exit;
+  }
+
+  if (on_alter_node) goto exit;
+
   //spider do grant
   init_result_map(spider_result_map, spider_ipport_set);
   //set ddl_execute_by_ctl to off on spider, only need execute on spider node
@@ -1623,19 +1649,6 @@ int tc_do_grants_internal()
   {/* return, close conn, reconnect + retry all */
     error = 1;
     my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), concat_result_map(spider_result_map).c_str());
-    goto exit;
-  }
-
-  //remote do grant
-  init_result_map2(remote_result_map, remote_ipport_map);
-  remote_do_sql = tc_get_remote_grant_sql(spider_ipport_set, spider_user_map,
-      spider_passwd_map, remote_ipport_map, remote_user_map, remote_passwd_map,
-      tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
-  if (tc_exec_sql_paral(remote_do_sql, remote_conn_map,
-      remote_result_map, remote_user_map, remote_passwd_map, FALSE))
-  {/* return, close conn, reconnect + retry all */
-    error = 1;
-    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), concat_result_map(remote_result_map).c_str());
     goto exit;
   }
 
