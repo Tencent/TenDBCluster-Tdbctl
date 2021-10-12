@@ -331,7 +331,7 @@ end:
     tdbctl_is_primary = tc_is_primary_tdbctl_node();
   }
   modify_tdbctl_flag = false;
-  delete_redundant_routings();
+  return_val = delete_redundant_routings();
   DBUG_RETURN(return_val);
 }
 
@@ -985,7 +985,7 @@ bool Sql_cmd_drop_server::execute(THD *thd)
   close_mysql_tables(thd);
 
   /* after delete server, should transfer to spider also */
-  delete_redundant_routings();
+  error = delete_redundant_routings();
   if (close_cached_connection_tables(thd, m_server_name.str,
                                      m_server_name.length))
   {
@@ -2617,12 +2617,12 @@ string get_delete_routing_sql()
   return sql;
 }
 
-void delete_redundant_routings()
+int delete_redundant_routings()
 {
+  int ret = 0;
   string del_sql = get_delete_routing_sql();
   if (del_sql.length() > 0)
   {
-    int ret = 0;
     map<string, MYSQL*> spider_conn_map;
     map<string, string> spider_user_map;
     map<string, string> spider_passwd_map;
@@ -2665,5 +2665,7 @@ void delete_redundant_routings()
     to_delete_servername_list.clear();
     free_root(&mem_root, MYF(0));
   }
+
+  return ret;
 }
 
