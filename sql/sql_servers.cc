@@ -1221,7 +1221,7 @@ string get_new_server_name_by_wrapper(
     {
       //for spider, total SPIDER and SPIDER_SLAVE's server_name must be unique
       if (!strcasecmp(server->scheme, wrapper_name) ||
-          (is_spider && !strcasecmp(server->scheme, SPIDER_WRAPPER) ||
+          ((is_spider && !strcasecmp(server->scheme, SPIDER_WRAPPER)) ||
           !strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER)))
       {
         ulong suffix_num = 0;

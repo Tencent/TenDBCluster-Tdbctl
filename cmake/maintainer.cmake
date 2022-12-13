@@ -24,6 +24,8 @@ SET(MY_C_WARNING_FLAGS
 SET(MY_CXX_WARNING_FLAGS
     "${MY_WARNING_FLAGS} -Woverloaded-virtual -Wno-unused-parameter")
 
+SET(MY_CXX_WARNING_FLAGS "${MY_CXX_WARNING_FLAGS} -Wno-deprecated-declarations -Wno-format-security")
+
 # Extra warning flags for Clang++
 IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   SET(MY_CXX_WARNING_FLAGS

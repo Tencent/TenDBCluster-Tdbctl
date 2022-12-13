@@ -5334,9 +5334,9 @@ is_ndbinfo(MYSQL* mysql, const char* dbname)
 }
 
 /* Return 1 if we should copy the database */
-my_bool include_database(const uchar *hash_key, size_t len)
+my_bool include_database(const char *hash_key, size_t len)
 {
-  return !my_hash_search(&ignore_database, hash_key, len);
+  return !my_hash_search(&ignore_database, (const uchar *)hash_key, len);
 }
 
 static int dump_all_databases()
