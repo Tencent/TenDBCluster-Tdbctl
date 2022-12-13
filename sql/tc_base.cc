@@ -2118,257 +2118,71 @@ bool tc_query_convert(
     return FALSE;
 }
 
+void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
+                   MYSQL *mysql, enum_node_type node_type) {
+  DBUG_ENTER("tc_real_query");
+  DBUG_PRINT("info", ("server_name: %s", server_name.c_str()));
+  int err = 0;
+  string query;
+  tc_exec_info exec_info;
 
-void tc_spider_real_query(
-  MYSQL *mysql, 
-  string sql, 
-  tc_execute_result *exec_result, 
-  string ipport
-)
-{
-    int ret = mysql_real_query(mysql, sql.c_str(), sql.length());
-    tc_exec_info exec_info;
-    exec_info.err_code = 0;
-    exec_info.err_msg = "";
-    while (!ret)
-    {
-        ret = tc_mysql_next_result(mysql);
-    }
-    if (ret != -1)
-    {/* error happened */
-        exec_info.err_code = mysql_errno(mysql);
-        exec_info.err_msg = mysql_error(mysql);
-        exec_result->result = TRUE;
-    }
-    spider_exec_mtx.lock();
-    exec_result->spider_result_info.insert(pair<string, tc_exec_info>(ipport, exec_info));
-    spider_exec_mtx.unlock();
+  if ((err = query_mgr->get_real_query(server_name, query, node_type))) {
+    DBUG_ASSERT(0);
+    query = "";
+  }
+  exec_info.err_code = 0;
+  exec_info.err_msg = "";
+  err = mysql_real_query(mysql, query.c_str(), query.length());
+  while (!err) {
+    err = tc_mysql_next_result(mysql);
+  }
+  if (err != -1) {
+    exec_info.err_code = mysql_errno(mysql);
+    exec_info.err_msg = mysql_error(mysql);
+  }
+  query_mgr->store_result(server_name, exec_info, node_type);
+
+  DBUG_VOID_RETURN;
 }
 
 
-void tc_remote_real_query(
-  MYSQL *mysql, 
-  string sql, 
-  tc_execute_result *exec_result, 
-  string ipport
-)
-{
-    int ret = mysql_real_query(mysql, sql.c_str(), sql.length());
-    tc_exec_info exec_info;
-    exec_info.err_code = 0;
-    exec_info.err_msg = "";
-    while (!ret)
-    {
-        ret = tc_mysql_next_result(mysql);
-    }
-    if (ret != -1)
-    {/* error happened */
-        exec_info.err_code = mysql_errno(mysql);
-        exec_info.err_msg = mysql_error(mysql);
-        exec_result->result = TRUE;
-    }
-    remote_exec_mtx.lock();
-    exec_result->remote_result_info.insert(pair<string, tc_exec_info>(ipport, exec_info));
-    remote_exec_mtx.unlock();
+bool tc_exec_query_paral(Query_exec_manager *query_mgr,
+                      const std::map<std::string, MYSQL *> &conns,
+                      enum_node_type node_type) {
+  uint i, server_cnt = conns.size();
+  std::vector<std::thread> threads(server_cnt);
+  map<string, MYSQL *>::const_iterator it;
+
+  for (i = 0, it = conns.begin(); it != conns.end(); ++it, ++i) {
+    thread t(tc_real_query, query_mgr, it->first, it->second, node_type);
+    threads[i] = move(t);
+  }
+  for (i = 0; i < server_cnt; ++i) {
+    if (threads[i].joinable()) threads[i].join();
+  }
+  return query_mgr->get_error();
 }
 
+bool tc_ddl_run(THD *thd, Cluster_conn_manager *conn_mgr,
+                Query_exec_manager *query_mgr) {
+  bool force = thd->variables.tc_force_execute;
+  LEX *lex = thd->lex;
 
-bool tc_spider_ddl_run_paral(
-  string before_sql, 
-  string spider_sql, 
-  map<string, MYSQL*> spider_conn_map, 
-  tc_execute_result *exec_result
-)
-{
-    int spider_count = spider_conn_map.size();
-    string exec_sql = before_sql + spider_sql;
-    tc_exec_info exec_info;
-    thread *thread_array = new thread[spider_count];
-    map<string, int> ret_map;
-    int i = 0;
-
-    map<string, MYSQL*>::iterator its;
-    for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
-    {
-        string ipport = its->first;
-        MYSQL *mysql = its->second;
-        thread tmp_t(tc_spider_real_query, mysql, exec_sql, exec_result, ipport);
-        thread_array[i] = move(tmp_t);
-        i++;
+  if (tc_spider_run_first(thd, lex)) {
+    if (!tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
+                             NODE_TYPE_SPIDER) || force) {
+      return tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
+                                 NODE_TYPE_REMOTE);
     }
-
-    for (int i = 0; i < spider_count; i++)
-    {
-        if (thread_array[i].joinable())
-            thread_array[i].join();
+  } else {
+    if (!tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
+                             NODE_TYPE_REMOTE) || force) {
+      return tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
+                                 NODE_TYPE_SPIDER);
     }
+  }
 
-    //for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
-    //{
-    //    string ipport = its->first;
-    //    MYSQL *mysql = &(its->second);
-    //    int ret;
-    //    exec_info.err_code = 0;
-    //    exec_info.err_msg = "";
-    //    ret = mysql_errno(mysql);
-    //    while (!ret)
-    //    {
-    //        ret = tc_mysql_next_result(mysql);
-    //    }
-    //    if (ret != -1)
-    //    {/* error happened */
-    //        exec_info.err_code = mysql_errno(mysql);
-    //        exec_info.err_msg = mysql_error(mysql);
-    //        exec_result->result = TRUE;
-    //        result = TRUE;
-    //    }
-    //    exec_result->spider_result_info.insert(pair<string, tc_exec_info>(ipport, exec_info));
-    //}
-    delete[] thread_array;
-    return exec_result->result;
-}
-
-bool tc_remotedb_ddl_run_paral(
-  string before_sql, 
-  map<string, string> remote_sql_map, 
-  map<string, MYSQL*> remote_conn_map, 
-  map<string, string> remote_ipport_map, 
-  tc_execute_result *exec_result
-)
-{
-    int remote_count = remote_conn_map.size();
-    tc_exec_info exec_info;
-    thread *thread_array = new thread[remote_count];
-    map<string, int> ret_map;
-    int i = 0;
-
-    if (remote_sql_map.size() == 0)
-    {
-        exec_info.err_msg = "No Remote DB has been found.";
-        exec_result->remote_result_info.insert(pair<string, tc_exec_info>("", exec_info));
-        return TRUE;
-    }
-
-    map<string, string>::iterator its;
-    for (its = remote_ipport_map.begin(); its != remote_ipport_map.end(); its++)
-    {
-        string server = its->first;
-        string ipport = its->second;
-        string exec_sql = before_sql + remote_sql_map[server];
-        MYSQL *mysql = remote_conn_map[ipport];
-        thread tmp_t(tc_remote_real_query, mysql, exec_sql, exec_result, ipport);
-        thread_array[i] = move(tmp_t);
-        i++;
-    }
-
-    for (int i = 0; i < remote_count; i++)
-    {
-        if (thread_array[i].joinable())
-            thread_array[i].join();
-    }
-
-    //for (its = remote_ipport_map.begin(); its != remote_ipport_map.end(); its++)
-    //{
-    //    string server = its->first;
-    //    string ipport = its->second;
-    //    string exec_sql = before_sql + remote_sql_map[server];
-    //    const char *sql = exec_sql.c_str();
-    //    MYSQL *mysql = &(remote_conn_map[ipport]);
-    //    int ret;
-    //    exec_info.err_code = 0;
-    //    exec_info.err_msg = "";
-    //    ret = mysql_errno(mysql);
-
-    //    while (!ret)
-    //    {
-    //        ret = tc_mysql_next_result(mysql);
-    //    }
-    //    if (ret != -1)
-    //    {/* error happened */
-    //        exec_info.err_code = mysql_errno(mysql);
-    //        exec_info.err_msg = mysql_error(mysql);
-    //        exec_result->result = TRUE;
-    //        result = TRUE;
-    //    }
-    //    exec_result->remote_result_info.insert(pair<string, tc_exec_info>(ipport, exec_info));
-    //}
-    delete[] thread_array;
-    return exec_result->result;
-}
-
-
-bool tc_ddl_run(
-  THD *thd, 
-  LEX *lex,
-  string before_sql_for_spider, 
-  string before_sql_for_remote, 
-  string spider_sql, 
-  map<string, string> remote_sql_map, 
-  tc_execute_result *exec_result
-)
-{
-    bool spider_run_first = tc_spider_run_first(thd, lex);
-    exec_result->result = FALSE;
-    if (spider_run_first)
-    {/* drop table/database/column */
-        if (!tc_spider_ddl_run_paral(
-                before_sql_for_spider, 
-                spider_sql, 
-                thd->spider_conn_map, 
-                exec_result) || 
-             thd->variables.tc_force_execute)
-        {
-            tc_remotedb_ddl_run_paral(
-               before_sql_for_remote, 
-               remote_sql_map, 
-               thd->remote_conn_map, 
-               thd->remote_ipport_map, 
-               exec_result );
-         }
-    }
-    else
-    {/* other */
-        if (!tc_remotedb_ddl_run_paral(
-          before_sql_for_remote, 
-          remote_sql_map, 
-          thd->remote_conn_map, 
-          thd->remote_ipport_map, exec_result) || 
-         thd->variables.tc_force_execute)
-        {
-            tc_spider_ddl_run_paral(
-              before_sql_for_spider, 
-              spider_sql, 
-              thd->spider_conn_map, 
-              exec_result);
-        }
-    }
-    return FALSE;
-}
-
-bool tc_append_before_query(THD *thd, LEX *lex, string &sql_spider, string &sql_remote)
-{
-        const CHARSET_INFO *charset;
-        sql_mode_t tmp_mode;
-        LEX_STRING ls;
-
-        /* 1. append set names */
-        charset = thd->charset();
-        sql_spider = sql_spider + "set names ";
-        sql_spider = sql_spider + charset->csname;
-        sql_spider = sql_spider + ";";
-
-        /* 2. append sql mode */
-        tmp_mode = thd->variables.sql_mode;
-        sql_mode_string_representation(thd, tmp_mode, &ls);
-        sql_spider = sql_spider + "set sql_mode='";
-        sql_spider = sql_spider + ls.str;
-        sql_spider = sql_spider + "';";
-        
-        sql_remote = sql_spider;
-
-        /* 3. append for spider only */
-        sql_spider = sql_spider + "set ddl_execute_by_ctl=0;";
-        return FALSE;
+  return FALSE;
 }
 
 
@@ -2613,6 +2427,7 @@ string tc_get_user_name(
 	return username;
 }
 
+/* TODO: get rid of this */
 MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 {
   int read_timeout = 600;
@@ -2650,6 +2465,43 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
         return NULL;
     }
     else
+      break;
+  }
+
+  return mysql;
+}
+
+MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
+                       const string &passwd) {
+  int read_timeout = TC_CONN_READ_TIMEOUT;
+  int write_timeout = TC_CONN_WRITE_TIMEOUT;
+  int connect_timeout = TC_CONN_CONNECT_TIMEOUT;
+  uint connect_retry_count = TC_CONN_MAX_RETRIES_ON_FAILS;
+  uint real_connect_option = 0;
+  uint ssl_mode = SSL_MODE_DISABLED;
+  MYSQL *mysql;
+
+  if (user.length() == 0 && passwd.length() == 0) {
+    sql_print_error("tc connect fail: username or password is empty");
+    return NULL;
+  }
+
+  while (connect_retry_count-- > 0) {
+    mysql = mysql_init(NULL);
+    mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, &read_timeout);
+    mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
+    mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
+    mysql_options(mysql, MYSQL_OPT_SSL_MODE, &ssl_mode);
+    real_connect_option = CLIENT_INTERACTIVE | CLIENT_MULTI_STATEMENTS;
+    if (!mysql_real_connect(mysql, host.c_str(), user.c_str(), passwd.c_str(),
+                            "", port, NULL, real_connect_option)) {
+      sql_print_warning("tc connect fail: error code is %d, error message: %s",
+                        mysql_errno(mysql), mysql_error(mysql));
+      if (mysql)
+        mysql_close(mysql);
+      if (!connect_retry_count)
+        return NULL;
+    } else
       break;
   }
 
@@ -3669,4 +3521,301 @@ get_ipv4_addr_from_hostname(const std::string& host, std::string& ip)
     freeaddrinfo(addrinf);
 
   return false;
+}
+
+const char *get_wrapper_name_by_node_type(enum_node_type type) {
+  switch (type) {
+  case NODE_TYPE_SPIDER:
+    return SPIDER_WRAPPER;
+  case NODE_TYPE_REMOTE:
+    return MYSQL_WRAPPER;
+  case NODE_TYPE_CTL:
+    return TDBCTL_WRAPPER;
+  default: /* should be unreachable */
+    break;
+  }
+  return NULL;
+}
+
+Query_exec_manager::Query_exec_manager(THD *thd) : m_thd(thd), error(0) {}
+
+void Query_exec_manager::clear() {
+  reset_error();
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_END; ++i) {
+    exec_results[i].clear();
+    exec_queries[i].clear();
+    real_queries[i].clear();
+  }
+}
+
+int Query_exec_manager::make_real_query(const std::string &exec_query,
+                                        std::string &real_query,
+                                        enum_node_type node_type) {
+  real_query.clear();
+
+  if (m_thd) {
+    /* 1. SET NAMES */
+    real_query += "SET NAMES ";
+    real_query += m_thd->charset()->csname;
+    real_query += ";";
+
+    /* 2. SQL_MODE */
+    LEX_STRING sql_mode_str;
+    sql_mode_string_representation(m_thd, m_thd->variables.sql_mode, &sql_mode_str);
+    real_query += "SET sql_mode='";
+    real_query += string(sql_mode_str.str, sql_mode_str.length);
+    real_query += "';";
+
+    /* 3.(only for Spider) */
+    if (node_type == NODE_TYPE_SPIDER)
+      real_query += "SET ddl_execute_by_ctl=0;";
+
+    real_query += exec_query;
+  } else {
+    real_query = exec_query;
+  }
+
+  return 0;
+}
+
+bool Query_exec_manager::get_real_query(const std::string &server_name,
+                                       std::string &real_query,
+                                       enum_node_type node_type) {
+  std::map<std::string, std::string>::iterator found;
+  found = real_queries[node_type].find(server_name);
+  if (found == real_queries[node_type].end())
+    return true;
+  real_query = found->second;
+  return false;
+}
+
+void Query_exec_manager::store_result(const std::string &server_name,
+                                     const tc_exec_info &exec_info,
+                                     enum_node_type node_type) {
+  result_mtx.lock();
+  if (exec_info.err_code)
+    error = 1;
+  exec_results[node_type][server_name] = exec_info;
+  result_mtx.unlock();
+}
+
+MY_ATTRIBUTE((unused))
+void Query_exec_manager::store_exec_query(const std::string &server_name,
+                                          const std::string &query,
+                                          enum_node_type node_type) {
+  DBUG_ENTER("Query_exec_manager::store_exec_query");
+  DBUG_PRINT("info", ("storing to server: %s", server_name.c_str()));
+  string real_query;
+  make_real_query(query, real_query, node_type);
+
+  DBUG_ASSERT(exec_queries[node_type].find(server_name) !=
+              exec_queries[node_type].end());
+  DBUG_ASSERT(real_queries[node_type].count(server_name));
+  exec_queries[node_type][server_name] = query;
+  real_queries[node_type][server_name] = real_query;
+
+  DBUG_VOID_RETURN;
+}
+
+void Query_exec_manager::store_exec_query(const std::string &query,
+                                          enum_node_type node_type) {
+  DBUG_ENTER("Query_exec_manager::store_exec_query");
+  DBUG_PRINT("info",
+             ("storing to all nodes of type: %d using query", (int)node_type));
+  string real_query;
+  make_real_query(query, real_query, node_type);
+
+  std::map<string, string>::iterator it;
+  for (it = exec_queries[node_type].begin();
+       it != exec_queries[node_type].end(); ++it) {
+    const string &server_name = it->first;
+    it->second = query;
+    real_queries[node_type][server_name] = real_query;
+  }
+
+  DBUG_VOID_RETURN;
+}
+
+void Query_exec_manager::store_exec_query(
+    const std::map<std::string, std::string> &sql_map,
+    enum_node_type node_type) {
+  DBUG_ENTER("Query_exec_manager::store_exec_query");
+  DBUG_PRINT("info",
+             ("storing all nodes of type: %d using sql_map", (int)node_type));
+  DBUG_ASSERT(sql_map.size() == exec_queries[node_type].size());
+
+  std::map<string, string>::const_iterator it;
+  for (it = sql_map.begin(); it != sql_map.end(); ++it) {
+    const string &server_name = it->first;
+    const string &query = it->second;
+    string real_query;
+    make_real_query(query, real_query, node_type);
+
+    DBUG_ASSERT(exec_queries[node_type].count(server_name));
+    DBUG_ASSERT(real_queries[node_type].count(server_name));
+    exec_queries[node_type][server_name] = query;
+    real_queries[node_type][server_name] = real_query;
+  }
+
+  DBUG_VOID_RETURN;
+}
+
+int Query_exec_manager::get_results(tc_execute_result *res) const {
+  res->result = error;
+  std::map<string, tc_exec_info>::const_iterator it;
+  for (it = exec_results[NODE_TYPE_SPIDER].begin();
+       it != exec_results[NODE_TYPE_SPIDER].end(); ++it) {
+    res->spider_result_info.insert(std::make_pair(it->first, it->second));
+  }
+  for (it = exec_results[NODE_TYPE_REMOTE].begin();
+       it != exec_results[NODE_TYPE_REMOTE].end(); ++it) {
+    res->remote_result_info.insert(std::make_pair(it->first, it->second));
+  }
+  return 0;
+}
+
+void Query_exec_manager::build_server_maps(Cluster_conn_manager *conn_mgr) {
+  clear();
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_END; ++i) {
+    const std::map<string, MYSQL *> &servers = conn_mgr->server_conns[i];
+    std::map<string, MYSQL *>::const_iterator it;
+    for (it = servers.begin(); it != servers.end(); ++it) {
+      const string &server_name = it->first;
+      exec_results[i][server_name] = tc_exec_info();
+      exec_queries[i][server_name] = string();
+      real_queries[i][server_name] = string();
+    }
+  }
+}
+
+Cluster_conn_manager::Cluster_conn_manager()
+    : initialized(false), spider_count(0U), shard_count(0U),
+      server_version(0UL) {
+  init_alloc_root(PSI_NOT_INSTRUMENTED, &mem_root, 8192, 0);
+}
+
+Cluster_conn_manager::~Cluster_conn_manager() {
+  clear();
+  free_root(&mem_root, MYF(0));
+}
+
+void Cluster_conn_manager::clear() {
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_END; ++i) {
+    std::map<string, MYSQL *>::iterator svr;
+    for (svr = server_conns[i].begin(); svr != server_conns[i].end(); ++svr) {
+      /* No need for NULL checks, mysql_close() does it */
+      mysql_close(svr->second);
+    }
+    server_conns[i].clear();
+    server_auths[i].clear();
+  }
+  initialized = false;
+  spider_count = 0;
+  shard_count = 0;
+}
+
+bool Cluster_conn_manager::refresh(bool force) {
+  DBUG_ENTER("Cluster_conn_manager::refresh");
+
+  bool outdated = check_server_version();
+  if (!force && initialized && !outdated) {
+    /* No need to refresh */
+    DBUG_RETURN(false);
+  }
+  clear();
+
+  int i, err = 0;
+  /* Import mysql.servers into maps */
+  for (i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_END; ++i) {
+    list<FOREIGN_SERVER *> server_list;
+    const char *wrapper = get_wrapper_name_by_node_type((enum_node_type)i);
+    DBUG_ASSERT(wrapper);
+    if (unlikely(!wrapper))
+      continue;
+    get_server_by_wrapper(server_list, &mem_root, wrapper, true);
+
+    FOREIGN_SERVER *server;
+    list<FOREIGN_SERVER *>::iterator it;
+    for (it = server_list.begin(); it != server_list.end(); ++it) {
+      AUTH_INFO auth;
+      string server_name;
+
+      server = *it;
+      server_name.assign(server->server_name, server->server_name_length);
+      auth.port = server->port;
+      auth.host = string(server->host);
+      auth.user = string(server->username);
+      auth.passwd = string(server->password);
+      auth.ipport_str = auth.host + "#" + std::to_string(auth.port);
+      server_auths[i][server_name] = auth;
+    }
+  }
+
+  /* Build connections */
+  for (i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_END; ++i) {
+    map<string, MYSQL *> &conn_map = server_conns[i];
+    const map<string, AUTH_INFO> &auth_map = server_auths[i];
+    map<string, AUTH_INFO>::const_iterator it;
+    for (it = auth_map.begin(); it != auth_map.end(); ++it) {
+      MYSQL *mysql;
+      const string &server_name = it->first;
+      const AUTH_INFO &auth = it->second;
+      if ((mysql =
+               tc_conn_connect(auth.host, auth.port, auth.user, auth.passwd))) {
+        conn_map[server_name] = mysql;
+      } else {
+        /* TODO: add retrying */
+        my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), auth.ipport_str.c_str());
+        err = 1;
+        break;
+      }
+    }
+    if (err)
+      break;
+  }
+
+  if (err) {
+    clear();
+    DBUG_RETURN(true);
+  }
+  spider_count = server_conns[NODE_TYPE_SPIDER].size();
+  shard_count = server_conns[NODE_TYPE_REMOTE].size();
+  initialized = true;
+  DBUG_RETURN(false);
+}
+
+bool Cluster_conn_manager::check_query_manager_validity(
+    Query_exec_manager *query_mgr) {
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_END; ++i) {
+    uint node_cnt = server_conns[i].size();
+    if (node_cnt != query_mgr->exec_queries[i].size() ||
+        node_cnt != query_mgr->real_queries[i].size() ||
+        node_cnt != query_mgr->exec_results[i].size()) {
+      return true;
+    }
+
+    std::map<string, MYSQL *>::iterator svr;
+    for (svr = server_conns[i].begin(); svr != server_conns[i].end(); ++svr) {
+      const string &server_name = svr->first;
+      if (!query_mgr->exec_queries[i].count(server_name) ||
+          !query_mgr->real_queries[i].count(server_name) ||
+          !query_mgr->exec_results[i].count(server_name))
+        return true;
+    }
+  }
+  return false;
+}
+
+bool Cluster_conn_manager::check_server_version() {
+  /* TODO: use atomic maybe? */
+  ulong latest = get_modify_server_version();
+  if (server_version != latest) {
+    server_version = latest;
+    return true;
+  }
+  return false;
+}
+
+void free_cluster_conn_manager(THD *thd) {
+  delete thd->cluster_conn_manager;
 }

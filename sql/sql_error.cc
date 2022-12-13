@@ -1178,36 +1178,26 @@ bool tc_process_all_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESU
   if (exec_result->result)
   {/* error happened */
     string err_msg = "\n";
-    ostringstream  sstr;
-    map<string, string> remote_ipport_map = thd->remote_ipport_map;
 
     for (map<string, tc_exec_info>::iterator iter = exec_result->spider_result_info.begin(); iter != exec_result->spider_result_info.end(); iter++)
     {
-      string ipport = iter->first;
-      tc_exec_info exec_info = iter->second;
+      const string &server_name = iter->first;
+      const tc_exec_info &exec_info = iter->second;
       if (exec_info.err_code)
       {
-        sstr.str("");
-        sstr << exec_info.err_code;
-        err_msg += "Spider@" + ipport + ": (Error ";
-        err_msg += sstr.str();
+        err_msg += "Spider@" + server_name + ": (Error ";
+        err_msg += std::to_string(exec_info.err_code);
         err_msg +=  ": " + exec_info.err_msg + ")\n";
       }
     }
 
-    for (map<string, string>::iterator iter = remote_ipport_map.begin(); iter != remote_ipport_map.end(); iter++) {
-      string name = iter->first;
-      string ipport = iter->second;
-      
-      if (exec_result->remote_result_info.find(ipport) != exec_result->remote_result_info.end()) {
-        tc_exec_info exec_info = exec_result->remote_result_info[ipport];
-        if (exec_info.err_code) {
-          sstr.str("");
-          sstr << exec_info.err_code;
-          err_msg += "Remote@" + name + ": (Error ";
-          err_msg += sstr.str();
-          err_msg += ": " + exec_info.err_msg + ")\n";
-        }
+    for (map<string, tc_exec_info>::iterator iter = exec_result->remote_result_info.begin(); iter != exec_result->remote_result_info.end(); iter++) {
+      const string &name = iter->first;
+      const tc_exec_info &exec_info = iter->second;
+      if (exec_info.err_code) {
+        err_msg += "Remote@" + name + ": (Error ";
+        err_msg += std::to_string(exec_info.err_code);
+        err_msg += ": " + exec_info.err_msg + ")\n";
       }
     }
 

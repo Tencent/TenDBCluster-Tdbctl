@@ -75,6 +75,8 @@ enum tc_flush_option
   FLUSH_ROUTING_BY_SERVER,
 };
 
+class Cluster_conn_manager;
+
 /**
   The meat of thd_proc_info(THD*, char*), a macro that packs the last
   three calling-info parameters.
@@ -1680,6 +1682,7 @@ public:
   /* Slave applier execution context */
   Relay_log_info* rli_slave;
 
+  /* DEPRECATED */
   std::map<std::string, MYSQL*> spider_conn_map;
   std::map<std::string, std::string> spider_user_map;
   std::map<std::string, std::string> spider_passwd_map;
@@ -1698,6 +1701,9 @@ public:
   bool tc_conn_init;
   bool spider_run_first;
   ulong server_version;
+  /* DEPRECATED */
+
+  Cluster_conn_manager *cluster_conn_manager;
 
   /**
     The function checks whether the thread is processing queries from binlog,

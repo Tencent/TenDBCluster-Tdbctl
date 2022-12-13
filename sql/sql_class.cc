@@ -80,6 +80,8 @@ LEX_CSTRING NULL_CSTR=  { NULL, 0 };
 
 const char * const THD::DEFAULT_WHERE= "field list";
 
+extern void free_cluster_conn_manager(THD *thd);
+
 
 void THD::Transaction_state::backup(THD *thd)
 {
@@ -1345,6 +1347,7 @@ THD::THD(bool enable_plugins)
                                               max_digest_length,
                                               MYF(MY_WME));
   }
+  cluster_conn_manager = NULL;
 }
 
 
@@ -2108,6 +2111,9 @@ THD::~THD()
   {
     my_free(m_token_array);
   }
+
+  free_cluster_conn_manager(this);
+
   DBUG_VOID_RETURN;
 }
 
