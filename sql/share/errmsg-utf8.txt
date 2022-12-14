@@ -7893,6 +7893,9 @@ ER_TCADMIN_SHARD_TYPE_NOT_VALID
 ER_TCADMIN_NO_REMOTE_DB_FOUND
   eng "EXECUTE FAILED No remote db found"
 
+ER_TCADMIN_INTERNAL_ERROR
+  eng "Internal error: %s"
+
 #
 # End of MyRocks specific messages
 #

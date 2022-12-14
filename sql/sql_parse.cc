@@ -5776,6 +5776,7 @@ tcadmin_execute_command(THD* thd, bool first_level)
   tspider_shard_func shard_func = tspider_shard_func_crc32;
   tspider_shard_type shard_type = tspider_shard_type_list;
   bool is_unsigned_key = false;
+  Query_exec_manager query_exec_manager(thd);
   /*when cluster is not available, it is forbidden to DDL or grant*/
   if (tc_check_availability && tc_is_available != 1 &&
     (sql_command_flags[lex->sql_command] & CF_DISALLOW_IN_UNAVAILAVLE))
@@ -5790,6 +5791,7 @@ tcadmin_execute_command(THD* thd, bool first_level)
     free_thd_connection(thd);
   }
 
+  /* TODO: remove this block and related code */
   /* do spider/remote conn init */
   if (!thd->tc_conn_init && thd->variables.tc_admin)
   {
@@ -5824,6 +5826,13 @@ tcadmin_execute_command(THD* thd, bool first_level)
       thd->tc_conn_init = TRUE;
   }
   shard_count = thd->remote_ipport_map.size();
+
+  if (!thd->cluster_conn_manager) {
+    thd->cluster_conn_manager = new Cluster_conn_manager();
+  }
+  if (thd->cluster_conn_manager->refresh(FALSE))
+    goto error;
+  query_exec_manager.build_server_maps(thd->cluster_conn_manager);
 
   tc_parse_result_init(&parse_result);
 	
@@ -6587,8 +6596,20 @@ tcadmin_execute_command(THD* thd, bool first_level)
       goto error;
     if (xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str()))
       goto error;
-    tc_append_before_query(thd, lex, before_sql_for_spider, before_sql_for_remote);
-    tc_ddl_run(thd, lex, before_sql_for_spider, before_sql_for_remote, spider_sql, remote_sql_map, &exec_result);
+
+    query_exec_manager.reset_error();
+    query_exec_manager.store_exec_query(spider_sql, NODE_TYPE_SPIDER);
+    query_exec_manager.store_exec_query(remote_sql_map, NODE_TYPE_REMOTE);
+
+    if (thd->cluster_conn_manager->check_query_manager_validity(
+            &query_exec_manager)) {
+      my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0),
+               "servers to receive queries are inconsistent with registered "
+               "connections");
+      goto error;
+    }
+    tc_ddl_run(thd, thd->cluster_conn_manager, &query_exec_manager);
+    query_exec_manager.get_results(&exec_result);
     res = tc_process_all_result(thd, &parse_result, &exec_result);
     goto finish;
   }

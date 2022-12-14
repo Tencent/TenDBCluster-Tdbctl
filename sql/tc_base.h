@@ -11,6 +11,7 @@
 #include <set>
 #include <sstream>
 #include <regex>
+#include <mutex>
 #include "mysql.h"
 using namespace std;
 
@@ -35,6 +36,22 @@ using namespace std;
 
 enum tspider_shard_func { tspider_shard_func_crc32, tspider_shard_func_crc32_ci, tspider_shard_func_none };
 enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
+
+#define TC_CONN_READ_TIMEOUT 600
+#define TC_CONN_WRITE_TIMEOUT 600
+#define TC_CONN_CONNECT_TIMEOUT 60
+#define TC_CONN_MAX_RETRIES_ON_FAILS 3
+
+enum enum_node_type {
+  NODE_TYPE_SPIDER = 0, /* this should ALWAYS be the first */
+  NODE_TYPE_REMOTE = 1,
+  NODE_TYPE_CTL = 2,
+  NODE_TYPE_END = 3, /* this should ALWAYS be the last */
+};
+
+#define ENUM_NODE_TYPE_BEGIN NODE_TYPE_SPIDER
+#define ENUM_NODE_TYPE_END NODE_TYPE_END
+#define ENUM_NODE_TYPE_COUNT int(NODE_TYPE_END)
 
 //mysql guard to free mysql connection
 #define MYSQL_GUARD(p) std::shared_ptr<MYSQL> p##p(p, \
@@ -95,6 +112,214 @@ typedef struct tc_parse_result
     bool is_with_unique;
     bool result;
 } TC_PARSE_RESULT;
+
+class Query_exec_manager {
+public:
+  friend class Cluster_conn_manager;
+
+  Query_exec_manager(THD *thd);
+
+  inline void reset_error() { error = 0; }
+  inline int get_error() const { return error; }
+
+  /**
+   * @brief Clear error and maps
+   * */
+  void clear();
+
+  /**
+   * @brief Get real query of a node for execution
+   *
+   * @param[in]   server_name node's identifier
+   * @param[out]  real_query stores a copy of the real query
+   * @param[in]   node_type node's type
+   *
+   * @retval FALSE if node's real query is found, TRUE otherwise
+   * */
+  bool get_real_query(const std::string &server_name, std::string &real_query,
+                     enum_node_type node_type);
+
+  /**
+   * @brief Store a query execution result from a node, into the result map
+   *
+   * @note a lock is used to ensure thread safety
+   *
+   * @param[in] server_name node's identifier
+   * @param[in] exec_info a struct containing exec results
+   * @param[in] node_type node's type
+   * */
+  void store_result(const std::string &server_name,
+                   const tc_exec_info &exec_info,
+                   enum_node_type node_type);
+
+  /**
+   * @brief Store an exec query for a node identified by server_name
+   *
+   * @note make_real_query() is called to generate and store a real query for
+   * the execution
+   *
+   * @param[in] server_name node's identifier
+   * @param[in] query exec query for the node
+   * @param[in] node_type node's type
+   * */
+  MY_ATTRIBUTE((unused))
+  void store_exec_query(const std::string &server_name,
+                        const std::string &query, enum_node_type node_type);
+
+  /**
+   * @brief Store an exec query for all nodes of the type specified
+   *
+   * @note make_real_query() is called to generate and store a real query for
+   * the execution
+   *
+   * @param[in] query exec query for the nodes
+   * @param[in] node_type nodes' type
+   * */
+  void store_exec_query(const std::string &query, enum_node_type node_type);
+
+  /**
+   * @brief Store exec queries for nodes specified by a map
+   *
+   * @note make_real_query() is called to generate and store a real query for
+   * the execution
+   *
+   * @param[in] sql_map a map (key: server_name) specifying query for each node
+   * @param[in] query exec query for the node
+   * @param[in] node_type node's type
+   * */
+  void store_exec_query(const std::map<std::string, std::string> &sql_map,
+                       enum_node_type node_type);
+
+  /**
+   * @brief Register a position for every server (node) in the query and result
+   * maps
+   *
+   * This has to be called before using a query_exec_manager for generating or
+   * executing queries, any query or exec result must be assigned to a existing
+   * server in the maps.
+   *
+   * @param[in] conn_mgr a connection manager reference, we friend this class so
+   * we can iterate over all the servers
+   * */
+  void build_server_maps(Cluster_conn_manager *conn_mgr);
+
+  /* TODO: get rid of it */
+  int get_results(tc_execute_result *res) const;
+
+private:
+  Query_exec_manager() {} /* =delete */
+
+  /**
+   * @brief Append "before queries" in front of an "exec query" to generate a
+   * "real query"
+   *
+   * @param[in] exec_query execution query
+   * @param[out] real_query generated real query
+   * @param[in] node_type node's type
+   * */
+  int make_real_query(const std::string &exec_query, std::string &real_query,
+                      enum_node_type node_type);
+
+  THD *m_thd;
+
+  int error;
+
+  std::mutex result_mtx;
+
+  /* Execution results for each server store here */
+  std::map<std::string, tc_exec_info> exec_results[ENUM_NODE_TYPE_COUNT];
+
+  /*
+    Intermediate queries for each server store here
+    @TODO: remove it in the future?
+  */
+  std::map<std::string, std::string> exec_queries[ENUM_NODE_TYPE_COUNT];
+
+  /* Real execution queries for each server store here */
+  std::map<std::string, std::string> real_queries[ENUM_NODE_TYPE_COUNT];
+};
+
+class Cluster_conn_manager {
+public:
+  friend class Query_exec_manager;
+
+  Cluster_conn_manager();
+
+  ~Cluster_conn_manager();
+
+  /**
+   * @brief Read mysql.servers table and initialize auth info & conns
+   *
+   * @param force If false, refresh only when server_version is outdated
+   *
+   * @retval FALSE on success, TRUE on error
+   * */
+  bool refresh(bool force);
+
+  /**
+   * @brief Clear everything
+   * */
+  void clear();
+
+  inline const std::map<std::string, MYSQL *> &get_spider_conn_map() const {
+    return server_conns[NODE_TYPE_SPIDER];
+  }
+
+  MY_ATTRIBUTE((unused)) inline uint get_spider_count() const { return spider_count; }
+
+  inline const std::map<std::string, MYSQL *> &get_remote_conn_map() const {
+    return server_conns[NODE_TYPE_REMOTE];
+  }
+
+  MY_ATTRIBUTE((unused)) inline uint get_shard_count() const { return shard_count; }
+
+  /*
+    Check if every server of any type is registered in the query exec manager
+  */
+  bool check_query_manager_validity(Query_exec_manager *query_mgr);
+
+private:
+  struct AUTH_INFO {
+    uint port;
+    std::string host;
+    std::string ipport_str;
+    std::string user;
+    std::string passwd;
+  };
+
+  bool initialized;
+
+  MEM_ROOT mem_root;
+
+  uint spider_count;
+  uint shard_count;
+
+  ulong server_version;
+
+  /**
+   * For each map we have:
+   * @key: "<server_name>"
+   * @val: AUTH_INFO
+   * */
+  std::map<std::string, AUTH_INFO> server_auths[ENUM_NODE_TYPE_COUNT];
+
+  /**
+   * For each map we have:
+   * @key: "<server_name>"
+   * @val: CONN
+   * */
+  std::map<std::string, MYSQL *> server_conns[ENUM_NODE_TYPE_COUNT];
+
+  /**
+   * @brief Check if current server_version is outdated, and update it if so
+   *
+   * @note server_version should not be modified anywhere else, and should only
+   * be maintained here
+   *
+   * @retval TRUE if current server_version is outdated, FALSE otherwise
+   * */
+  bool check_server_version();
+};
 
 void tc_parse_result_init(TC_PARSE_RESULT *parse_result_t);
 bool is_add_or_drop_unique_key(THD *thd, LEX *lex);
@@ -312,6 +537,9 @@ MYSQL* tc_conn_connect(
   string passwd
 );
 
+MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
+                       const string &passwd);
+
 map<string, MYSQL*> tc_remote_conn_connect(
   int &ret, 
   map<string, string> remote_ipport_map, 
@@ -482,5 +710,14 @@ int checked_getaddrinfo(const char *nodename, const char *servname, const struct
  */
 bool
 get_ipv4_addr_from_hostname(const std::string& host, std::string& ip);
+
+void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
+                   MYSQL *mysql, enum_node_type node_type);
+bool tc_exec_query_paral(Query_exec_manager *query_mgr,
+                      const std::map<std::string, MYSQL *> &conns,
+                      enum_node_type node_type);
+bool tc_ddl_run(THD *thd, Cluster_conn_manager *conn_mgr,
+                Query_exec_manager *query_mgr);
+const char *get_wrapper_name_by_node_type(enum_node_type type);
 
 #endif /* TC_BASE_INCLUDED */
