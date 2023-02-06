@@ -6,12 +6,30 @@
 Add for node's show 
 */
 
+#include "log.h"
 #include "tc_show.h"
 #include "tc_base.h"
 #include "mysql.h"
 #include "protocol.h"                       // Protocol
 
 using namespace std;
+
+#define VARNAME_SPIDER_AUTO_INCREMENT_MODE_SWITCH                              \
+  "SPIDER_AUTO_INCREMENT_MODE_SWITCH"
+#define VARNAME_SPIDER_AUTO_INCREMENT_MODE_VALUE                               \
+  "SPIDER_AUTO_INCREMENT_MODE_VALUE"
+#define VARNAME_SPIDER_AUTO_INCREMENT_STEP "SPIDER_AUTO_INCREMENT_STEP"
+
+ST_FIELD_INFO spider_autoinc_fields_info[] = {
+    {"SERVER_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"SPIDER_AUTO_INCREMENT_MODE_SWITCH", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0,
+     0, 0, SKIP_OPEN_TABLE},
+    {"SPIDER_AUTO_INCREMENT_MODE_VALUE", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0,
+     0, SKIP_OPEN_TABLE},
+    {"SPIDER_AUTO_INCREMENT_STEP", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0,
+     SKIP_OPEN_TABLE},
+    {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
+};
 
 static void protocol_store_field(Protocol *protocol, MYSQL_FIELD field, const char *row)
 {
@@ -216,3 +234,87 @@ void tc_show_variables(THD *thd, enum_var_type type, String *wild, const char *s
 
 }
 
+int fill_schema_spider_autoinc(THD *thd, TABLE_LIST *tables, Item *cond) {
+  DBUG_ENTER("fill_schema_spider_autoinc");
+
+  TABLE *table;
+  map<string, MYSQL_RES *> result_map;
+  Cluster_conn_manager *conn_mgr;
+  char query[512];
+  const char *get_vars_fmt = "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM "
+                             "INFORMATION_SCHEMA.GLOBAL_VARIABLES "
+                             "WHERE VARIABLE_NAME IN ('%s','%s','%s')";
+  Query_exec_manager query_mgr(thd);
+
+  if (!thd->cluster_conn_manager) {
+    thd->cluster_conn_manager = new Cluster_conn_manager();
+  }
+  if (thd->cluster_conn_manager->refresh(FALSE))
+    DBUG_RETURN(1);
+  conn_mgr = thd->cluster_conn_manager;
+
+  query_mgr.build_server_maps(thd->cluster_conn_manager);
+  query_mgr.reset_error();
+
+  my_snprintf(query, sizeof(query), get_vars_fmt,
+              VARNAME_SPIDER_AUTO_INCREMENT_MODE_SWITCH,
+              VARNAME_SPIDER_AUTO_INCREMENT_MODE_VALUE,
+              VARNAME_SPIDER_AUTO_INCREMENT_STEP);
+  query_mgr.store_exec_query(query, NODE_TYPE_SPIDER);
+
+  const map<string, MYSQL *> &spider_conns = conn_mgr->get_spider_conn_map();
+  map<string, MYSQL *>::const_iterator conn_it;
+  for (conn_it = spider_conns.begin(); conn_it != spider_conns.end();
+       conn_it++) {
+    MYSQL_RES *res;
+    tc_real_query(&query_mgr, conn_it->first, conn_it->second,
+                  NODE_TYPE_SPIDER);
+    if (query_mgr.get_error() || !(res = mysql_store_result(conn_it->second))) {
+      /* encountered error */
+      char buf[256];
+      my_snprintf(
+          buf, sizeof(buf),
+          "failed to retrieve AUTOINC variables from server: %s, error: %u",
+          conn_it->first.c_str(), mysql_errno(conn_it->second));
+      my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), buf);
+      DBUG_RETURN(1);
+    }
+    result_map[conn_it->first] = res;
+  }
+
+  table = tables->table;
+  map<string, MYSQL_RES *>::iterator res_it;
+  for (res_it = result_map.begin(); res_it != result_map.end(); res_it++) {
+    MYSQL_ROW row;
+    MYSQL_RES *res = res_it->second;
+
+    DBUG_ASSERT(mysql_num_fields(res) == 2);
+    int row_cnt = 0;
+    restore_record(table, s->default_values);
+    /* SERVER NAME */
+    table->field[0]->store(res_it->first.c_str(), res_it->first.length(),
+                           &my_charset_bin);
+    while ((row = mysql_fetch_row(res))) {
+      ulong length = mysql_fetch_lengths(res)[1];
+      ++row_cnt;
+      if (!strcasecmp(row[0], VARNAME_SPIDER_AUTO_INCREMENT_MODE_SWITCH)) {
+        table->field[1]->store(row[1], length, &my_charset_bin);
+      } else if (!strcasecmp(row[0],
+                             VARNAME_SPIDER_AUTO_INCREMENT_MODE_VALUE)) {
+        table->field[2]->store(row[1], length, &my_charset_bin);
+      } else if (!strcasecmp(row[0], VARNAME_SPIDER_AUTO_INCREMENT_STEP)) {
+        table->field[3]->store(row[1], length, &my_charset_bin);
+      }
+    }
+    DBUG_ASSERT(row_cnt == 3);
+    if (unlikely(row_cnt != 3)) {
+      sql_print_error(
+          "expected 3 SPIDER_AUTO_INCREMENT variables from server %s, got %d",
+          res_it->first.c_str(), row_cnt);
+    }
+    schema_table_store_record(thd, table);
+    mysql_free_result(res);
+  }
+
+  DBUG_RETURN(0);
+}
