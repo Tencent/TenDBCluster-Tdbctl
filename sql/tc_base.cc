@@ -2132,13 +2132,17 @@ void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
   }
   exec_info.err_code = 0;
   exec_info.err_msg = "";
-  err = mysql_real_query(mysql, query.c_str(), query.length());
-  while (!err) {
-    err = tc_mysql_next_result(mysql);
-  }
-  if (err != -1) {
-    exec_info.err_code = mysql_errno(mysql);
-    exec_info.err_msg = mysql_error(mysql);
+  // If we dont prepare sql statements for some instances(spider or remote node),
+  // we will skip querying to these instances.
+  if (query != string()) {
+    err = mysql_real_query(mysql, query.c_str(), query.length());
+    while (!err) {
+      err = tc_mysql_next_result(mysql);
+    }
+    if (err != -1) {
+      exec_info.err_code = mysql_errno(mysql);
+      exec_info.err_msg = mysql_error(mysql);
+    }
   }
   query_mgr->store_result(server_name, exec_info, node_type);
 
