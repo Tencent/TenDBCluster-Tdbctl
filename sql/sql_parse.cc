@@ -5440,6 +5440,12 @@ end_with_restore_list:
       goto finish;
     }
 
+    if (!verify_validity_of_routing_host(thd->mem_root, lex->server_options.get_host())) {
+      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "mysql.servers can't contain both loopback network"
+      " address and external network address, please change the value of 'host' column");
+      goto error;
+    }
+
     if ((res = lex->m_sql_cmd->execute(thd)))
       goto error;
 
@@ -6443,6 +6449,12 @@ tcadmin_execute_command(THD* thd, bool first_level)
     default:
       my_ok(thd);
       goto finish;
+    }
+
+    if (!verify_validity_of_routing_host(thd->mem_root, lex->server_options.get_host())) {
+      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "mysql.servers can't contain both loopback network"
+      " address and external network address, please change the value of 'host' column");
+      goto error;
     }
 
     if ((res = lex->m_sql_cmd->execute(thd)))
