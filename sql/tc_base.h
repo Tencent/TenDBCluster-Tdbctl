@@ -261,6 +261,10 @@ public:
    * */
   void clear();
 
+  inline const std::map<std::string, MYSQL *> &get_conn_map(enum_node_type type) {
+    return server_conns[type];
+  }
+
   inline const std::map<std::string, MYSQL *> &get_spider_conn_map() const {
     return server_conns[NODE_TYPE_SPIDER];
   }
