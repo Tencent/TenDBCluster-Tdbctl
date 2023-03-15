@@ -940,16 +940,6 @@ void cleanup_items(Item *item)
 */
 void free_thd_connection(THD *thd)
 {
-  tc_conn_free(thd->spider_conn_map);
-  tc_conn_free(thd->remote_conn_map);
-  thd->spider_conn_map.clear();
-  thd->remote_conn_map.clear();
-  thd->spider_ipport_set.clear();
-  thd->remote_ipport_map.clear();
-  thd->spider_user_map.clear();
-  thd->spider_passwd_map.clear();
-  thd->remote_user_map.clear();
-  thd->remote_passwd_map.clear();
   thd->tc_conn_init = FALSE;
 }
 
@@ -2615,6 +2605,7 @@ static inline void binlog_gtid_end_transaction(THD *thd)
 }
 
 
+
 /**
   Execute command saved in thd and lex->sql_command.
 
@@ -2648,6 +2639,11 @@ mysql_execute_command(THD *thd, bool first_level)
   SELECT_LEX_UNIT *const unit= lex->unit;
   DBUG_ASSERT(select_lex->master_unit() == unit);
   struct system_variables *per_query_variables_backup= NULL;
+
+  bool tc_admin = thd->variables.tc_admin;
+  tc_parse_result parse_result;
+  tc_execute_result exec_result;
+  Query_exec_manager query_exec_manager(thd);
 
   DBUG_ENTER("mysql_execute_command");
   /* EXPLAIN OTHER isn't explainable command, but can have describe flag. */
@@ -2978,6 +2974,24 @@ mysql_execute_command(THD *thd, bool first_level)
     sql_print_warning(ER(ER_TCADMIN_NOT_PRIMARY));
     my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
     goto finish;
+  }
+
+  if (tc_admin == 1)
+  {
+    if (!thd->cluster_conn_manager) {
+      thd->cluster_conn_manager = new Cluster_conn_manager();
+    }
+
+    if (thd->cluster_conn_manager->refresh(FALSE))
+      goto error;
+
+    query_exec_manager.build_server_maps(thd->cluster_conn_manager);
+
+    tc_parse_result_init(&parse_result);
+    parse_result.shard_count = thd->cluster_conn_manager->get_shard_count();
+
+    if (!tc_command_convert(thd, lex, &parse_result))
+      goto error;
   }
 
   switch (lex->sql_command) {
@@ -3324,7 +3338,7 @@ case SQLCOM_PREPARE:
     /* Fix names if symlinked or relocated tables */
     if (append_file_to_dir(thd, &create_info.data_file_name,
          create_table->table_name) ||
-  append_file_to_dir(thd, &create_info.index_file_name,
+         append_file_to_dir(thd, &create_info.index_file_name,
          create_table->table_name))
       goto end_with_restore_list;
 
@@ -3340,8 +3354,8 @@ case SQLCOM_PREPARE:
       DEFAULT to not confuse old users. (This may change).
     */
     if ((create_info.used_fields &
-   (HA_CREATE_USED_DEFAULT_CHARSET | HA_CREATE_USED_CHARSET)) ==
-  HA_CREATE_USED_CHARSET)
+    (  HA_CREATE_USED_DEFAULT_CHARSET | HA_CREATE_USED_CHARSET)) ==
+       HA_CREATE_USED_CHARSET)
     {
       create_info.used_fields&= ~HA_CREATE_USED_CHARSET;
       create_info.used_fields|= HA_CREATE_USED_DEFAULT_CHARSET;
@@ -3411,14 +3425,14 @@ case SQLCOM_PREPARE:
           raise a warning. 
         */
         if (splocal_refs != thd->query_name_consts)
-          push_warning(thd, 
-                       Sql_condition::SL_WARNING,
-                       ER_UNKNOWN_ERROR,
+        push_warning(thd,
+                     Sql_condition::SL_WARNING,
+                     ER_UNKNOWN_ERROR,
 "Invoked routine ran a statement that may cause problems with "
 "binary log, see 'NAME_CONST issues' in 'Binary Logging of Stored Programs' "
 "section of the manual.");
       }
-      
+
       unit->set_limit(select_lex);
 
       /*
@@ -3542,7 +3556,7 @@ case SQLCOM_PREPARE:
     }
 
 end_with_restore_list:
-    break;
+      break;
   }
   case SQLCOM_CREATE_INDEX:
     /* Fall through */
@@ -5560,7 +5574,37 @@ end_with_restore_list:
     my_ok(thd);
     break;
   }
-  goto finish;
+
+  if (!thd->is_error() && tc_admin == 1 && (parse_result.execute_flag & (TC_REMOTE_EXECUTE_FIRST|TC_SPIDER_NEED_EXECUTE)) > 0)
+  {
+    thd->get_stmt_da()->reset_diagnostics_area();
+    /*
+      NB: use server_uuid as lock string here
+      we add S lock to block tdbctl flush routing(acquire X lock)
+     */
+    if (lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED))
+      goto error;
+    if (xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str()))
+      goto error;
+
+    query_exec_manager.reset_error();
+    if (parse_result.execute_flag & TC_SPIDER_NEED_EXECUTE)
+      query_exec_manager.store_exec_query(parse_result.spider_sql, NODE_TYPE_SPIDER);
+    if (parse_result.execute_flag & TC_REMOTE_NEED_EXECUTE)
+      query_exec_manager.store_exec_query(parse_result.remote_sql_map, NODE_TYPE_REMOTE);
+
+    if (thd->cluster_conn_manager->check_query_manager_validity(
+      &query_exec_manager)) {
+      my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0),
+        "servers to receive queries are inconsistent with registered "
+        "connections");
+      goto error;
+    }
+    tc_ddl_run(thd, thd->cluster_conn_manager, &query_exec_manager);
+    query_exec_manager.get_results(&exec_result);
+    res = tc_process_all_result(thd, &exec_result);
+    goto finish;
+  }
 
 error:
   res= TRUE;
@@ -5732,1088 +5776,6 @@ finish:
 
   if (!(res || thd->is_error()))
     binlog_gtid_end_transaction(thd);
-
-  DBUG_RETURN(res || thd->is_error());
-}
-
-
-/**
-  Execute command saved in thd and lex->sql_command.
-  tc_admin is ON will do this.
-
-  @param thd                       Thread handle
-
-  @todo
-    - Invalidate the table in the query cache if something changed
-    after unlocking when changes become visible.
-    @todo: this is workaround. right way will be move invalidating in
-    the unlock procedure.
-    - TODO: use check_change_password()
-
-  @retval
-    FALSE       OK
-  @retval
-    TRUE        Error
-*/
-
-int
-tcadmin_execute_command(THD* thd, bool first_level)
-{
-  int res = 0;
-  LEX* lex = thd->lex;
-  /* first SELECT_LEX (have special meaning for many of non-SELECTcommands) */
-  SELECT_LEX* select_lex = lex->select_lex;
-  struct system_variables *per_query_variables_backup = NULL;
-
-  DBUG_ENTER("tcadmin_execute_command");
-
-  thd->work_part_info = 0;
-
-  lex->first_lists_tables_same();
-  select_lex->context.resolve_in_table_list_only(select_lex->table_list.first);
-
-  tc_parse_result parse_result;
-  tc_execute_result exec_result;
-  string spider_sql;
-  string before_sql_for_spider;
-  string before_sql_for_remote;
-  map<string, string> remote_sql_map;
-  int shard_count;
-  tspider_shard_func shard_func = tspider_shard_func_crc32;
-  tspider_shard_type shard_type = tspider_shard_type_list;
-  bool is_unsigned_key = false;
-  Query_exec_manager query_exec_manager(thd);
-  /*when cluster is not available, it is forbidden to DDL or grant*/
-  if (tc_check_availability && tc_is_available != 1 &&
-    (sql_command_flags[lex->sql_command] & CF_DISALLOW_IN_UNAVAILAVLE))
-  {
-    sql_print_warning(ER(ER_TCADMIN_NOT_AVAILABLE));
-    my_error(ER_TCADMIN_NOT_AVAILABLE, MYF(0));
-    goto finish;
-  }
-  if (check_server_version(thd->server_version))
-  {
-    DBUG_ASSERT(thd->variables.tc_admin);
-    free_thd_connection(thd);
-  }
-
-  /* TODO: remove this block and related code */
-  /* do spider/remote conn init */
-  if (!thd->tc_conn_init && thd->variables.tc_admin)
-  {
-    int ret = 0; 
-    thd->spider_ipport_set = get_spider_ipport_set(
-                               thd->mem_root, 
-                               thd->spider_user_map, 
-                               thd->spider_passwd_map,
-                               TRUE);
-    thd->remote_ipport_map = get_remote_ipport_map(
-                               thd->mem_root, 
-                               thd->remote_user_map, 
-                               thd->remote_passwd_map);
-    thd->tdbctl_ipport_map = get_tdbctl_ipport_map(
-                               thd->mem_root,
-                               thd->tdbctl_user_map,
-                               thd->tdbctl_passwd_map);
-
-    thd->spider_conn_map = tc_spider_conn_connect(
-                             ret, 
-                             thd->spider_ipport_set, 
-                             thd->spider_user_map, 
-                             thd->spider_passwd_map);
-    thd->remote_conn_map = tc_remote_conn_connect(
-                             ret, 
-                             thd->remote_ipport_map, 
-                             thd->remote_user_map, 
-                             thd->remote_passwd_map);
-    if (ret)
-      goto error;
-    else
-      thd->tc_conn_init = TRUE;
-  }
-  shard_count = thd->remote_ipport_map.size();
-
-  if (!thd->cluster_conn_manager) {
-    thd->cluster_conn_manager = new Cluster_conn_manager();
-  }
-  if (thd->cluster_conn_manager->refresh(FALSE))
-    goto error;
-  query_exec_manager.build_server_maps(thd->cluster_conn_manager);
-
-  tc_parse_result_init(&parse_result);
-	
-  /* if shard_count == 0, we should stop here */
-  if (shard_count == 0) {
-    my_error(ER_TCADMIN_NO_REMOTE_DB_FOUND, MYF(0), "No Remote DB has been found");
-    parse_result.result = TRUE;
-    parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE COMMENT";
-    goto error;
-  }
-
-  /* tc sql parse */
-  switch (lex->sql_command) {
-    /* 1. DML or unsupported DDL or DDL don't need tcadmin to execute */
-  case SQLCOM_SHOW_EVENTS:
-  case SQLCOM_SHOW_STATUS:
-  case SQLCOM_SHOW_STATUS_PROC:
-  case SQLCOM_SHOW_STATUS_FUNC:
-  case SQLCOM_SHOW_DATABASES:
-  case SQLCOM_SHOW_TABLES:
-  case SQLCOM_SHOW_TRIGGERS:
-  case SQLCOM_SHOW_TABLE_STATUS:
-  case SQLCOM_SHOW_OPEN_TABLES:
-  case SQLCOM_SHOW_PLUGINS:
-  case SQLCOM_SHOW_FIELDS:
-  case SQLCOM_SHOW_KEYS:
-  case SQLCOM_SHOW_VARIABLES:
-  case SQLCOM_SHOW_CHARSETS:
-  case SQLCOM_SHOW_COLLATIONS:
-  case SQLCOM_SHOW_STORAGE_ENGINES:
-  case SQLCOM_SHOW_PROFILE:
-  case SQLCOM_PREPARE:
-  case SQLCOM_EXECUTE:
-  case SQLCOM_DEALLOCATE_PREPARE:
-  case SQLCOM_EMPTY_QUERY:
-  case SQLCOM_HELP:
-  case SQLCOM_PURGE:
-  case SQLCOM_PURGE_BEFORE:
-  case SQLCOM_SHOW_WARNS:
-  case SQLCOM_SHOW_ERRORS:
-  case SQLCOM_SHOW_PROFILES:
-  case SQLCOM_ASSIGN_TO_KEYCACHE:
-  case SQLCOM_PRELOAD_KEYS:
-  case SQLCOM_SHOW_ENGINE_STATUS:
-  case SQLCOM_SHOW_ENGINE_MUTEX:
-  case SQLCOM_SHOW_BINLOGS:
-  case SQLCOM_SHOW_CREATE:
-  case SQLCOM_CHECKSUM:
-  case SQLCOM_UPDATE:
-  case SQLCOM_UPDATE_MULTI:
-  case SQLCOM_REPLACE:
-  case SQLCOM_INSERT:
-  case SQLCOM_REPLACE_SELECT:
-  case SQLCOM_INSERT_SELECT:
-  case SQLCOM_DELETE:
-  case SQLCOM_DELETE_MULTI:
-  case SQLCOM_SHOW_PROCESSLIST:
-  case SQLCOM_SHOW_ENGINE_LOGS:
-  case SQLCOM_LOAD:
-  case SQLCOM_SHOW_CREATE_DB:
-  case SQLCOM_XA_START:
-  case SQLCOM_XA_END:
-  case SQLCOM_XA_PREPARE:
-  case SQLCOM_XA_COMMIT:
-  case SQLCOM_XA_ROLLBACK:
-  case SQLCOM_XA_RECOVER:
-  case SQLCOM_ALTER_TABLESPACE:
-  case SQLCOM_INSTALL_PLUGIN:
-  case SQLCOM_UNINSTALL_PLUGIN:
-  case SQLCOM_ANALYZE:
-  case SQLCOM_CHECK:
-  case SQLCOM_OPTIMIZE:
-  case SQLCOM_REPAIR:
-  case SQLCOM_TRUNCATE:
-  case SQLCOM_SIGNAL:
-  case SQLCOM_RESIGNAL:
-  case SQLCOM_GET_DIAGNOSTICS:
-  case SQLCOM_CALL:
-  case SQLCOM_BINLOG_BASE64_EVENT:
-  case SQLCOM_HA_OPEN:
-  case SQLCOM_HA_CLOSE:
-  case SQLCOM_HA_READ:
-  case SQLCOM_SHOW_PRIVILEGES:
-  case SQLCOM_SHOW_CREATE_USER:
-  case SQLCOM_SHOW_GRANTS:
-  case SQLCOM_SHOW_PROC_CODE:
-  case SQLCOM_SHOW_FUNC_CODE:
-  case SQLCOM_SHOW_CREATE_PROC:
-  case SQLCOM_SHOW_CREATE_FUNC:
-  case SQLCOM_SHOW_CREATE_TRIGGER:
-  case SQLCOM_ALTER_INSTANCE:
-  case SQLCOM_CHANGE_REPLICATION_FILTER:
-  case SQLCOM_CREATE_COMPRESSION_DICTIONARY:
-  case SQLCOM_DROP_COMPRESSION_DICTIONARY:
-  case SQLCOM_EXPLAIN_OTHER:
-  case SQLCOM_LOCK_BINLOG_FOR_BACKUP:
-  case SQLCOM_LOCK_TABLES_FOR_BACKUP:
-  case SQLCOM_SHOW_CLIENT_STATS:
-  case SQLCOM_SHOW_INDEX_STATS:
-  case SQLCOM_SHOW_TABLE_STATS:
-  case SQLCOM_SHOW_THREAD_STATS:
-  case SQLCOM_SHOW_USER_STATS:
-  case SQLCOM_START_GROUP_REPLICATION:
-  case SQLCOM_STOP_GROUP_REPLICATION:
-  case SQLCOM_UNLOCK_BINLOG:
-  case SQLCOM_SELECT:
-  {
-    if (!thd->is_error())
-      my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-    goto error;
-  }
-  case SQLCOM_SET_OPTION:
-  {
-    List<set_var_base>* lex_var_list = &lex->var_list;
-    if (!(res = sql_set_variables(thd, lex_var_list, true)))
-      my_ok(thd);
-    else
-    {
-      if (!thd->is_error())
-        my_error(ER_WRONG_ARGUMENTS, MYF(0), "SET");
-      goto error;
-    }
-
-    goto finish;
-  }
-  /* 2. DDL need dispatch to each spider only */
-  case SQLCOM_CREATE_EVENT:
-  case SQLCOM_ALTER_EVENT:
-  case SQLCOM_CREATE_FUNCTION:                  // UDF function
-  case SQLCOM_CREATE_PROCEDURE:
-  case SQLCOM_CREATE_SPFUNCTION:
-  case SQLCOM_ALTER_PROCEDURE:
-  case SQLCOM_ALTER_FUNCTION:
-  case SQLCOM_DROP_PROCEDURE:
-  case SQLCOM_DROP_FUNCTION:
-  case SQLCOM_CREATE_TRIGGER:
-  case SQLCOM_DROP_TRIGGER:
-    parse_result.query_string = thd->query();
-    if (thd->db().str)
-      parse_result.db_name = thd->db().str;
-    else
-      parse_result.db_name = lex->sphead->m_db.str;
-    parse_result.sql_type = lex->sql_command;
-    parse_result.result = FALSE;
-    break;
-  case SQLCOM_CREATE_VIEW:
-  case SQLCOM_DROP_VIEW:
-    /* thd.db first
-    For example:  create view d1.v1 as select * from t1;  we must execute this query on current db;
-    May be query is: "create view d1.v1 as select * from d2.t1", and thd.db is null;  then  we must use d1 as current db
-    */
-    parse_result.query_string = thd->query();
-    if (thd->db().str)
-      parse_result.db_name = thd->db().str;
-    else
-      parse_result.db_name = tc_get_cur_dbname(thd, lex);
-    parse_result.sql_type = lex->sql_command;
-    parse_result.result = FALSE;
-    break;
-  case SQLCOM_CREATE_USER:
-  case SQLCOM_DROP_USER:
-  case SQLCOM_ALTER_USER:
-  case SQLCOM_RENAME_USER:
-  case SQLCOM_REVOKE:
-  case SQLCOM_GRANT:
-  case SQLCOM_CREATE_SERVER:
-  case SQLCOM_ALTER_SERVER:
-  case SQLCOM_DROP_SERVER:
-    parse_result.query_string = thd->query();
-    parse_result.sql_type = lex->sql_command;
-    parse_result.result = FALSE;
-    break;
-    /* 3. DDL need dispatch to spider and remote mysql */
-  case SQLCOM_CREATE_TABLE:
-  {
-    List_iterator<Create_field> it_field;
-    Create_field* cur_field;
-    const char* tb_charset = NULL;
-    char buf[128];
-    bool create_table_with_field_charset = false;
-    char key_name[256];
-    char result_info[256];
-
-    parse_result.query_string = thd->query();
-    parse_result.db_name = tc_get_cur_dbname(thd, lex);
-    parse_result.table_name = tc_get_cur_tbname(thd, lex);
-    parse_result.result = tc_parse_getkey_for_spider(thd, key_name, result_info, sizeof(result_info), &parse_result.is_with_unique, &is_unsigned_key);
-    parse_result.result_info = result_info;
-    parse_result.shard_key = key_name;
-
-    // tb_charset as table charset 
-    if (lex->create_info.default_table_charset)
-      tb_charset = lex->create_info.default_table_charset->csname;
-    else
-      tb_charset = thd->charset()->csname;
-    it_field = lex->alter_info.create_list;
-    while (!!(cur_field = it_field++))
-    {// column charset must be same with table 
-      switch (cur_field->sql_type)
-      {
-      case MYSQL_TYPE_BLOB:
-      case MYSQL_TYPE_TINY_BLOB:
-      case MYSQL_TYPE_MEDIUM_BLOB:
-      case MYSQL_TYPE_LONG_BLOB:
-      case MYSQL_TYPE_VARCHAR:
-      case MYSQL_TYPE_VAR_STRING:
-      case MYSQL_TYPE_STRING:
-      case MYSQL_TYPE_ENUM:
-      case MYSQL_TYPE_SET:
-        if (cur_field->charset)
-        {
-          if (strcmp(cur_field->charset->csname, tb_charset) && strcmp(cur_field->charset->csname, "binary"))
-          {// column have different charset
-            create_table_with_field_charset = true;
-          }
-        }
-      default:
-        if (cur_field->flags & AUTO_INCREMENT_FLAG)
-        {/* with autoincrement */
-          parse_result.is_with_autu = TRUE;
-        }
-        break;
-      }
-    }
-
-    // handle user table comment (shard_count, shard_func, shard_type, etc.)
-    if (lex->create_info.comment.str) 
-    {
-      int ret = parse_get_spider_user_comment(
-        lex->create_info.comment.str,
-        &shard_count,
-        &shard_func,
-        &shard_type
-      );
-
-      if (ret != TCADMIN_PARSE_TABLE_COMMENT_OK) 
-      {
-        switch (ret) {
-        case TCADMIN_PARSE_TABLE_COMMENT_UNSUPPORTED:
-          parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT;
-          parse_result.result = TRUE;
-          parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE COMMENT";
-          break;
-        case TCADMIN_PARSE_SHARD_COUNT_INVALID:
-          parse_result.result = TRUE;
-          parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD COUNT COMMENT";
-          my_error(ER_TCADMIN_SHARD_COUNT_NOT_VALID, MYF(0), parse_result.result_info.c_str());
-          goto error;
-          break;
-        case TCADMIN_PARSE_SHARD_FUNCTION_INVALID:
-          parse_result.result = TRUE;
-          parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD FUNCTION COMMENT";
-          my_error(ER_TCADMIN_SHARD_FUNC_NOT_VALID, MYF(0), parse_result.result_info.c_str());
-          goto error;
-          break;
-        case TCADMIN_PARSE_SHARD_TYPE_INVALID:
-          parse_result.result = TRUE;
-          parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD TYPE COMMENT";
-          my_error(ER_TCADMIN_SHARD_TYPE_NOT_VALID, MYF(0), parse_result.result_info.c_str());
-          goto error;
-          break;
-        case TCADMIN_PARSE_TABLE_COMMENT_ERROR:
-        default:
-          /* handle TCADMIN_PARSE_TABLE_COMMENT_ERROR here */
-          parse_result.result = TRUE;
-          parse_result.result_info = "ERROR: SQL CREATE TABLE WITH ERROR TABLE COMMENT";
-          my_error(ER_TCADMIN_SHARD_COMMENT_ERROR, MYF(0), parse_result.result_info.c_str());
-          goto error;
-          break;
-        }
-      }
-    }
-
-    if (lex->create_info.options & HA_LEX_CREATE_TABLE_LIKE)
-    {
-      parse_result.new_db_name = tc_get_new_dbname(thd, lex);
-      parse_result.new_table_name = tc_get_new_tbname(thd, lex);
-      parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_LIKE;
-      parse_result.result = FALSE;
-      break;
-    }
-    else if (lex->select_lex && lex->select_lex->item_list.elements > 0)
-    {// create table select 
-      parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_SELECT;
-      parse_result.result = TRUE;
-      parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH SELECT";
-    }
-    else if (lex->create_info.connect_string.str)
-    {// create table with connect string
-      parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_CONNECT_STRING;
-      parse_result.result = TRUE;
-      parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE CONNECT STRING";
-    }
-    else if (create_table_with_field_charset)
-    {// table with other filed charset
-      parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_FIELD_CHARSET;
-      parse_result.result = TRUE;
-      parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH FIELD_CHARSET";
-    }
-    else
-    {
-      parse_result.sql_type = lex->sql_command;
-    }
-
-    if (!lex->create_info.comment.str || parse_get_shard_key_for_spider(lex->create_info.comment.str, buf, sizeof(buf)))
-    {/* no shard key*/
-      parse_result.is_with_shard = FALSE;
-    }
-    else
-    {
-      parse_result.is_with_autu = TRUE;
-    }
-
-    if (parse_result.result)
-    {/* abnormal query */
-      my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), parse_result.result_info.c_str());
-      goto error;
-    }
-    break;
-  }
-  case SQLCOM_CREATE_INDEX:
-  case SQLCOM_DROP_INDEX:
-  {
-    parse_result.query_string = thd->query();
-    parse_result.db_name = tc_get_cur_dbname(thd, lex);
-    parse_result.table_name = tc_get_cur_tbname(thd, lex);
-    /*if (is_add_or_drop_unique_key(thd, lex))
-    {
-      parse_result.sql_type = TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY;
-      parse_result.result = TRUE;
-      parse_result.result_info = "create or drop primary/unique key is not supported";
-      my_error(ER_TCADMIN_CREATE_DROP_INDEX, MYF(0), parse_result.result_info.c_str());
-    }
-    else
-    {*/
-      parse_result.sql_type = lex->sql_command;
-      parse_result.result = FALSE;
-  /*  }*/
-    break;
-  }
-  case SQLCOM_ALTER_TABLE:
-  {
-    parse_result.query_string = thd->query();
-    if (lex->alter_info.flags == Alter_info::ALTER_DROP_COLUMN)
-      thd->spider_run_first = TRUE;
-    //if (is_add_or_drop_unique_key(thd, lex))
-    //{
-    //  parse_result.sql_type = TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY;
-    //  parse_result.result = TRUE;
-    //  parse_result.result_info = "create or drop primary/unique key is not supported";
-    //  my_error(ER_TCADMIN_CREATE_DROP_INDEX, MYF(0), parse_result.result_info.c_str());
-    //  break;
-    //}
-    if (lex->alter_info.flags == Alter_info::ALTER_RENAME)
-    {
-      parse_result.db_name = tc_get_cur_dbname(thd, lex);
-      parse_result.table_name = tc_get_cur_tbname(thd, lex);
-      parse_result.new_db_name = lex->select_lex->db;
-      parse_result.new_table_name = lex->name.str;
-      parse_result.sql_type = SQLCOM_RENAME_TABLE;
-      parse_result.result = FALSE;
-    }
-    else if (lex->alter_info.flags == Alter_info::ADD_FOREIGN_KEY ||
-      lex->alter_info.flags == Alter_info::DROP_FOREIGN_KEY)
-    {
-      parse_result.sql_type = TC_SQLCOM_ALTER_TABLE_UNSUPPORT;
-      parse_result.result = TRUE;
-      parse_result.result_info = "command not support";
-      my_error(ER_TCADMIN_ALTER_TABLE, MYF(0), parse_result.result_info.c_str());
-      goto error;
-    }
-    else
-    {
-      parse_result.db_name = tc_get_cur_dbname(thd, lex);
-      parse_result.table_name = tc_get_cur_tbname(thd, lex);
-      parse_result.sql_type = lex->sql_command;
-      parse_result.result = FALSE;
-    }
-    break;
-  }
-  case SQLCOM_RENAME_TABLE:
-  {
-    parse_result.query_string = thd->query();
-    parse_result.db_name = tc_get_cur_dbname(thd, lex);
-    parse_result.table_name = tc_get_cur_tbname(thd, lex);
-    parse_result.sql_type = SQLCOM_RENAME_TABLE;
-    if (lex->query_tables->next_global)
-    {
-      parse_result.new_table_name = lex->query_tables->next_global->table_name;
-      parse_result.new_db_name = lex->query_tables->next_global->db;
-      parse_result.result = FALSE;
-    }
-    else
-    {
-      parse_result.result = TRUE;
-      parse_result.result_info = "Invalid RENAME TABLE statement";
-      my_error(ER_TCADMIN_ALTER_TABLE, MYF(0), parse_result.result_info.c_str());
-      goto error;
-    }
-    break;
-  }
-  case SQLCOM_DROP_TABLE:
-  {
-    // handle user table comment (shard_count, shard_func, shard_type, etc.)
-    // if (lex->create_info.comment.str) 
-    // {
-    //   int ret = parse_get_spider_user_comment(
-    //     lex->create_info.comment.str,
-    //     &shard_count,
-    //     &shard_func,
-    //     &shard_type
-    //   );
-
-    //   if (ret != TCADMIN_PARSE_TABLE_COMMENT_OK) 
-    //   {
-    //     switch (ret) {
-    //     case TCADMIN_PARSE_TABLE_COMMENT_UNSUPPORTED:
-    //       parse_result.sql_type = TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT;
-    //       parse_result.result = TRUE;
-    //       parse_result.result_info = "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE COMMENT";
-    //       break;
-    //     case TCADMIN_PARSE_SHARD_COUNT_INVALID:
-    //       parse_result.result = TRUE;
-    //       parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD COUNT COMMENT";
-    //       my_error(ER_TCADMIN_SHARD_COUNT_NOT_VALID, MYF(0), parse_result.result_info.c_str());
-    //       goto error;
-    //       break;
-    //     case TCADMIN_PARSE_SHARD_FUNCTION_INVALID:
-    //       parse_result.result = TRUE;
-    //       parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD FUNCTION COMMENT";
-    //       my_error(ER_TCADMIN_SHARD_FUNC_NOT_VALID, MYF(0), parse_result.result_info.c_str());
-    //       goto error;
-    //       break;
-    //     case TCADMIN_PARSE_SHARD_TYPE_INVALID:
-    //       parse_result.result = TRUE;
-    //       parse_result.result_info = "ERROR: SQL CREATE TABLE WITH INVALID SHARD TYPE COMMENT";
-    //       my_error(ER_TCADMIN_SHARD_TYPE_NOT_VALID, MYF(0), parse_result.result_info.c_str());
-    //       goto error;
-    //       break;
-    //     case TCADMIN_PARSE_TABLE_COMMENT_ERROR:
-    //     default:
-    //       /* handle TCADMIN_PARSE_TABLE_COMMENT_ERROR here */
-    //       parse_result.result = TRUE;
-    //       parse_result.result_info = "ERROR: SQL CREATE TABLE WITH ERROR TABLE COMMENT";
-    //       my_error(ER_TCADMIN_SHARD_COMMENT_ERROR, MYF(0), parse_result.result_info.c_str());
-    //       goto error;
-    //       break;
-    //     }
-    //   }
-    // }
-    parse_result.query_string = thd->query();
-    parse_result.db_name = tc_get_cur_dbname(thd, lex);
-    parse_result.table_name = tc_get_cur_tbname(thd, lex);
-    parse_result.sql_type = lex->sql_command;
-    parse_result.result = FALSE;
-    thd->spider_run_first = TRUE;
-    break;
-  }
-  case SQLCOM_CHANGE_DB:
-  {
-    if (!mysql_change_db(thd, to_lex_cstring(select_lex->db), FALSE))
-      my_ok(thd);
-    goto finish;
-  }
-  case SQLCOM_CREATE_DB:
-  {
-    parse_result.query_string = thd->query();
-    parse_result.db_name = lex->name.str;
-    parse_result.sql_type = lex->sql_command;
-    parse_result.result = FALSE;
-    break;
-  }
-  case SQLCOM_DROP_DB:
-  {
-    parse_result.query_string = thd->query();
-    parse_result.db_name = lex->name.str;
-    parse_result.sql_type = lex->sql_command;
-    parse_result.result = FALSE;
-    thd->spider_run_first = TRUE;
-    break;
-  }
-  case SQLCOM_ALTER_DB:
-  {
-    parse_result.query_string = thd->query();
-    parse_result.db_name = lex->name.str;
-    parse_result.sql_type = lex->sql_command;
-    parse_result.result = FALSE;
-    thd->spider_run_first = TRUE;
-    break;
-  }
-  /* 4. tcadmin's management instruction */
-
-  case SQLCOM_RESET:
-  case SQLCOM_FLUSH:
-  case SQLCOM_KILL:
-  case SQLCOM_SHUTDOWN:
-    my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-    goto error;
-  case TC_SQLCOM_CREATE_NODE:
-  case TC_SQLCOM_ALTER_NODE:
-  case TC_SQLCOM_DROP_NODE:
-  case TC_SQLCOM_FLUSH_ROUTING:
-  {
-    /*
-      NB: use server_uuid as lock string here
-      we add x lock to block any DDL or flush command
-    */
-    if (lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE))
-    {
-      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "lock wait timeout");
-      goto error;
-    }
-
-    /* always do reload first */
-    if (servers_reload(thd))
-    {
-      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-      goto error;
-    }
-
-    switch (lex->sql_command) {
-    case TC_SQLCOM_CREATE_NODE:
-    {
-      DBUG_ASSERT(lex->m_sql_cmd != NULL);
-      if (!(lex->server_options.get_host() &&
-        lex->server_options.get_port() &&
-        lex->server_options.get_username() &&
-        lex->server_options.get_password()))
-      {
-        my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "USER, PASSWORD, HOST, PORT options must be specify");
-        goto error;
-      }
-
-      /* get an unique server_name by wrapper */
-      string server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme());
-      DBUG_ASSERT(server_name.length() != 0);
-      lex->server_options.m_server_name.length = server_name.length();
-      lex->server_options.m_server_name.str =
-        strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
-
-      list<FOREIGN_SERVER*> server_list;
-      string add_address = string(lex->server_options.get_host()) + "#" +
-        to_string(lex->server_options.get_port());
-      get_server_by_wrapper(server_list, thd->mem_root, NULL_WRAPPER, TRUE);
-      /*
-        Create spider/tdbctl node must not exist in mysql.servers.
-        If create spider/tdbctl node, host#port must be unique.
-        At present, only consider SPIDER/TDBCTL wrapper.
-       */
-      if (std::find_if(server_list.begin(), server_list.end(),
-        [&](FOREIGN_SERVER *server) -> bool {
-        string current_address = string(server->host) + "#" + to_string(server->port);
-        if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0)
-          return false;
-        return add_address.compare(current_address) == 0;
-      }) != server_list.end())
-      {
-        my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
-        goto error;
-      }
-
-      break;
-    }
-    case TC_SQLCOM_ALTER_NODE:
-    {
-      DBUG_ASSERT(lex->m_sql_cmd != NULL);
-
-      FOREIGN_SERVER * server =
-              get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
-      if (server == NULL)
-      {
-        my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), "server not exist");
-        goto error;
-      }
-      /* At present, only support alter MYSQL wrapper node */
-      if (strcasecmp(server->scheme, MYSQL_WRAPPER) != 0)
-      {
-        my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), "only support mysql wrapper");
-        goto error;
-      }
-
-      break;
-    }
-    case TC_SQLCOM_DROP_NODE:
-    {
-      DBUG_ASSERT(lex->m_sql_cmd != NULL);
-
-      FOREIGN_SERVER * server =
-          get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
-      /* At present, only support alter MYSQL wrapper node */
-      if (server && strcasecmp(server->scheme, MYSQL_WRAPPER) == 0)
-      {
-        if (lex->is_tc_flush_force != TRUE)
-        {
-          my_error(ER_TCADMIN_DROP_NODE_ERROR, MYF(0), "drop mysql wrapper node must with FORCE option");
-          goto finish;
-        }
-        lex->tc_flush_type = FLUSH_ALL_ROUTING;
-      }
-
-      break;
-    }
-    case TC_SQLCOM_FLUSH_ROUTING:
-    {
-      lex->tc_do_grants = false;
-      goto flush;
-    }
-    default:
-      my_ok(thd);
-      goto finish;
-    }
-
-    if (!verify_validity_of_routing_host(thd->mem_root, lex->server_options.get_host())) {
-      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "mysql.servers can't contain both loopback network"
-      " address and external network address, please change the value of 'host' column");
-      goto error;
-    }
-
-    if ((res = lex->m_sql_cmd->execute(thd)))
-      goto error;
-
-    //Reset the thread OK status before changing the outcome.
-    if (thd->get_stmt_da()->is_ok())
-        thd->get_stmt_da()->reset_diagnostics_area();
-
-  flush:
-    if (lex->tc_do_grants &&
-        tc_enable_internal_grant &&
-        tc_do_grants_internal(lex))
-      goto error;
-
-    if (tc_flush_routing(lex))
-    {
-      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
-      goto error;
-    }
-
-    /*
-      For create spider node logic blow.
-      After add spider node, we need dump schema from any other spider node.
-      At present, only create spider node support and need to this.
-    */
-    if (lex->sql_command == TC_SQLCOM_CREATE_NODE && lex->tc_with_schema)
-    {
-      //sql_yacc.yy had filter wrapper name according to tc_with_schema option
-      DBUG_ASSERT(((strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
-                  (strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)));
-
-      //disable internal dump/restore
-      if (!tc_enable_internal_dump)
-      {
-        my_ok(thd);
-        goto finish;
-      }
-
-      string server_name, add_address;
-      list<FOREIGN_SERVER*> server_list;
-      char path[FN_REFLEN + 1];
-      char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
-      my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
-                  tmp_file_prefix, current_thd->query_start(), current_pid,
-                  thd->thread_id());
-
-      /*
-        get spider_list from mysql.servers, exclude slave spiders
-        avoid to user slave spider's schema, maybe not consistent with master ?
-      */
-      get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
-      //spider node had add to mysql.servers, must not be empty.
-      DBUG_ASSERT(server_list.empty() != true);
-      if (server_list.size() == 1)
-      {
-        //first spider node, no need to dump/restore schema, only add to mysql.servers
-        push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
-          "first spider node created, skip dump/restore schema");
-        my_ok(thd);
-        goto finish;
-      }
-
-      /*
-        dump spider's schema from first spider node.
-        must exclude itself
-      */
-      DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
-                  server_list.front()->port != lex->server_options.get_port());
-      if (tc_dump_node_schema(
-          server_list.front()->host,
-          server_list.front()->port,
-          server_list.front()->username,
-          server_list.front()->password,
-          path))
-      {
-        my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
-                  server_list.front()->host, server_list.front()->port);
-        goto error;
-      }
-
-      if (tc_restore_node_schema(lex->server_options.get_host(),
-          lex->server_options.get_port(),
-          lex->server_options.get_username(),
-          lex->server_options.get_password(),
-          path))
-      {
-        my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
-                lex->server_options.get_host(), lex->server_options.get_port());
-        goto error;
-      }
-    }
-
-    my_ok(thd);
-    goto finish;
-  }
-  case TC_SQLCOM_MONITOR_INIT:
-  {
-    string err_msg;
-    if (tc_check_cluster_availability_init(err_msg))
-    {
-      my_error(ER_TCADMIN_INIT_MONITOR_ERROR, MYF(0), err_msg.c_str());
-      goto error;
-    }
-
-    my_ok(thd);
-    goto finish;
-  }
-  case TC_SQLCOM_SHOW_PROCESSLIST:
-  {
-    if (!thd->security_context()->priv_user().str[0] &&
-        check_global_access(thd, PROCESS_ACL))
-      goto error;
-
-    tc_show_processlist(thd, lex->verbose, lex->server_name);
-
-    my_ok(thd);
-    goto finish;
-  }
-  case TC_SQLCOM_SHOW_VARIABLES:
-  {
-    tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
-    my_ok(thd);
-    goto finish;
-  }
-
-  /* 5. other may be supported int the future */
-  case SQLCOM_UNLOCK_TABLES:
-  case SQLCOM_LOCK_TABLES:
-  case SQLCOM_BEGIN:
-  case SQLCOM_COMMIT:
-  case SQLCOM_ROLLBACK:
-  case SQLCOM_RELEASE_SAVEPOINT:
-  case SQLCOM_ROLLBACK_TO_SAVEPOINT:
-  case SQLCOM_SAVEPOINT:
-  case SQLCOM_ALTER_DB_UPGRADE:
-    my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-    goto error;
-  default:
-    my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-    goto error;
-  }
-
-  if (!tc_query_convert(thd, lex, &parse_result, shard_count, shard_func, shard_type, is_unsigned_key, &spider_sql, &remote_sql_map))
-  {
-    /*
-      NB: use server_uuid as lock string here
-      we add S lock to block tdbctl flush routing(acquire X lock)
-     */
-    if (lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED))
-      goto error;
-    if (xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str()))
-      goto error;
-
-    query_exec_manager.reset_error();
-    query_exec_manager.store_exec_query(spider_sql, NODE_TYPE_SPIDER);
-    query_exec_manager.store_exec_query(remote_sql_map, NODE_TYPE_REMOTE);
-
-    if (thd->cluster_conn_manager->check_query_manager_validity(
-            &query_exec_manager)) {
-      my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0),
-               "servers to receive queries are inconsistent with registered "
-               "connections");
-      goto error;
-    }
-    tc_ddl_run(thd, thd->cluster_conn_manager, &query_exec_manager);
-    query_exec_manager.get_results(&exec_result);
-    res = tc_process_all_result(thd, &parse_result, &exec_result);
-    goto finish;
-  }
-
-error:
-  res = TRUE;
-
-finish:
-  THD_STAGE_INFO(thd, stage_query_end);
-  if (thd->tc_conn_init == FALSE)
-  {
-    DBUG_ASSERT(thd->variables.tc_admin);
-    free_thd_connection(thd);
-  }
-  // Cleanup EXPLAIN info
-  if (!thd->in_sub_stmt)
-  {
-    if (is_explainable_query(lex->sql_command))
-    {
-      DEBUG_SYNC(thd, "before_reset_query_plan");
-      /*
-        We want EXPLAIN CONNECTION to work until the explained statement ends,
-        thus it is only now that we may fully clean up any unit of this statement.
-      */
-      lex->unit->assert_not_fully_clean();
-    }
-    thd->query_plan.set_query_plan(SQLCOM_END, NULL, false);
-  }
-
-  DBUG_ASSERT(!thd->in_active_multi_stmt_transaction() ||
-    thd->in_multi_stmt_transaction_mode());
-
-  if (per_query_variables_backup) {
-    DBUG_ASSERT(lex->set_statement);
-    DBUG_ASSERT(!lex->var_list.is_empty());
-
-    List_iterator_fast<set_var_base> it(thd->lex->var_list);
-    set_var *var;
-
-    free_system_variables(&thd->variables, thd->m_enable_plugins);
-    thd->variables = *per_query_variables_backup;
-    my_free(per_query_variables_backup);
-    /*
-       When variables are restored after "SET STATEMENT ... FOR ..." statement
-       execution an update callback must be invoked for the system variables
-       to save special logic if it is. set_var_base class does not contain
-       reference to variable as it is just an interface class. But only
-       system variables are allowed to be used in "SET STATEMENT ... FOR ..."
-       statement, so cast from set_var_base* to set_var* can be used here.
-    */
-    while ((var = (set_var *)it++))
-    {
-      var->var->stmt_update(thd);
-    }
-
-    thd->lex->set_statement = false;
-  }
-
-  if (!thd->in_sub_stmt)
-  {
-#ifndef EMBEDDED_LIBRARY
-    mysql_audit_notify(thd,
-      first_level ? MYSQL_AUDIT_QUERY_STATUS_END :
-      MYSQL_AUDIT_QUERY_NESTED_STATUS_END,
-      first_level ? "MYSQL_AUDIT_QUERY_STATUS_END" :
-      "MYSQL_AUDIT_QUERY_NESTED_STATUS_END");
-#endif /* !EMBEDDED_LIBRARY */
-
-    /* report error issued during command execution */
-    if (thd->killed_errno())
-      thd->send_kill_message();
-    if (thd->is_error() || (thd->variables.option_bits & OPTION_MASTER_SQL_ERROR))
-      trans_rollback_stmt(thd);
-    else
-    {
-      /* If commit fails, we should be able to reset the OK status. */
-      thd->get_stmt_da()->set_overwrite_status(true);
-      trans_commit_stmt(thd);
-      thd->get_stmt_da()->set_overwrite_status(false);
-    }
-    if (thd->killed == THD::KILL_QUERY ||
-      thd->killed == THD::KILL_TIMEOUT ||
-      thd->killed == THD::KILL_BAD_DATA)
-    {
-      thd->killed = THD::NOT_KILLED;
-    }
-  }
-
-  lex->unit->cleanup(true);
-  /* Free tables */
-  THD_STAGE_INFO(thd, stage_closing_tables);
-  close_thread_tables(thd);
-
-#ifndef DBUG_OFF
-  if (lex->sql_command != SQLCOM_SET_OPTION && !thd->in_sub_stmt)
-    DEBUG_SYNC(thd, "execute_command_after_close_tables");
-#endif
-
-  if (!thd->in_sub_stmt && thd->transaction_rollback_request)
-  {
-    /*
-      We are not in sub-statement and transaction rollback was requested by
-      one of storage engines (e.g. due to deadlock). Rollback transaction in
-      all storage engines including binary log.
-    */
-    trans_rollback_implicit(thd);
-    thd->mdl_context.release_transactional_locks();
-  }
-  else if (stmt_causes_implicit_commit(thd, CF_IMPLICIT_COMMIT_END))
-  {
-    /* No transaction control allowed in sub-statements. */
-    DBUG_ASSERT(!thd->in_sub_stmt);
-    /* If commit fails, we should be able to reset the OK status. */
-    thd->get_stmt_da()->set_overwrite_status(true);
-    /* Commit the normal transaction if one is active. */
-    trans_commit_implicit(thd);
-    thd->get_stmt_da()->set_overwrite_status(false);
-    thd->mdl_context.release_transactional_locks();
-  }
-  else if (!thd->in_sub_stmt && !thd->in_multi_stmt_transaction_mode())
-  {
-    /*
-      - If inside a multi-statement transaction,
-      defer the release of metadata locks until the current
-      transaction is either committed or rolled back. This prevents
-      other statements from modifying the table for the entire
-      duration of this transaction.  This provides commit ordering
-      and guarantees serializability across multiple transactions.
-      - If in autocommit mode, or outside a transactional context,
-      automatically release metadata locks of the current statement.
-    */
-    thd->mdl_context.release_transactional_locks();
-  }
-  else if (!thd->in_sub_stmt)
-  {
-    thd->mdl_context.release_statement_locks();
-  }
-
-  if (thd->variables.session_track_transaction_info > TX_TRACK_NONE)
-  {
-    ((Transaction_state_tracker *)
-      thd->session_tracker.get_tracker(TRANSACTION_INFO_TRACKER))
-      ->add_trx_state_from_thd(thd);
-  }
-
-#if defined(VALGRIND_DO_QUICK_LEAK_CHECK)
-  // Get incremental leak reports, for easier leak hunting.
-  // ./mtr --mem --mysqld='-T 4096' --valgrind-mysqld main.1st
-  // Note that with multiple connections, the report below may be misleading.
-  if (test_flags & TEST_DO_QUICK_LEAK_CHECK)
-  {
-    static unsigned long total_leaked_bytes = 0;
-    unsigned long leaked = 0;
-    unsigned long dubious MY_ATTRIBUTE((unused));
-    unsigned long reachable MY_ATTRIBUTE((unused));
-    unsigned long suppressed MY_ATTRIBUTE((unused));
-    /*
-      We could possibly use VALGRIND_DO_CHANGED_LEAK_CHECK here,
-      but that is a fairly new addition to the Valgrind api.
-      Note: we dont want to check 'reachable' until we have done shutdown,
-      and that is handled by the final report anyways.
-      We print some extra information, to tell mtr to ignore this report.
-    */
-    sql_print_information("VALGRIND_DO_QUICK_LEAK_CHECK");
-    VALGRIND_DO_QUICK_LEAK_CHECK;
-    VALGRIND_COUNT_LEAKS(leaked, dubious, reachable, suppressed);
-    if (leaked > total_leaked_bytes)
-    {
-      sql_print_error("VALGRIND_COUNT_LEAKS reports %lu leaked bytes "
-        "for query '%.*s'", leaked - total_leaked_bytes,
-        static_cast<int>(thd->query().length), thd->query().str);
-    }
-    total_leaked_bytes = leaked;
-  }
-#endif
-
-  if (!(res || thd->is_error()))
-    binlog_gtid_end_transaction(thd);
-
-  if (thd->tc_conn_init == FALSE && thd->variables.tc_admin)
-  {
-    tc_conn_free(thd->spider_conn_map);
-    tc_conn_free(thd->remote_conn_map);
-    thd->spider_conn_map.clear();
-    thd->remote_conn_map.clear();
-    thd->spider_ipport_set.clear();
-    thd->remote_ipport_map.clear();
-    thd->spider_user_map.clear();
-    thd->spider_passwd_map.clear();
-    thd->remote_user_map.clear();
-    thd->remote_passwd_map.clear();
-  }
 
   DBUG_RETURN(res || thd->is_error());
 }
@@ -7345,37 +6307,7 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
             error= 1;
           }
           else
-          {
-            if (thd->variables.tc_admin)
-            {
-              if (tc_restrict_query_from_spider &&
-                !tc_is_query_from_spider(thd))
-              {
-                /*
-                Non - clustered spider node,
-                unable to execute request under tc_admin = 1
-                */
-                sql_print_warning(ER(ER_TCADMIN_NOT_SPIDER));
-                my_error(ER_TCADMIN_NOT_SPIDER, MYF(0));
-              }
-              else if (!tdbctl_is_primary)
-              {
-                /*
-                Non - primary TDBCTL node,
-                unable to execute request under tc_admin = 1
-                */
-                sql_print_warning(ER(ER_TCADMIN_NOT_PRIMARY));
-                my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
-              }
-              /*
-              The user must have super permission
-              */
-              else if(!check_global_access(thd, SUPER_ACL))
-                error = tcadmin_execute_command(thd, true);
-            }
-            else
-              error = mysql_execute_command(thd, true);
-          }
+            error = mysql_execute_command(thd, true);
 
           MYSQL_QUERY_EXEC_DONE(error);
   }

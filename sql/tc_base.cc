@@ -900,6 +900,9 @@ int tcadmin_validate_and_fill_value(
 }
 
 // buf_len means length of key_name ... result, etc
+//return val
+//  TRUE : parse failed.
+//  FALSE: parse success.
 bool tc_parse_getkey_for_spider(THD *thd, char *key_name, char *result, int buf_len, bool *is_unique_key, bool *is_unsigned_key)
 {
     LEX* lex = thd->lex;
@@ -1246,40 +1249,18 @@ bool tc_is_with_autoincrement(THD *thd, LEX *lex)
 
 void tc_parse_result_init(TC_PARSE_RESULT *parse_result_t)
 {
-    parse_result_t->is_with_shard = FALSE;
-    parse_result_t->is_with_autu = FALSE;
-    parse_result_t->is_with_unique = FALSE;
-    parse_result_t->result = TRUE;
+  parse_result_t->shard_func = tspider_shard_func_crc32;
+  parse_result_t->shard_type = tspider_shard_type_list;
+  parse_result_t->execute_flag = 0;
 }
 
 void tc_parse_result_destory(TC_PARSE_RESULT *parse_result_t)
 {
-    parse_result_t->is_with_shard = FALSE;
-    parse_result_t->is_with_autu = FALSE;
-    parse_result_t->is_with_unique = FALSE;
-    parse_result_t->result = FALSE;
-    parse_result_t->result_info.clear();
-    parse_result_t->shard_key.clear();
+  parse_result_t->remote_sql_map.clear();
 }
 
 
-void tc_query_run(THD *thd, TC_PARSE_RESULT *parse_result_t)
-{
-    switch (parse_result_t->sql_type)
-    {
-    case SQLCOM_CREATE_TABLE:
-        break;
-    case SQLCOM_CREATE_DB:
-        break;
-    case SQLCOM_DROP_DB:
-        break;
-	default:
-		break;
-    }
-    return;
-}
-
-map<string, string> tc_get_remote_create_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_remote_create_table(TC_PARSE_RESULT *tc_parse_result_t)
 {
     map<string, string> map;
     ostringstream  sstr;
@@ -1289,6 +1270,7 @@ map<string, string> tc_get_remote_create_table(TC_PARSE_RESULT *tc_parse_result_
     string db_org1 = " " + db_name + "\\.";
     string db_org2 = "`" + db_name + "`\\.";
     regex pattern("ENGINE\\s*=\\s*spider", regex::icase);
+    int shard_count = tc_parse_result_t->shard_count;
     regex pattern1(db_org1);
     regex pattern2(db_org2);
 
@@ -1307,9 +1289,8 @@ map<string, string> tc_get_remote_create_table(TC_PARSE_RESULT *tc_parse_result_
         remote_create_sql = regex_replace(remote_create_sql, pattern1, db_dst1);
         remote_create_sql = regex_replace(remote_create_sql, pattern2, db_dst2);
         remote_create_sql = "use " + remote_db + ";" + remote_create_sql;
-        map.insert(pair<string, string>(server, remote_create_sql));
+        tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_create_sql));
     }
-    return map;
 }
 
 string tc_get_only_spider_ddl_withdb(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
@@ -1371,114 +1352,113 @@ string tcadmin_get_shard_range_by_index(int index, int shard_count, bool is_unsi
     return ret;
 }
 
-string tc_get_spider_create_table(
-    TC_PARSE_RESULT *tc_parse_result_t, 
-    int shard_count, 
-    tspider_shard_func shard_func,
-    tspider_shard_type shard_type,
-    bool is_unsigned_key
+void tc_parse_spider_create_table(
+  TC_PARSE_RESULT *tc_parse_result_t,
+  bool is_unsigned_key
 )
 {
-    ostringstream  sstr;
-    string server_name_pre = tdbctl_mysql_wrapper_prefix;
-    string spider_create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
-    string hash_key = tc_parse_result_t->shard_key;
-    string db_name = tc_parse_result_t->db_name;
-    string tb_name = tc_parse_result_t->table_name;
-    string connection_string;
-    string partiton_by = " partition by ";
-    string spider_partition_count_str;
+  ostringstream  sstr;
+  string server_name_pre = tdbctl_mysql_wrapper_prefix;
+  string spider_create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
+  string db_name = tc_parse_result_t->db_name;
+  string tb_name = tc_parse_result_t->table_name;
+  string connection_string;
+  string partiton_by = " partition by ";
+  string spider_partition_count_str;
+  int shard_count = tc_parse_result_t->shard_count;
+  tspider_shard_func shard_func = tc_parse_result_t->shard_func;
+  tspider_shard_type shard_type = tc_parse_result_t->shard_type;
+  string shard_key = tc_parse_result_t->shard_key;
 
-    regex pattern1("ENGINE\\s*=\\s*MyISAM", regex::icase);
-    regex pattern2("ENGINE\\s*=\\s*InnoDB", regex::icase);
-    regex pattern3("ENGINE\\s*=\\s*tokudb", regex::icase);
-    regex pattern4("ROW_FORMAT\\s*=\\s*GCS_DYNAMIC", regex::icase);
-    regex pattern5("ROW_FORMAT\\s*=\\s*GCS", regex::icase);
-    regex pattern6("ENGINE\\s*=\\s*heap", regex::icase);
-    spider_create_sql = regex_replace(spider_create_sql, pattern1, "ENGINE = spider");
-    spider_create_sql = regex_replace(spider_create_sql, pattern2, "ENGINE = spider");
-    spider_create_sql = regex_replace(spider_create_sql, pattern3, "ENGINE = spider");
-    spider_create_sql = regex_replace(spider_create_sql, pattern4, "");
-    spider_create_sql = regex_replace(spider_create_sql, pattern5, "");
-    spider_create_sql = regex_replace(spider_create_sql, pattern6, "");
+  regex pattern1("ENGINE\\s*=\\s*MyISAM", regex::icase);
+  regex pattern2("ENGINE\\s*=\\s*InnoDB", regex::icase);
+  regex pattern3("ENGINE\\s*=\\s*tokudb", regex::icase);
+  regex pattern4("ROW_FORMAT\\s*=\\s*GCS_DYNAMIC", regex::icase);
+  regex pattern5("ROW_FORMAT\\s*=\\s*GCS", regex::icase);
+  regex pattern6("ENGINE\\s*=\\s*heap", regex::icase);
+  spider_create_sql = regex_replace(spider_create_sql, pattern1, "ENGINE = spider");
+  spider_create_sql = regex_replace(spider_create_sql, pattern2, "ENGINE = spider");
+  spider_create_sql = regex_replace(spider_create_sql, pattern3, "ENGINE = spider");
+  spider_create_sql = regex_replace(spider_create_sql, pattern4, "");
+  spider_create_sql = regex_replace(spider_create_sql, pattern5, "");
+  spider_create_sql = regex_replace(spider_create_sql, pattern6, "");
 
-    sstr << shard_count;
-    spider_partition_count_str = sstr.str();
-    if (shard_type == tspider_shard_type_list) 
-    {
-        partiton_by = partiton_by + "list(";
-    } 
-    else 
-    {   /* tspider_shard_type_range */
-        partiton_by = partiton_by + "range(";
-    }
-    if (shard_func == tspider_shard_func_crc32) 
-    {
-        is_unsigned_key = true;
-        partiton_by = partiton_by + "crc32(" + 
-            "`" + hash_key + "`" + ")%" + spider_partition_count_str + ") (";
-    }
-    else if (shard_func == tspider_shard_func_crc32_ci)
-    {
-        is_unsigned_key = true;
-        partiton_by = partiton_by + "crc32_ci(" + 
-            "`" + hash_key + "`" + ")%" + spider_partition_count_str + ") (";
-    }
-    else 
-    {   /* tspider_shard_func_none */
-        partiton_by = partiton_by + 
-            "`" + hash_key + "`" + "%" + spider_partition_count_str + ") (";
-    }
+  sstr << shard_count;
+  spider_partition_count_str = sstr.str();
+  if (shard_type == tspider_shard_type_list)
+  {
+    partiton_by = partiton_by + "list(";
+  }
+  else
+  {   /* tspider_shard_type_range */
+    partiton_by = partiton_by + "range(";
+  }
+  if (shard_func == tspider_shard_func_crc32)
+  {
+    is_unsigned_key = true;
+    partiton_by = partiton_by + "crc32(" +
+      "`" + shard_key + "`" + ")%" + spider_partition_count_str + ") (";
+  }
+  else if (shard_func == tspider_shard_func_crc32_ci)
+  {
+    is_unsigned_key = true;
+    partiton_by = partiton_by + "crc32_ci(" +
+      "`" + shard_key + "`" + ")%" + spider_partition_count_str + ") (";
+  }
+  else
+  {   /* tspider_shard_func_none */
+    partiton_by = partiton_by +
+      "`" + shard_key + "`" + "%" + spider_partition_count_str + ") (";
+  }
 
-    spider_create_sql = spider_create_sql + partiton_by;
-    for (int i = 0; i < shard_count; i++)
+  spider_create_sql = spider_create_sql + partiton_by;
+  for (int i = 0; i < shard_count; i++)
+  {
+    sstr.str("");
+    sstr << i;
+    string hash_value = sstr.str();
+    string range_value;
+    string server_info;
+    string pt_sql;
+    string server_name = server_name_pre + hash_value;
+    server_info = "server \"" + server_name + "\"";
+    if (shard_type == tspider_shard_type_list)
     {
-        sstr.str("");
-        sstr << i;
-        string hash_value = sstr.str();
-        string range_value;
-        string server_info;
-        string pt_sql;
-        string server_name = server_name_pre + hash_value;
-        server_info = "server \"" + server_name + "\"";
-        if (shard_type == tspider_shard_type_list) 
-        {
-            pt_sql = "PARTITION pt" + hash_value + " values in (" + hash_value + ") COMMENT = 'database \"" 
-                + db_name + "_" + hash_value + "\", table \"" + tb_name + "\", " + server_info +  "\' ENGINE = SPIDER";
-        }
-        else
-        {   /* range */
-            pt_sql = "PARTITION pt" + hash_value + " values less than (" + tcadmin_get_shard_range_by_index(i, shard_count, is_unsigned_key) 
-                + ") COMMENT = 'database \"" 
-                + db_name + "_" + hash_value + "\", table \"" + tb_name + "\", " + server_info +  "\' ENGINE = SPIDER";
-        }
-        if (i < shard_count - 1)
-        {
-            pt_sql = pt_sql + ",";
-        }
-        else
-        {
-            pt_sql = pt_sql + ");";
-        }
-        spider_create_sql = spider_create_sql + pt_sql;
+      pt_sql = "PARTITION pt" + hash_value + " values in (" + hash_value + ") COMMENT = 'database \""
+        + db_name + "_" + hash_value + "\", table \"" + tb_name + "\", " + server_info + "\' ENGINE = SPIDER";
     }
-    spider_create_sql = "use " + db_name + ";" + spider_create_sql;
-    sstr.clear();
-    return spider_create_sql;
+    else
+    {   /* range */
+      pt_sql = "PARTITION pt" + hash_value + " values less than (" + tcadmin_get_shard_range_by_index(i, shard_count, is_unsigned_key)
+        + ") COMMENT = 'database \""
+        + db_name + "_" + hash_value + "\", table \"" + tb_name + "\", " + server_info + "\' ENGINE = SPIDER";
+    }
+    if (i < shard_count - 1)
+    {
+      pt_sql = pt_sql + ",";
+    }
+    else
+    {
+      pt_sql = pt_sql + ");";
+    }
+    spider_create_sql = spider_create_sql + pt_sql;
+  }
+  spider_create_sql = "use " + db_name + ";" + spider_create_sql;
+  sstr.clear();
+  tc_parse_result_t->spider_sql = spider_create_sql;
 }
 
-string tc_get_spider_drop_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+
+void tc_parse_spider_drop_table(TC_PARSE_RESULT *tc_parse_result_t)
 {
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
     sql = "use " + db_name + ";" + sql;
-    return sql;
-
+    tc_parse_result_t->spider_sql = sql;
 }
 
-map<string, string> tc_get_remote_drop_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_remote_drop_table(TC_PARSE_RESULT *tc_parse_result_t)
 {
-    map<string, string> map;
     ostringstream  sstr;
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
@@ -1490,7 +1470,7 @@ map<string, string> tc_get_remote_drop_table(TC_PARSE_RESULT *tc_parse_result_t,
     regex pattern1(db_org1);
     regex pattern2(db_org2);
 
-    for (int i = 0; i < shard_count; i++)
+    for (int i = 0; i < tc_parse_result_t->shard_count; i++)
     {
         string remote_sql = sql;
         sstr.str("");
@@ -1504,22 +1484,12 @@ map<string, string> tc_get_remote_drop_table(TC_PARSE_RESULT *tc_parse_result_t,
         remote_sql = regex_replace(remote_sql, pattern1, db_dst1);
         remote_sql = regex_replace(remote_sql, pattern2, db_dst2);
         remote_sql = "use " + remote_db + ";" + remote_sql;
-        map.insert(pair<string, string>(server, remote_sql));
+        tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
     }
-    return map;
 }
 
-
-string tc_get_spider_create_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_remote_create_database(TC_PARSE_RESULT *tc_parse_result_t)
 {
-    string create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
-    return create_sql;
-}
-
-
-map<string, string> tc_get_remote_create_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
-{
-    map<string, string> map;
     ostringstream  sstr;
     string create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
@@ -1530,7 +1500,7 @@ map<string, string> tc_get_remote_create_database(TC_PARSE_RESULT *tc_parse_resu
     regex pattern1(db_org1);
     regex pattern2(db_org2);
 
-    for (int i = 0; i < shard_count; i++)
+    for (int i = 0; i < tc_parse_result_t->shard_count; i++)
     {
         string remote_create_sql = create_sql;
         sstr.str("");
@@ -1543,20 +1513,12 @@ map<string, string> tc_get_remote_create_database(TC_PARSE_RESULT *tc_parse_resu
 
         remote_create_sql = regex_replace(remote_create_sql, pattern1, db_dst1);
         remote_create_sql = regex_replace(remote_create_sql, pattern2, db_dst2);
-        map.insert(pair<string, string>(server, remote_create_sql));
+        tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_create_sql));
     }
-    return map;
 }
 
-string tc_get_spider_drop_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_remote_drop_database(TC_PARSE_RESULT *tc_parse_result_t)
 {
-    string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
-    return sql;
-}
-
-map<string, string> tc_get_remote_drop_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
-{
-    map<string, string> map;
     ostringstream  sstr;
     string create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
@@ -1567,7 +1529,7 @@ map<string, string> tc_get_remote_drop_database(TC_PARSE_RESULT *tc_parse_result
     regex pattern1(db_org1);
     regex pattern2(db_org2);
 
-    for (int i = 0; i < shard_count; i++)
+    for (int i = 0; i < tc_parse_result_t->shard_count; i++)
     {
         string remote_create_sql = create_sql;
         sstr.str("");
@@ -1580,21 +1542,12 @@ map<string, string> tc_get_remote_drop_database(TC_PARSE_RESULT *tc_parse_result
 
         remote_create_sql = regex_replace(remote_create_sql, pattern1, db_dst1);
         remote_create_sql = regex_replace(remote_create_sql, pattern2, db_dst2);
-        map.insert(pair<string, string>(server, remote_create_sql));
+        tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_create_sql));
     }
-    return map;
 }
 
-
-string tc_get_spider_change_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_remote_change_database(TC_PARSE_RESULT *tc_parse_result_t)
 {
-    string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
-    return sql;
-}
-
-map<string, string> tc_get_remote_change_database(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
-{
-    map<string, string> map;
     ostringstream  sstr;
     string create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
@@ -1605,7 +1558,7 @@ map<string, string> tc_get_remote_change_database(TC_PARSE_RESULT *tc_parse_resu
     regex pattern1(db_org1);
     regex pattern2(db_org2);
 
-    for (int i = 0; i < shard_count; i++)
+    for (int i = 0; i < tc_parse_result_t->shard_count; i++)
     {
         string remote_create_sql = create_sql;
         sstr.str("");
@@ -1618,24 +1571,22 @@ map<string, string> tc_get_remote_change_database(TC_PARSE_RESULT *tc_parse_resu
 
         remote_create_sql = regex_replace(remote_create_sql, pattern1, db_dst1);
         remote_create_sql = regex_replace(remote_create_sql, pattern2, db_dst2);
-        map.insert(pair<string, string>(server, remote_create_sql));
+        tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_create_sql));
     }
-    return map;
 }
 
 
-string tc_get_spider_create_or_drop_index(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_spider_create_or_drop_index(TC_PARSE_RESULT *tc_parse_result_t)
 {
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
     sql = "use " + db_name + ";" + sql;
-    return sql;
+    tc_parse_result_t->spider_sql = sql;
 }
 
 
-map<string, string> tc_get_remote_create_or_drop_index(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_remote_create_or_drop_index(TC_PARSE_RESULT *tc_parse_result_t)
 {
-    map<string, string> map;
     ostringstream  sstr;
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
@@ -1646,7 +1597,7 @@ map<string, string> tc_get_remote_create_or_drop_index(TC_PARSE_RESULT *tc_parse
     regex pattern1(db_org1);
     regex pattern2(db_org2);
 
-    for (int i = 0; i < shard_count; i++)
+    for (int i = 0; i < tc_parse_result_t->shard_count; i++)
     {
         string remote_sql = sql;
         sstr.str("");
@@ -1660,13 +1611,12 @@ map<string, string> tc_get_remote_create_or_drop_index(TC_PARSE_RESULT *tc_parse
         remote_sql = regex_replace(remote_sql, pattern1, db_dst1);
         remote_sql = regex_replace(remote_sql, pattern2, db_dst2);
         remote_sql = "use " + remote_db + ";" + remote_sql;
-        map.insert(pair<string, string>(server, remote_sql));
+        tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
     }
-    return map;
 }
 
 
-string tc_get_spider_alter_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_spider_alter_table(TC_PARSE_RESULT *tc_parse_result_t)
 {
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
@@ -1681,12 +1631,11 @@ string tc_get_spider_alter_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_c
     sql = regex_replace(sql, pattern4, "");
     sql = regex_replace(sql, pattern5, "");
     sql = "use " + db_name + ";" + sql;
-    return sql;
+    tc_parse_result_t->spider_sql = sql;
 }
 
 
-
-map<string, string> tc_get_remote_alter_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_remote_alter_table(TC_PARSE_RESULT *tc_parse_result_t)
 {
     map<string, string> map;
     ostringstream  sstr;
@@ -1694,7 +1643,7 @@ map<string, string> tc_get_remote_alter_table(TC_PARSE_RESULT *tc_parse_result_t
     string db_name = tc_parse_result_t->db_name;
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
-    for (int i = 0; i < shard_count; i++)
+    for (int i = 0; i < tc_parse_result_t->shard_count; i++)
     {
         string remote_sql = sql;
         sstr.str("");
@@ -1705,14 +1654,12 @@ map<string, string> tc_get_remote_alter_table(TC_PARSE_RESULT *tc_parse_result_t
 
         remote_sql = tc_dbname_replace_with_point(remote_sql, db_name, remote_db);
         remote_sql = "use " + remote_db + ";" + remote_sql;
-        map.insert(pair<string, string>(server, remote_sql));
+        tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
     }
-    return map;
 }
 
 
-
-string tc_get_spider_rename_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_spider_rename_table(TC_PARSE_RESULT *tc_parse_result_t)
 {
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
@@ -1720,6 +1667,7 @@ string tc_get_spider_rename_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_
     string new_db = tc_parse_result_t->new_db_name;
     string new_table = tc_parse_result_t->new_table_name;
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
+    int shard_count = tc_parse_result_t->shard_count;
     ostringstream  sstr;
     string reorganize_partition_sql = "";
     string  partition_sql = "";
@@ -1752,20 +1700,19 @@ string tc_get_spider_rename_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_
     sstr.clear();
 
     sql = "use " + db_name + ";" + sql + reorganize_partition_sql + partition_sql;
-    return sql;
+    tc_parse_result_t->spider_sql = sql;
 }
 
 
-map<string, string> tc_get_remote_rename_table(TC_PARSE_RESULT *tc_parse_result_t, int shard_count)
+void tc_parse_remote_rename_table(TC_PARSE_RESULT *tc_parse_result_t)
 {
-    map<string, string> map;
     ostringstream  sstr;
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
     string new_db = tc_parse_result_t->new_db_name;
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
-    for (int i = 0; i < shard_count; i++)
+    for (int i = 0; i < tc_parse_result_t->shard_count; i++)
     {
         string remote_sql = sql;
         sstr.str("");
@@ -1778,15 +1725,13 @@ map<string, string> tc_get_remote_rename_table(TC_PARSE_RESULT *tc_parse_result_
         remote_sql = tc_dbname_replace_with_point(remote_sql, db_name, remote_db);
         remote_sql = tc_dbname_replace_with_point(remote_sql, new_db, new_remote_db);
         remote_sql = "use " + remote_db + ";" + remote_sql;
-        map.insert(pair<string, string>(server, remote_sql));
+        tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
     }
-    return map;
 }
 
 
-string tc_get_spider_create_table_like(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_spider_create_table_like(
+  TC_PARSE_RESULT *tc_parse_result_t
 )
 {
     string sql(tc_parse_result_t->query_string.str, 
@@ -1802,7 +1747,7 @@ string tc_get_spider_create_table_like(
     sql = sql + "; alter table " + db_name + "." + table_name 
       + " reorganize partition ";
 
-    for (int i = 0; i < shard_count; i++)
+    for (int i = 0; i < tc_parse_result_t->shard_count; i++)
     {
         sstr.str("");
         sstr << i;
@@ -1817,7 +1762,7 @@ string tc_get_spider_create_table_like(
             + "\", table \"" + table_name + "\", " 
             + server_info + "\' ENGINE = SPIDER";
 
-        if (i < shard_count - 1)
+        if (i < tc_parse_result_t->shard_count - 1)
         {
             reorganize_partition_sql = 
               reorganize_partition_sql + "pt" + hash_value + ",";
@@ -1835,15 +1780,13 @@ string tc_get_spider_create_table_like(
 
     sql = "use " + db_name + ";" + sql + 
       reorganize_partition_sql + partition_sql;
-    return sql;
+    tc_parse_result_t->spider_sql = sql;
 }
 
-map<string, string> tc_get_remote_create_table_like(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_remote_create_table_like(
+  TC_PARSE_RESULT *tc_parse_result_t
 )
 {
-    map<string, string> map;
     ostringstream  sstr;
     string sql(tc_parse_result_t->query_string.str, 
       tc_parse_result_t->query_string.length);
@@ -1851,7 +1794,7 @@ map<string, string> tc_get_remote_create_table_like(
     string new_db = tc_parse_result_t->new_db_name;
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
 
-    for (int i = 0; i < shard_count; i++)
+    for (int i = 0; i < tc_parse_result_t->shard_count; i++)
     {
         string remote_sql = sql;
         sstr.str("");
@@ -1864,9 +1807,8 @@ map<string, string> tc_get_remote_create_table_like(
         remote_sql = tc_dbname_replace_with_point(remote_sql, db_name, remote_db);
         remote_sql = tc_dbname_replace_with_point(remote_sql, new_db, new_remote_db);
         remote_sql = "use " + remote_db + ";" + remote_sql;
-        map.insert(pair<string, string>(server, remote_sql));
+        tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
     }
-    return map;
 }
 
 
@@ -1876,26 +1818,12 @@ bool tc_query_parse(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     return TRUE;
 }
 
-
-/* convert common query to spider/remotedb query */
-bool tc_query_convert(
-  THD *thd, 
-  LEX *lex, 
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count, 
-  tspider_shard_func shard_func,
-  tspider_shard_type shard_type,
-  bool is_unsigned_key,
-  string *spider_sql, 
-  map<string, string> *remote_sql_map
-)
+//if true, convert success
+//if false, convert error.
+bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 {
-    if (tc_parse_result_t->result)
-    {// result TURE mean abnormal query
-        return tc_parse_result_t->result;
-    }
-    switch (tc_parse_result_t->sql_type) {
-        /* 1. DML or unsupported DDL or DDL don't need tcadmin to execute */
+  switch (lex->sql_command)
+  {
     case SQLCOM_SHOW_EVENTS:
     case SQLCOM_SHOW_STATUS:
     case SQLCOM_SHOW_STATUS_PROC:
@@ -1934,7 +1862,6 @@ bool tc_query_convert(
     case SQLCOM_UPDATE:
     case SQLCOM_UPDATE_MULTI:
     case SQLCOM_REPLACE:
-    case SQLCOM_INSERT:
     case SQLCOM_REPLACE_SELECT:
     case SQLCOM_INSERT_SELECT:
     case SQLCOM_DELETE:
@@ -1965,15 +1892,14 @@ bool tc_query_convert(
     case SQLCOM_HA_OPEN:
     case SQLCOM_HA_CLOSE:
     case SQLCOM_HA_READ:
-    case SQLCOM_SHOW_CREATE_PROC:
-    case SQLCOM_SHOW_CREATE_FUNC:
-    case SQLCOM_SHOW_PROC_CODE:
-    case SQLCOM_SHOW_FUNC_CODE:
-    case SQLCOM_SHOW_CREATE_TRIGGER:
     case SQLCOM_SHOW_PRIVILEGES:
     case SQLCOM_SHOW_CREATE_USER:
     case SQLCOM_SHOW_GRANTS:
-    case SQLCOM_SET_OPTION:
+    case SQLCOM_SHOW_PROC_CODE:
+    case SQLCOM_SHOW_FUNC_CODE:
+    case SQLCOM_SHOW_CREATE_PROC:
+    case SQLCOM_SHOW_CREATE_FUNC:
+    case SQLCOM_SHOW_CREATE_TRIGGER:
     case SQLCOM_ALTER_INSTANCE:
     case SQLCOM_CHANGE_REPLICATION_FILTER:
     case SQLCOM_CREATE_COMPRESSION_DICTIONARY:
@@ -1989,111 +1915,11 @@ bool tc_query_convert(
     case SQLCOM_START_GROUP_REPLICATION:
     case SQLCOM_STOP_GROUP_REPLICATION:
     case SQLCOM_UNLOCK_BINLOG:
-        my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), 
-          get_stmt_type_str(tc_parse_result_t->sql_type));
-        return TRUE;
-
-        /* 2. DDL need dispatch to each spider only */
-    case SQLCOM_CREATE_EVENT:
-    case SQLCOM_ALTER_EVENT:
-    case SQLCOM_CREATE_FUNCTION:
-    case SQLCOM_CREATE_PROCEDURE:
-    case SQLCOM_CREATE_SPFUNCTION:
-    case SQLCOM_ALTER_PROCEDURE:
-    case SQLCOM_ALTER_FUNCTION:
-    case SQLCOM_DROP_PROCEDURE:
-    case SQLCOM_DROP_FUNCTION:
-    case SQLCOM_CREATE_VIEW:
-    case SQLCOM_DROP_VIEW:
-    case SQLCOM_CREATE_TRIGGER:
-    case SQLCOM_DROP_TRIGGER:
-    {
-        *spider_sql = tc_get_only_spider_ddl_withdb(tc_parse_result_t, shard_count);
-        break;
-    }
-    case SQLCOM_CREATE_USER:
-    case SQLCOM_DROP_USER:
-    case SQLCOM_ALTER_USER:
-    case SQLCOM_RENAME_USER:
-    case SQLCOM_REVOKE:
-    case SQLCOM_GRANT:
-    case SQLCOM_CREATE_SERVER:
-    case SQLCOM_ALTER_SERVER:
-    case SQLCOM_DROP_SERVER:
-    {
-        *spider_sql = tc_get_only_spider_ddl(tc_parse_result_t, shard_count);
-        break;
-    }
-        /* 3. DDL need dispatch to spider and remote mysql */
-    case SQLCOM_CREATE_TABLE:
-    {
-        *spider_sql = tc_get_spider_create_table(tc_parse_result_t, shard_count, shard_func, shard_type, is_unsigned_key);
-        *remote_sql_map = tc_get_remote_create_table(tc_parse_result_t, shard_count);
-        break;
-    }
-    case SQLCOM_ALTER_TABLE:
-    {
-        *spider_sql = tc_get_spider_alter_table(tc_parse_result_t, shard_count);
-        *remote_sql_map = tc_get_remote_alter_table(tc_parse_result_t, shard_count);
-        break;
-    }
-    case SQLCOM_RENAME_TABLE:
-    {
-        *spider_sql = tc_get_spider_rename_table(tc_parse_result_t, shard_count);
-        *remote_sql_map = tc_get_remote_rename_table(tc_parse_result_t, shard_count);
-        break;
-    }
-    case SQLCOM_CREATE_INDEX:
-    case SQLCOM_DROP_INDEX:
-    {
-        *spider_sql = tc_get_spider_create_or_drop_index(tc_parse_result_t, shard_count);
-        *remote_sql_map = tc_get_remote_create_or_drop_index(tc_parse_result_t, shard_count);
-        break;
-    }
-    case SQLCOM_DROP_TABLE:
-    {
-        *spider_sql = tc_get_spider_drop_table(tc_parse_result_t, shard_count);
-        *remote_sql_map = tc_get_remote_drop_table(tc_parse_result_t, shard_count);
-        break;
-    }
-    case SQLCOM_CHANGE_DB:
-    {
-        *spider_sql = tc_get_spider_change_database(tc_parse_result_t, shard_count);
-        *remote_sql_map = tc_get_remote_change_database(tc_parse_result_t, shard_count);
-        break;
-    }
-    case SQLCOM_CREATE_DB:
-    {
-        *spider_sql = tc_get_spider_create_database(tc_parse_result_t, shard_count);
-        *remote_sql_map = tc_get_remote_create_database(tc_parse_result_t, shard_count);
-        break;
-    }
-    case SQLCOM_DROP_DB:
-    {
-        *spider_sql = tc_get_spider_drop_database(tc_parse_result_t, shard_count);
-        *remote_sql_map = tc_get_remote_drop_database(tc_parse_result_t, shard_count);
-        break;
-    }
-    case SQLCOM_ALTER_DB:
-    {
-        *spider_sql = tc_get_spider_drop_database(tc_parse_result_t, shard_count);
-        *remote_sql_map = tc_get_remote_drop_database(tc_parse_result_t, shard_count);
-        break;
-    }
-    case TC_SQLCOM_CREATE_TABLE_LIKE:
-    {
-        *spider_sql = tc_get_spider_create_table_like(tc_parse_result_t, shard_count);
-        *remote_sql_map = tc_get_remote_create_table_like(tc_parse_result_t, shard_count);
-        break;
-    }
-    /* 4. tcadmin's management instruction */
+    case SQLCOM_SET_OPTION:
     case SQLCOM_RESET:
     case SQLCOM_FLUSH:
     case SQLCOM_KILL:
     case SQLCOM_SHUTDOWN:
-        my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(tc_parse_result_t->sql_type));
-        return TRUE;
-        /* 5. other may be supported int the future */
     case SQLCOM_UNLOCK_TABLES:
     case SQLCOM_LOCK_TABLES:
     case SQLCOM_BEGIN:
@@ -2103,19 +1929,265 @@ bool tc_query_convert(
     case SQLCOM_ROLLBACK_TO_SAVEPOINT:
     case SQLCOM_SAVEPOINT:
     case SQLCOM_ALTER_DB_UPGRADE:
-        my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(tc_parse_result_t->sql_type));
-        return TRUE;
-    case TC_SQLCOM_CREATE_TABLE_WITH_SELECT:
-    case TC_SQLCOM_CREATE_TABLE_WITH_CONNECT_STRING:
-    case TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT:
-    case TC_SQLCOM_CREATE_TABLE_WITH_FIELD_CHARSET:
-    case TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY:
-        my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(tc_parse_result_t->sql_type));
-        return TRUE;
-	default:
-		break;
+      push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_UNSUPPORT_SQL_TYPE,
+                   ER(ER_TCADMIN_UNSUPPORT_SQL_TYPE), get_stmt_type_str(lex->sql_command));
+      break;
+
+    case SQLCOM_CREATE_EVENT:
+    case SQLCOM_ALTER_EVENT:
+    case SQLCOM_CREATE_FUNCTION:                  // UDF function
+    case SQLCOM_CREATE_PROCEDURE:
+    case SQLCOM_CREATE_SPFUNCTION:
+    case SQLCOM_ALTER_PROCEDURE:
+    case SQLCOM_ALTER_FUNCTION:
+    case SQLCOM_DROP_PROCEDURE:
+    case SQLCOM_DROP_FUNCTION:
+    case SQLCOM_CREATE_TRIGGER:
+    case SQLCOM_DROP_TRIGGER:
+      if (thd->db().str)
+        tc_parse_result_t->db_name = thd->db().str;
+      else
+        tc_parse_result_t->db_name = lex->sphead->m_db.str;
+      tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + thd->query().str;
+      break;
+    case SQLCOM_CREATE_VIEW:
+    case SQLCOM_DROP_VIEW:
+      if (thd->db().str)
+        tc_parse_result_t->db_name = thd->db().str;
+      else
+        tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
+      tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + thd->query().str;
+
+      break;
+    case SQLCOM_CREATE_USER:
+    case SQLCOM_DROP_USER:
+    case SQLCOM_ALTER_USER:
+    case SQLCOM_RENAME_USER:
+    case SQLCOM_REVOKE:
+    case SQLCOM_GRANT:
+    case SQLCOM_CREATE_SERVER:
+    case SQLCOM_ALTER_SERVER:
+    case SQLCOM_DROP_SERVER:
+      tc_parse_result_t->spider_sql = thd->query().str;
+      break;
+    case SQLCOM_CREATE_TABLE:
+    {
+      //unsigned type
+      bool is_unsigned_key = false;
+      bool with_unique = false;
+      bool with_auto = false;
+      List_iterator<Create_field> it_field;
+      Create_field* cur_field;
+      const char* tb_charset = NULL;
+      bool create_table_with_field_charset = false;
+      char key_name[256];
+      char result_info[256];
+
+      tc_parse_result_t->query_string = thd->query();
+      tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
+      tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
+      if (tc_parse_getkey_for_spider(thd, key_name, result_info, sizeof(result_info), &with_unique, &is_unsigned_key))
+      {
+        my_error(ER_TCADMIN_SHARD_COUNT_NOT_VALID, MYF(0), result_info);
+        return FALSE;
+      }
+      tc_parse_result_t->shard_key = key_name;
+
+      // tb_charset as table charset
+      if (lex->create_info.default_table_charset)
+        tb_charset = lex->create_info.default_table_charset->csname;
+      else
+        tb_charset = thd->charset()->csname;
+      it_field = lex->alter_info.create_list;
+      while (!!(cur_field = it_field++))
+      {// column charset must be same with table
+        switch (cur_field->sql_type)
+        {
+        case MYSQL_TYPE_BLOB:
+        case MYSQL_TYPE_TINY_BLOB:
+        case MYSQL_TYPE_MEDIUM_BLOB:
+        case MYSQL_TYPE_LONG_BLOB:
+        case MYSQL_TYPE_VARCHAR:
+        case MYSQL_TYPE_VAR_STRING:
+        case MYSQL_TYPE_STRING:
+        case MYSQL_TYPE_ENUM:
+        case MYSQL_TYPE_SET:
+          if (cur_field->charset)
+          {
+            if (strcmp(cur_field->charset->csname, tb_charset) && strcmp(cur_field->charset->csname, "binary"))
+            {// column have different charset
+              create_table_with_field_charset = true;
+            }
+          }
+        default:
+          break;
+        }
+      }
+
+      // handle user table comment (shard_count, shard_func, shard_type, etc.)
+      if (lex->create_info.comment.str)
+      {
+        int ret = parse_get_spider_user_comment(
+          lex->create_info.comment.str,
+          &tc_parse_result_t->shard_count,
+          &tc_parse_result_t->shard_func,
+          &tc_parse_result_t->shard_type
+        );
+
+        if (ret != TCADMIN_PARSE_TABLE_COMMENT_OK)
+        {
+          switch (ret) {
+          case TCADMIN_PARSE_TABLE_COMMENT_UNSUPPORTED:
+            my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE COMMENT");
+            return FALSE;
+          case TCADMIN_PARSE_SHARD_COUNT_INVALID:
+            my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: SQL CREATE TABLE WITH INVALID SHARD COUNT COMMENT");
+            return FALSE;
+          case TCADMIN_PARSE_SHARD_FUNCTION_INVALID:
+            my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: SQL CREATE TABLE WITH INVALID SHARD FUNCTION COMMENT");
+            return FALSE;
+          case TCADMIN_PARSE_SHARD_TYPE_INVALID:
+            my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: SQL CREATE TABLE WITH INVALID SHARD TYPE COMMENT");
+            return FALSE;
+          case TCADMIN_PARSE_TABLE_COMMENT_ERROR:
+          default:
+            /* handle TCADMIN_PARSE_TABLE_COMMENT_ERROR here */
+            my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: SQL CREATE TABLE WITH ERROR TABLE COMMENT");
+            return FALSE;
+          }
+        }
+      }
+
+      if (lex->create_info.options & HA_LEX_CREATE_TABLE_LIKE)
+      {
+        tc_parse_result_t->new_db_name = tc_get_new_dbname(thd, lex);
+        tc_parse_result_t->new_table_name = tc_get_new_tbname(thd, lex);
+        break;
+      }
+      else if (lex->select_lex && lex->select_lex->item_list.elements > 0)
+      {// create table select
+        my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: UNSUPPORT SQL CREATE TABLE WITH SELECT");
+        return FALSE;
+      }
+      else if (lex->create_info.connect_string.str)
+      {// create table with connect string
+        my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE CONNECT STRING");
+        return FALSE;
+      }
+      else if (create_table_with_field_charset)
+      {// table with other filed charset
+        my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: UNSUPPORT SQL CREATE TABLE WITH FIELD_CHARSET");
+        return FALSE;
+      }
+
+      //parse spider sql
+      tc_parse_spider_create_table(tc_parse_result_t, is_unsigned_key);
+      tc_parse_remote_create_table(tc_parse_result_t);
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+
+      break;
     }
-    return FALSE;
+
+    case SQLCOM_CREATE_INDEX:
+    case SQLCOM_DROP_INDEX:
+      tc_parse_result_t->query_string = thd->query();
+      tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
+      tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
+      tc_parse_spider_create_or_drop_index(tc_parse_result_t);
+      tc_parse_remote_create_or_drop_index(tc_parse_result_t);
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      break;
+    case SQLCOM_ALTER_TABLE:
+    {
+      tc_parse_result_t->query_string = thd->query();
+      if (lex->alter_info.flags == Alter_info::ALTER_DROP_COLUMN)
+        thd->spider_run_first = TRUE;
+      if (lex->alter_info.flags == Alter_info::ALTER_RENAME)
+      {
+        tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
+        tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
+        tc_parse_result_t->new_db_name = lex->select_lex->db;
+        tc_parse_result_t->new_table_name = lex->name.str;
+      }
+      else if (lex->alter_info.flags == Alter_info::ADD_FOREIGN_KEY ||
+        lex->alter_info.flags == Alter_info::DROP_FOREIGN_KEY)
+      {
+        my_error(ER_TCADMIN_ALTER_TABLE, MYF(0), "command not support");
+        return FALSE;
+      }
+      else {
+        tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
+        tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
+      }
+      tc_parse_spider_alter_table(tc_parse_result_t);
+      tc_parse_remote_alter_table(tc_parse_result_t);
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      break;
+    }
+    case SQLCOM_RENAME_TABLE:
+    {
+      tc_parse_result_t->query_string = thd->query();
+      tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
+      tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
+      if (lex->query_tables->next_global)
+      {
+        tc_parse_result_t->new_db_name = lex->query_tables->next_global->db;
+        tc_parse_result_t->new_table_name = lex->query_tables->next_global->table_name;
+      }
+      else
+      {
+        my_error(ER_TCADMIN_ALTER_TABLE, MYF(0), "Invalid RENAME TABLE statement");
+        return FALSE;
+      }
+      tc_parse_spider_rename_table(tc_parse_result_t);
+      tc_parse_remote_rename_table(tc_parse_result_t);
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      break;
+    }
+    case SQLCOM_DROP_TABLE:
+    {
+      tc_parse_result_t->query_string = thd->query();
+      tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
+      tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
+      thd->spider_run_first = TRUE;
+      tc_parse_spider_drop_table(tc_parse_result_t);
+      tc_parse_remote_drop_table(tc_parse_result_t);
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      break;
+    }
+    case SQLCOM_CHANGE_DB:
+      //do nothing
+      break;
+    case SQLCOM_CREATE_DB:
+      tc_parse_result_t->query_string = thd->query();
+      tc_parse_result_t->db_name = lex->name.str;
+      tc_parse_result_t->spider_sql = thd->query().str;
+      tc_parse_remote_create_database(tc_parse_result_t);
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      break;
+    case SQLCOM_DROP_DB:
+    case SQLCOM_ALTER_DB:
+      tc_parse_result_t->query_string = thd->query();
+      tc_parse_result_t->db_name = lex->name.str;
+      tc_parse_result_t->spider_sql = thd->query().str;
+      tc_parse_remote_drop_database(tc_parse_result_t);
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      thd->spider_run_first = TRUE;
+      break;
+    case TC_SQLCOM_CREATE_TABLE_LIKE:
+    {
+      tc_parse_result_t->query_string = thd->query();
+      tc_parse_spider_create_table_like(tc_parse_result_t);
+      tc_parse_remote_create_table_like(tc_parse_result_t);
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      break;
+    }
+    default:
+      my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
+      return FALSE;
+  }
+
+  return TRUE;
 }
 
 void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
@@ -3935,4 +4007,52 @@ bool Cluster_conn_manager::check_server_version() {
 
 void free_cluster_conn_manager(THD *thd) {
   delete thd->cluster_conn_manager;
+}
+
+enum_sql_command tc_unsupport_types[] = { SQLCOM_SHOW_EVENTS, SQLCOM_SHOW_STATUS, SQLCOM_SHOW_STATUS_PROC, SQLCOM_SHOW_STATUS_FUNC,
+  SQLCOM_SHOW_DATABASES, SQLCOM_SHOW_TABLES, SQLCOM_SHOW_TRIGGERS, SQLCOM_SHOW_TABLE_STATUS, SQLCOM_SHOW_OPEN_TABLES, SQLCOM_SHOW_PLUGINS,
+  SQLCOM_SHOW_FIELDS, SQLCOM_SHOW_KEYS, SQLCOM_SHOW_VARIABLES, SQLCOM_SHOW_CHARSETS, SQLCOM_SHOW_COLLATIONS, SQLCOM_SHOW_STORAGE_ENGINES,
+  SQLCOM_SHOW_PROFILE, SQLCOM_PREPARE, SQLCOM_EXECUTE, SQLCOM_DEALLOCATE_PREPARE, SQLCOM_EMPTY_QUERY, SQLCOM_HELP, SQLCOM_PURGE,
+  SQLCOM_PURGE_BEFORE, SQLCOM_SHOW_WARNS, SQLCOM_SHOW_ERRORS, SQLCOM_SHOW_PROFILES, SQLCOM_ASSIGN_TO_KEYCACHE, SQLCOM_PRELOAD_KEYS,
+  SQLCOM_SHOW_ENGINE_STATUS, SQLCOM_SHOW_ENGINE_MUTEX, SQLCOM_SHOW_BINLOGS, SQLCOM_SHOW_CREATE, SQLCOM_CHECKSUM, SQLCOM_UPDATE,
+  SQLCOM_UPDATE_MULTI, SQLCOM_REPLACE, SQLCOM_INSERT, SQLCOM_REPLACE_SELECT, SQLCOM_INSERT_SELECT, SQLCOM_DELETE, SQLCOM_DELETE_MULTI,
+  SQLCOM_SHOW_PROCESSLIST, SQLCOM_SHOW_ENGINE_LOGS, SQLCOM_LOAD, SQLCOM_SHOW_CREATE_DB, SQLCOM_XA_START, SQLCOM_XA_END, SQLCOM_XA_PREPARE,
+  SQLCOM_XA_COMMIT, SQLCOM_XA_ROLLBACK, SQLCOM_XA_RECOVER, SQLCOM_ALTER_TABLESPACE, SQLCOM_INSTALL_PLUGIN, SQLCOM_UNINSTALL_PLUGIN,
+  SQLCOM_ANALYZE, SQLCOM_CHECK, SQLCOM_OPTIMIZE, SQLCOM_REPAIR, SQLCOM_TRUNCATE, SQLCOM_SIGNAL, SQLCOM_RESIGNAL, SQLCOM_GET_DIAGNOSTICS,
+  SQLCOM_CALL, SQLCOM_BINLOG_BASE64_EVENT, SQLCOM_HA_OPEN, SQLCOM_HA_CLOSE, SQLCOM_HA_READ, SQLCOM_SHOW_PRIVILEGES, SQLCOM_SHOW_CREATE_USER,
+  SQLCOM_SHOW_GRANTS, SQLCOM_SHOW_PROC_CODE, SQLCOM_SHOW_FUNC_CODE, SQLCOM_SHOW_CREATE_PROC, SQLCOM_SHOW_CREATE_FUNC, SQLCOM_SHOW_CREATE_TRIGGER,
+  SQLCOM_ALTER_INSTANCE, SQLCOM_CHANGE_REPLICATION_FILTER, SQLCOM_CREATE_COMPRESSION_DICTIONARY, SQLCOM_DROP_COMPRESSION_DICTIONARY,
+  SQLCOM_EXPLAIN_OTHER, SQLCOM_LOCK_BINLOG_FOR_BACKUP, SQLCOM_LOCK_TABLES_FOR_BACKUP, SQLCOM_SHOW_CLIENT_STATS, SQLCOM_SHOW_INDEX_STATS,
+  SQLCOM_SHOW_TABLE_STATS, SQLCOM_SHOW_THREAD_STATS, SQLCOM_SHOW_USER_STATS, SQLCOM_START_GROUP_REPLICATION, SQLCOM_STOP_GROUP_REPLICATION, SQLCOM_UNLOCK_BINLOG };
+
+//tc_admin=1, only need distribute to spider
+enum_sql_command tc_distribute_spider_types[] = { SQLCOM_CREATE_EVENT, SQLCOM_ALTER_EVENT, SQLCOM_CREATE_FUNCTION, SQLCOM_CREATE_PROCEDURE,
+  SQLCOM_CREATE_SPFUNCTION, SQLCOM_ALTER_PROCEDURE, SQLCOM_ALTER_FUNCTION, SQLCOM_DROP_PROCEDURE, SQLCOM_DROP_FUNCTION,
+  SQLCOM_CREATE_TRIGGER, SQLCOM_DROP_TRIGGER};
+
+enum_sql_command tc_distribute_spider_remote_types[] = { SQLCOM_CREATE_EVENT, SQLCOM_ALTER_EVENT, SQLCOM_CREATE_FUNCTION, SQLCOM_CREATE_PROCEDURE,
+  SQLCOM_CREATE_SPFUNCTION, SQLCOM_ALTER_PROCEDURE, SQLCOM_ALTER_FUNCTION, SQLCOM_DROP_PROCEDURE, SQLCOM_DROP_FUNCTION,
+  SQLCOM_CREATE_TRIGGER, SQLCOM_DROP_TRIGGER, SQLCOM_CREATE_VIEW, SQLCOM_DROP_VIEW,
+  SQLCOM_CREATE_USER, SQLCOM_DROP_USER, SQLCOM_ALTER_USER, SQLCOM_RENAME_USER, SQLCOM_REVOKE, SQLCOM_GRANT, SQLCOM_CREATE_SERVER, SQLCOM_ALTER_SERVER, SQLCOM_DROP_SERVER,
+  SQLCOM_CREATE_INDEX, SQLCOM_DROP_INDEX
+};
+
+
+
+//currently only consider tc_amind=1
+bool tc_unsupport_sql_type(int sql_type) {
+  return std::any_of(std::begin(tc_unsupport_types), std::end(tc_unsupport_types), [=](int i)
+    { return i == sql_type; });
+}
+
+//command distribute to spider only
+bool tc_distribute_spider_only(int sql_type) {
+  return std::any_of(std::begin(tc_distribute_spider_types), std::end(tc_distribute_spider_types), [=](int i)
+    { return i == sql_type; });
+}
+
+//command distribute to spider and remote
+bool tc_distribute_spider_and_remote(int sql_type) {
+  return std::any_of(std::begin(tc_distribute_spider_remote_types), std::end(tc_distribute_spider_remote_types), [=](int i)
+    { return i == sql_type; });
 }

@@ -204,4 +204,6 @@ enum enum_sql_command {
   SQLCOM_END
 };
 
+
+
 #endif /* _mysql_sql_command_h */
