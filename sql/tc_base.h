@@ -12,6 +12,10 @@
 #include <sstream>
 #include <regex>
 #include <mutex>
+#include <ifaddrs.h>
+#include <netinet/in.h> 
+#include <sys/types.h>
+#include <net/if.h>
 #include "mysql.h"
 using namespace std;
 
@@ -714,6 +718,28 @@ int checked_getaddrinfo(const char *nodename, const char *servname, const struct
  */
 bool
 get_ipv4_addr_from_hostname(const std::string& host, std::string& ip);
+
+/**
+  This function gets all network addresses on this host. Linux host ip only.
+ @param[out] out local IP address
+ @param filter_out_inactive If set to true, only active interfaces will be added
+                            to out
+ @return false on sucess, true otherwise.
+ */
+bool
+get_ip_local_addresses(std::set<std::string>& out,
+                         bool filter_out_inactive= false);
+
+/**
+ * @brief check validity of the host stored into mysql.servers.
+ * mysql.servers can't contain both loopback network 
+ * address and external network address, please change the value of 'host' column"
+ * 
+ * @param mem mem_root
+ * @param server_host the host of server node
+ * @return true on valid, false on invalid
+ */
+bool verify_validity_of_routing_host(MEM_ROOT *mem, const char *server_host);
 
 void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
                    MYSQL *mysql, enum_node_type node_type);

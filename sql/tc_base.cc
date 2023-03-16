@@ -2132,13 +2132,17 @@ void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
   }
   exec_info.err_code = 0;
   exec_info.err_msg = "";
-  err = mysql_real_query(mysql, query.c_str(), query.length());
-  while (!err) {
-    err = tc_mysql_next_result(mysql);
-  }
-  if (err != -1) {
-    exec_info.err_code = mysql_errno(mysql);
-    exec_info.err_msg = mysql_error(mysql);
+  // If we dont prepare sql statements for some instances(spider or remote node),
+  // we will skip querying to these instances.
+  if (query != string()) {
+    err = mysql_real_query(mysql, query.c_str(), query.length());
+    while (!err) {
+      err = tc_mysql_next_result(mysql);
+    }
+    if (err != -1) {
+      exec_info.err_code = mysql_errno(mysql);
+      exec_info.err_msg = mysql_error(mysql);
+    }
   }
   query_mgr->store_result(server_name, exec_info, node_type);
 
@@ -3248,7 +3252,7 @@ string tc_get_remote_grant_sql(
    port: port to primary member
 
   @retval
-   0: empty mysql.servers or error happened.
+   0: empty mysql.servers, host not found or error happened.
    1: mgr running with single-primary.
    2. not mgr or multi-primary
 
@@ -3264,6 +3268,10 @@ uint tc_get_primary_node(std::string &host, uint *port)
   {//not mgr or multi-Primary
     MEM_ROOT mem_root;
     list<FOREIGN_SERVER*> server_list;
+    std::list<FOREIGN_SERVER*>::iterator iter;
+    std::string checkhost;
+    bool localcluster_flag = false;
+    bool found_host = false;
 
     init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
     MEM_ROOT_GUARD(mem_root);
@@ -3273,10 +3281,39 @@ uint tc_get_primary_node(std::string &host, uint *port)
     if (server_list.empty())
       return 0;
 
-    //always user fist Server_name
-    server_list.sort(server_compare);
-    host = server_list.front()->host;
-    *port = server_list.front()->port;
+    // When execute CREATE/ALTER/DROP NODE query command, we
+    // have ensured that mysql.servers can't contain both loopback network
+    // address and external network address (through func verify_validity_of_routing_host()).
+    // Therefore, we believe that mysql.servers contain either only loopback network addresses
+    // or only external network addresses. 
+    // We just need to check the first host of mysql.servers.
+    checkhost = server_list.front()->host;
+    if (!checkhost.compare("localhost") || !checkhost.compare("127.0.0.1")) {
+      localcluster_flag = true;
+    }
+
+    // return local network address ip and port
+    std::set<std::string> ips;
+    get_ip_local_addresses(ips, true);
+    for(iter = server_list.begin(); iter != server_list.end(); iter++) {
+      if (localcluster_flag && (*iter)->port == mysqld_port) {
+        host = (*iter)->host;
+        *port = (*iter)->port;
+        found_host = true;
+        break;
+      } else if (!localcluster_flag &&
+                 ips.find((*iter)->host) != ips.end() &&
+                 (*iter)->port == mysqld_port) {
+        host = (*iter)->host;
+        *port = (*iter)->port;
+        found_host = true;
+        break;
+      }
+    }
+    
+    // no host was found, return error
+    if(!found_host)
+      return 0;
   }
 
   return ret;
@@ -3313,6 +3350,9 @@ int tc_is_primary_tdbctl_node()
   //not mgr or multi-Primary
   if (ret == 2)
   {//not mgr or multi-Primary
+
+  /* DEPRECATED*/
+  /*
     MYSQL *conn;
     MYSQL_RES* res;
     MYSQL_ROW row;
@@ -3354,6 +3394,12 @@ int tc_is_primary_tdbctl_node()
 
     //set value
     tdbctl_is_primary = (strcasecmp(uuid.c_str(), server_uuid) == 0) ? 1 : 0;
+    */
+
+    //Dont need to set the value of tdbctl_is_primary here.
+    //For mgr multi-primary mode, tdbctl_is_primary is set to true automatically 
+    //when group_replication plugin is loaded.
+    //For non-mgr, users need to set the value of tdbctl_is_primary manually.
     return tdbctl_is_primary;
   }
 
@@ -3521,6 +3567,77 @@ get_ipv4_addr_from_hostname(const std::string& host, std::string& ip)
     freeaddrinfo(addrinf);
 
   return false;
+}
+
+bool
+get_ip_local_addresses(std::set<std::string>& network_addr,
+                         bool filter_out_inactive)
+{
+  struct ifaddrs * ifAddrStruct=NULL;
+  struct ifaddrs * ifa=NULL;
+  void * tmpAddrPtr=NULL;
+
+  getifaddrs(&ifAddrStruct);
+
+  for (ifa = ifAddrStruct; ifa != NULL; ifa = ifa->ifa_next) {
+    if (!ifa->ifa_addr) {
+      continue;
+    }
+    if (ifa->ifa_addr->sa_family == AF_INET) { // check it is IP4
+      tmpAddrPtr=&((struct sockaddr_in *)ifa->ifa_addr)->sin_addr;
+      char addressBuffer[INET_ADDRSTRLEN];
+      if(!inet_ntop(AF_INET, tmpAddrPtr, addressBuffer, INET_ADDRSTRLEN)) {
+        if (ifAddrStruct!=NULL) freeifaddrs(ifAddrStruct);
+        return true;
+      }
+
+      if (filter_out_inactive && (ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)) {
+        if(!(ifa->ifa_flags & IFF_LOOPBACK)) {
+          network_addr.insert(addressBuffer);
+        }
+      }
+    } else if (ifa->ifa_addr->sa_family == AF_INET6) { // check it is IP6
+      tmpAddrPtr=&((struct sockaddr_in6 *)ifa->ifa_addr)->sin6_addr;
+      char addressBuffer[INET6_ADDRSTRLEN];
+      if(!inet_ntop(AF_INET6, tmpAddrPtr, addressBuffer, INET6_ADDRSTRLEN)) {
+        if (ifAddrStruct!=NULL) freeifaddrs(ifAddrStruct);
+        return true;
+      }
+
+      if (filter_out_inactive && (ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)) {
+        if(!(ifa->ifa_flags & IFF_LOOPBACK)) {
+            network_addr.insert(addressBuffer);
+        }
+      }
+    } 
+  }
+  if (ifAddrStruct!=NULL) freeifaddrs(ifAddrStruct);
+  return false;
+}
+
+bool verify_validity_of_routing_host(MEM_ROOT *mem, const char *server_host) {
+  std::list<FOREIGN_SERVER*> server_list;
+  uint localhost_count = 0;
+  if (!server_host || strlen(server_host) == 0) {
+    return true;
+  }
+
+  get_server_by_wrapper(server_list, mem, NULL_WRAPPER, TRUE);
+  if (!strcasecmp(server_host, "127.0.0.1") || !strcasecmp(server_host, "localhost")) {
+        localhost_count++;
+  }
+
+  if (!server_list.empty()) {
+    std::for_each(server_list.begin(), server_list.end(), [&localhost_count](const FOREIGN_SERVER *s){
+      if (!strcasecmp(s->host, "127.0.0.1") || !strcasecmp(s->host, "localhost")) {
+        localhost_count++;
+      }
+    });
+    if (localhost_count != 0 && localhost_count != server_list.size() + 1) {
+        return false;
+    }
+  }
+  return true;
 }
 
 const char *get_wrapper_name_by_node_type(enum_node_type type) {
