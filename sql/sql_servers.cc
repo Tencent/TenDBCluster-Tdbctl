@@ -1697,7 +1697,7 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
   string flush_priv_sql = "flush privileges";
   string flush_table_sql = "flush tables";
   string flush_rdlock_sql = "flush table with read lock";
-  string set_mdl_timeout_sql = "set lock_wait_timeout = 60";
+  string set_mdl_timeout_sql = "/*!50600 set lock_wait_timeout = 60 */";
   string set_interactive_timeout_sql = "set wait_timeout = 180";
   string set_option_sql = set_mdl_timeout_sql + ";" + set_interactive_timeout_sql;
   string unlock_sql = "unlock tables";
