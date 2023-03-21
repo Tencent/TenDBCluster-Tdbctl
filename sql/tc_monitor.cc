@@ -265,7 +265,7 @@ int tc_check_cluster_availability_init(string& err_msg)
     " PRIMARY KEY (`db_name`,`tb_name`)) ENGINE=InnoDB STATS_PERSISTENT=0;";
 
   //init sql for create schema on spider
-  string sql = "set ddl_execute_by_ctl = on";
+  string sql = "/*!50600 set ddl_execute_by_ctl = on */";
   string create_db_sql = "create database if not exists cluster_admin";
   string drop_table_sql = "drop table if exists cluster_admin.cluster_heartbeat";
   string create_table_sql = "create table if not exists cluster_admin.cluster_heartbeat( "

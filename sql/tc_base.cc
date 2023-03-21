@@ -3761,7 +3761,7 @@ int Query_exec_manager::make_real_query(const std::string &exec_query,
 
     /* 3.(only for Spider) */
     if (node_type == NODE_TYPE_SPIDER)
-      real_query += "SET ddl_execute_by_ctl=0;";
+      real_query += "/*!50600 SET ddl_execute_by_ctl=0 */;";
 
     real_query += exec_query;
   } else {
