@@ -1818,8 +1818,12 @@ bool tc_query_parse(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     return TRUE;
 }
 
-//if true, convert success
-//if false, convert error.
+/*
+   convert client Query to internal spider, remote node execute query
+   @retval
+      true:  convert success
+      false: convert error
+ */
 bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 {
   switch (lex->sql_command)
@@ -2101,7 +2105,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     {
       tc_parse_result_t->query_string = thd->query();
       if (lex->alter_info.flags == Alter_info::ALTER_DROP_COLUMN)
-        thd->spider_run_first = TRUE;
+        tc_parse_result_t->execute_flag |= TC_SPIDER_EXECUTE_FIRST;
       if (lex->alter_info.flags == Alter_info::ALTER_RENAME)
       {
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
@@ -2149,10 +2153,9 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
-      thd->spider_run_first = TRUE;
       tc_parse_spider_drop_table(tc_parse_result_t);
       tc_parse_remote_drop_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_REMOTE_NEED_EXECUTE | TC_SPIDER_EXECUTE_FIRST;
       break;
     }
     case SQLCOM_CHANGE_DB:
@@ -2171,8 +2174,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_result_t->db_name = lex->name.str;
       tc_parse_result_t->spider_sql = thd->query().str;
       tc_parse_remote_drop_database(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
-      thd->spider_run_first = TRUE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE|TC_SPIDER_EXECUTE_FIRST;
       break;
     case TC_SQLCOM_CREATE_TABLE_LIKE:
     {
@@ -2243,8 +2245,10 @@ bool tc_ddl_run(THD *thd, Cluster_conn_manager *conn_mgr,
                 Query_exec_manager *query_mgr) {
   bool force = thd->variables.tc_force_execute;
   LEX *lex = thd->lex;
+  int exec_flag = query_mgr->get_exec_flag();
 
-  if (tc_spider_run_first(thd, lex)) {
+  if (exec_flag & TC_SPIDER_EXECUTE_FIRST)
+  {
     if (!tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
                              NODE_TYPE_SPIDER) || force) {
       return tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),

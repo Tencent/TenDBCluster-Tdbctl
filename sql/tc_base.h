@@ -46,11 +46,14 @@ enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 #define TC_CONN_CONNECT_TIMEOUT 60
 #define TC_CONN_MAX_RETRIES_ON_FAILS 3
 
+//spider node need execute sql
 #define TC_SPIDER_NEED_EXECUTE 1
+//remote node need execute sql
 #define TC_REMOTE_NEED_EXECUTE 2
+//tdbctl node need execute sql, currently not used
 #define TC_TDBCTL_NEED_EXECUTE 4
+//spider node executed before other nodes.
 #define TC_SPIDER_EXECUTE_FIRST 8
-#define TC_REMOTE_EXECUTE_FIRST 16
 
 enum enum_node_type {
   NODE_TYPE_SPIDER = 0, /* this should ALWAYS be the first */
@@ -118,7 +121,7 @@ typedef struct tc_parse_result
     string new_table_name;
     string new_db_name;
 
-    //origin query
+    //original query
     LEX_CSTRING query_string;
     string spider_sql;
     map<string, string> remote_sql_map;
@@ -223,6 +226,12 @@ public:
   /* TODO: get rid of it */
   int get_results(tc_execute_result *res) const;
 
+  /* set exec_flag */
+  void set_exec_flag(int flag) { exec_flag = flag; };
+
+  /* get exec_flag */
+  int get_exec_flag() { return exec_flag; };
+
 private:
   Query_exec_manager() {} /* =delete */
 
@@ -254,6 +263,9 @@ private:
 
   /* Real execution queries for each server store here */
   std::map<std::string, std::string> real_queries[ENUM_NODE_TYPE_COUNT];
+
+  /* flag to control execution logic */
+  int exec_flag;
 };
 
 class Cluster_conn_manager {
@@ -464,14 +476,6 @@ bool tc_query_convert(
   string *spider_create_sql, 
   map<string, string> *remote_create_sql
 );
-
-inline bool tc_spider_run_first(THD *thd, LEX *lex) {
-    enum_sql_command sqlcom = tc_get_sql_type(thd, lex);
-    return (sqlcom == SQLCOM_ALTER_TABLE) ||
-           (sqlcom == SQLCOM_DROP_TABLE) ||
-           (sqlcom == SQLCOM_DROP_DB) ||
-           (sqlcom == SQLCOM_ALTER_DB);
-}
 
 MYSQL* tc_conn_connect(
   string ipport, 

@@ -5575,7 +5575,7 @@ end_with_restore_list:
     break;
   }
 
-  if (!thd->is_error() && tc_admin == 1 && (parse_result.execute_flag & (TC_REMOTE_EXECUTE_FIRST|TC_SPIDER_NEED_EXECUTE)) > 0)
+  if (!thd->is_error() && tc_admin == 1 && (parse_result.execute_flag & (TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE)))
   {
     thd->get_stmt_da()->reset_diagnostics_area();
     /*
@@ -5588,6 +5588,7 @@ end_with_restore_list:
       goto error;
 
     query_exec_manager.reset_error();
+    query_exec_manager.set_exec_flag(parse_result.execute_flag);
     if (parse_result.execute_flag & TC_SPIDER_NEED_EXECUTE)
       query_exec_manager.store_exec_query(parse_result.spider_sql, NODE_TYPE_SPIDER);
     if (parse_result.execute_flag & TC_REMOTE_NEED_EXECUTE)
