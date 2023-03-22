@@ -12,10 +12,17 @@
 #include <sstream>
 #include <regex>
 #include <mutex>
+#include <stdlib.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <iphlpapi.h>
+#include <ws2tcpip.h>
+#else
 #include <ifaddrs.h>
 #include <netinet/in.h> 
-#include <sys/types.h>
 #include <net/if.h>
+#endif
+#include <sys/types.h>
 #include "mysql.h"
 using namespace std;
 

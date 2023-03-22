@@ -3645,6 +3645,53 @@ get_ipv4_addr_from_hostname(const std::string& host, std::string& ip)
   return false;
 }
 
+#ifdef _WIN32
+
+bool get_ip_local_addresses(std::set<std::string>& network_addr, bool filter_out_inactive)
+{
+    HMODULE hIphlpapi = LoadLibrary("iphlpapi.dll");
+    if (hIphlpapi == NULL) {
+      printf("Failed to load iphlpapi.dll\n");
+      return 1;
+    }
+
+    typedef DWORD(WINAPI *GetAdaptersAddresses_t)(ULONG, ULONG, PVOID, PIP_ADAPTER_ADDRESSES, PULONG);
+    GetAdaptersAddresses_t GetAdaptersAddresses_func = (GetAdaptersAddresses_t)GetProcAddress(hIphlpapi, "GetAdaptersAddresses");
+    if (GetAdaptersAddresses_func == NULL) {
+      printf("Failed to get GetAdaptersAddresses function pointer\n");
+      return 1;
+    }
+
+    PIP_ADAPTER_ADDRESSES pAddresses = NULL;
+    ULONG family = AF_UNSPEC;
+    ULONG flags = GAA_FLAG_INCLUDE_PREFIX;
+
+    // Allocate a buffer to hold the adapter addresses
+    ULONG bufLen = 0;
+    DWORD ret = GetAdaptersAddresses_func(family, flags, NULL, pAddresses, &bufLen);
+    if (ret == ERROR_BUFFER_OVERFLOW) {
+      pAddresses = (IP_ADAPTER_ADDRESSES*)malloc(bufLen);
+      ret = GetAdaptersAddresses_func(family, flags, NULL, pAddresses, &bufLen);
+    }
+
+    // Enumerate the adapter addresses
+    for (PIP_ADAPTER_ADDRESSES pCurrAddresses = pAddresses; pCurrAddresses != NULL; pCurrAddresses = pCurrAddresses->Next) {
+      for (PIP_ADAPTER_UNICAST_ADDRESS pUnicast = pCurrAddresses->FirstUnicastAddress; pUnicast != NULL; pUnicast = pUnicast->Next) {
+        // Print the interface name and address
+        printf("%ws: %ws\n", pCurrAddresses->FriendlyName, pUnicast->Address.lpSockaddr->sa_data);
+      }
+    }
+
+    // Free the buffer
+    free(pAddresses);
+
+    // Free the iphlpapi.dll library
+    FreeLibrary(hIphlpapi);
+
+    return 0;
+}
+
+#else
 bool
 get_ip_local_addresses(std::set<std::string>& network_addr,
                          bool filter_out_inactive)
@@ -3690,6 +3737,7 @@ get_ip_local_addresses(std::set<std::string>& network_addr,
   if (ifAddrStruct!=NULL) freeifaddrs(ifAddrStruct);
   return false;
 }
+#endif
 
 bool verify_validity_of_routing_host(MEM_ROOT *mem, const char *server_host) {
   std::list<FOREIGN_SERVER*> server_list;
