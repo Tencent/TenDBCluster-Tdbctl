@@ -1828,6 +1828,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 {
   switch (lex->sql_command)
   {
+    case SQLCOM_SHOW_VARIABLES:
     case SQLCOM_SHOW_EVENTS:
     case SQLCOM_SHOW_STATUS:
     case SQLCOM_SHOW_STATUS_PROC:
@@ -1840,28 +1841,45 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_SHOW_PLUGINS:
     case SQLCOM_SHOW_FIELDS:
     case SQLCOM_SHOW_KEYS:
-    case SQLCOM_SHOW_VARIABLES:
     case SQLCOM_SHOW_CHARSETS:
     case SQLCOM_SHOW_COLLATIONS:
     case SQLCOM_SHOW_STORAGE_ENGINES:
     case SQLCOM_SHOW_PROFILE:
+    case SQLCOM_SHOW_WARNS:
+    case SQLCOM_SHOW_ERRORS:
+    case SQLCOM_SHOW_ENGINE_STATUS:
+    case SQLCOM_SHOW_ENGINE_MUTEX:
+    case SQLCOM_SHOW_BINLOGS:
+    case SQLCOM_SHOW_CREATE:
+    case SQLCOM_SHOW_PROCESSLIST:
+    case SQLCOM_SHOW_ENGINE_LOGS:
+    case SQLCOM_SHOW_CREATE_DB:
+    case SQLCOM_SHOW_PRIVILEGES:
+    case SQLCOM_SHOW_CREATE_USER:
+    case SQLCOM_SHOW_GRANTS:
+    case SQLCOM_SHOW_PROC_CODE:
+    case SQLCOM_SHOW_FUNC_CODE:
+    case SQLCOM_SHOW_CREATE_PROC:
+    case SQLCOM_SHOW_CREATE_FUNC:
+    case SQLCOM_SHOW_CREATE_TRIGGER:
+    case SQLCOM_SHOW_CLIENT_STATS:
+    case SQLCOM_SHOW_INDEX_STATS:
+    case SQLCOM_SHOW_TABLE_STATS:
+    case SQLCOM_SHOW_THREAD_STATS:
+    case SQLCOM_SHOW_USER_STATS:
+    case SQLCOM_HELP:
+      //do nothing
+      break;
     case SQLCOM_SELECT:
     case SQLCOM_PREPARE:
     case SQLCOM_EXECUTE:
     case SQLCOM_DEALLOCATE_PREPARE:
     case SQLCOM_EMPTY_QUERY:
-    case SQLCOM_HELP:
     case SQLCOM_PURGE:
     case SQLCOM_PURGE_BEFORE:
-    case SQLCOM_SHOW_WARNS:
-    case SQLCOM_SHOW_ERRORS:
     case SQLCOM_SHOW_PROFILES:
     case SQLCOM_ASSIGN_TO_KEYCACHE:
     case SQLCOM_PRELOAD_KEYS:
-    case SQLCOM_SHOW_ENGINE_STATUS:
-    case SQLCOM_SHOW_ENGINE_MUTEX:
-    case SQLCOM_SHOW_BINLOGS:
-    case SQLCOM_SHOW_CREATE:
     case SQLCOM_CHECKSUM:
     case SQLCOM_UPDATE:
     case SQLCOM_UPDATE_MULTI:
@@ -1870,10 +1888,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_INSERT_SELECT:
     case SQLCOM_DELETE:
     case SQLCOM_DELETE_MULTI:
-    case SQLCOM_SHOW_PROCESSLIST:
-    case SQLCOM_SHOW_ENGINE_LOGS:
     case SQLCOM_LOAD:
-    case SQLCOM_SHOW_CREATE_DB:
     case SQLCOM_XA_START:
     case SQLCOM_XA_END:
     case SQLCOM_XA_PREPARE:
@@ -1896,14 +1911,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_HA_OPEN:
     case SQLCOM_HA_CLOSE:
     case SQLCOM_HA_READ:
-    case SQLCOM_SHOW_PRIVILEGES:
-    case SQLCOM_SHOW_CREATE_USER:
-    case SQLCOM_SHOW_GRANTS:
-    case SQLCOM_SHOW_PROC_CODE:
-    case SQLCOM_SHOW_FUNC_CODE:
-    case SQLCOM_SHOW_CREATE_PROC:
-    case SQLCOM_SHOW_CREATE_FUNC:
-    case SQLCOM_SHOW_CREATE_TRIGGER:
     case SQLCOM_ALTER_INSTANCE:
     case SQLCOM_CHANGE_REPLICATION_FILTER:
     case SQLCOM_CREATE_COMPRESSION_DICTIONARY:
@@ -1911,11 +1918,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_EXPLAIN_OTHER:
     case SQLCOM_LOCK_BINLOG_FOR_BACKUP:
     case SQLCOM_LOCK_TABLES_FOR_BACKUP:
-    case SQLCOM_SHOW_CLIENT_STATS:
-    case SQLCOM_SHOW_INDEX_STATS:
-    case SQLCOM_SHOW_TABLE_STATS:
-    case SQLCOM_SHOW_THREAD_STATS:
-    case SQLCOM_SHOW_USER_STATS:
     case SQLCOM_START_GROUP_REPLICATION:
     case SQLCOM_STOP_GROUP_REPLICATION:
     case SQLCOM_UNLOCK_BINLOG:
@@ -2184,6 +2186,25 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
       break;
     }
+    case TC_SQLCOM_CREATE_NODE:
+    case TC_SQLCOM_ALTER_NODE:
+    case TC_SQLCOM_DROP_NODE:
+    case TC_SQLCOM_FLUSH_ROUTING:
+    case TC_SQLCOM_CREATE_SERVER:
+    case TC_SQLCOM_DROP_SERVER:
+    case TC_SQLCOM_ALTER_SERVER:
+    case TC_SQLCOM_CREATE_TABLE_WITH_SELECT:
+    case TC_SQLCOM_CREATE_TABLE_WITH_CONNECT_STRING:
+    case TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT:
+    case TC_SQLCOM_CREATE_TABLE_WITH_FIELD_CHARSET:
+    case TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY:
+    case TC_SQLCOM_ALTER_TABLE_UNSUPPORT:
+    case TC_SQLCOM_MONITOR_INIT:
+    case TC_SQLCOM_SHOW_PROCESSLIST:
+    case TC_SQLCOM_SHOW_VARIABLES:
+      //do nothing, only work on primary tdbctl node
+      break;
+
     default:
       my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
       return FALSE;

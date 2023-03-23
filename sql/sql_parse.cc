@@ -2976,7 +2976,7 @@ mysql_execute_command(THD *thd, bool first_level)
     goto finish;
   }
 
-  if (tc_admin == 1)
+  if (tc_admin == 1 && tdbctl_is_primary)
   {
     if (!thd->cluster_conn_manager) {
       thd->cluster_conn_manager = new Cluster_conn_manager();
@@ -5575,7 +5575,9 @@ end_with_restore_list:
     break;
   }
 
-  if (!thd->is_error() && tc_admin == 1 && (parse_result.execute_flag & (TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE)))
+  //only primary node and tc_admin need to this
+  if (!thd->is_error() && tc_admin == 1 && tdbctl_is_primary && 
+    (parse_result.execute_flag & (TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE)))
   {
     thd->get_stmt_da()->reset_diagnostics_area();
     /*
