@@ -20,6 +20,9 @@ using namespace std;
   "SPIDER_AUTO_INCREMENT_MODE_VALUE"
 #define VARNAME_SPIDER_AUTO_INCREMENT_STEP "SPIDER_AUTO_INCREMENT_STEP"
 
+#define MAX_VAR_NAME_LEN 64
+#define MAX_VAR_VALUE_LEN 1024
+
 ST_FIELD_INFO spider_autoinc_fields_info[] = {
     {"SERVER_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
     {"SPIDER_AUTO_INCREMENT_MODE_SWITCH", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0,
@@ -49,7 +52,7 @@ ST_FIELD_INFO cluster_processlist_fields_info[] = {
     {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
 };
 
-static void protocol_store_field(Protocol *protocol, MYSQL_FIELD field, const char *row)
+static void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row)
 {
 	DBUG_ENTER("protocol_store_field");
 	if (row == NULL) {
@@ -76,180 +79,246 @@ static void protocol_store_field(Protocol *protocol, MYSQL_FIELD field, const ch
 	DBUG_VOID_RETURN;
 }
 
-/*
-  Tdbctl do show processlist.
-	transfer SHOW PROCESSLIST to all nodes executed and display
-	*/
-void tc_show_processlist(THD *thd, bool verbose, const char *server_name)
-{
-	map<string, MYSQL_RES*> result_map;
-	string show_sql = (verbose ? 
-    "select ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO from "
-    " information_schema.processlist" :
-    "select ID,USER,HOST,DB,COMMAND,TIME,STATE,substring(Info,1,100) "
-    "from information_schema.processlist");
+/**
+ * @brief Get SHOW PROCESSLIST results from cluster nodes.
+ *
+ * @param thd Thread handler
+ * @param verbose Whether to apply full display width for INFO column
+ * @param from_server Server name of the target server, if not empty, only get
+ * results from the target server, otherwise get from all
+ *
+ * @retval 0 on success
+ * @retval 1 on error
+ * */
+int tc_show_processlist(THD *thd, bool verbose, LEX_CSTRING from_server) {
+  bool finished = FALSE;
+  string target_server(from_server.str, from_server.length);
+  string query =
+      (verbose ? "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO FROM "
+                 "INFORMATION_SCHEMA.PROCESSLIST"
+               : "SELECT "
+                 "ID,USER,HOST,DB,COMMAND,TIME,STATE,SUBSTRING(INFO,1,100) "
+                 "FROM INFORMATION_SCHEMA.PROCESSLIST");
 
-	Item *field;
-	List<Item> field_list;
-	size_t max_query_length = (verbose ? thd->variables.max_allowed_packet :
-		PROCESS_LIST_WIDTH);
-	Protocol *protocol = thd->get_protocol();
-	DBUG_ENTER("tc_show_processlist");
+  Item *field;
+  List<Item> field_list;
+  size_t max_query_length =
+      (verbose ? thd->variables.max_allowed_packet : PROCESS_LIST_WIDTH);
+  Protocol *protocol = thd->get_protocol();
+  Cluster_conn_manager *conn_mgr;
+  Query_exec_manager query_mgr(thd);
+  DBUG_ENTER("tc_show_processlist");
 
-	field_list.push_back(new Item_empty_string("Server_name", NAME_CHAR_LEN));
-	field_list.push_back(new Item_int(NAME_STRING("Id"),
-		0, MY_INT64_NUM_DECIMAL_DIGITS));
-	field_list.push_back(new Item_empty_string("User", USERNAME_CHAR_LENGTH));
-	field_list.push_back(new Item_empty_string("Host", LIST_PROCESS_HOST_LEN));
-	field_list.push_back(field = new Item_empty_string("db", NAME_CHAR_LEN));
-	field->maybe_null = 1;
-	field_list.push_back(new Item_empty_string("Command", 16));
-	field_list.push_back(field = new Item_return_int("Time", 7, MYSQL_TYPE_LONG));
-	field->unsigned_flag = 0;
-	field_list.push_back(field = new Item_empty_string("State", 30));
-	field->maybe_null = 1;
-	field_list.push_back(field = new Item_empty_string("Info", max_query_length));
-	field->maybe_null = 1;
-	if (thd->send_result_metadata(&field_list,
-		Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
-		DBUG_VOID_RETURN;
+  if (!thd->cluster_conn_manager) {
+    thd->cluster_conn_manager = new Cluster_conn_manager();
+  }
+  if (thd->cluster_conn_manager->refresh(FALSE))
+    DBUG_RETURN(1);
+  conn_mgr = thd->cluster_conn_manager;
+  query_mgr.build_server_maps(thd->cluster_conn_manager);
+  query_mgr.reset_error();
 
-	if (server_name != NULL) {
-		//get one server's processlist result.
-		MYSQL_RES *res = tc_exec_sql_by_server(show_sql, server_name);
-		result_map.insert(pair<string, MYSQL_RES *>(server_name, std::move(res)));
-	}
-	else {
-		//get all node's processlist result
-		result_map = tc_exec_sql_paral_by_wrapper(show_sql, NULL_WRAPPER, TRUE);
-	}
-	for_each(result_map.begin(), result_map.end(), [&protocol](std::pair<string, MYSQL_RES*> its) {
-		string server_name = its.first;
-		MYSQL_RES* res = its.second;
-		//use to free result.
-		MYSQL_RES_GUARD(res);
-		if (res != NULL)
-		{
-			uint i;
-			MYSQL_ROW row;
-			MYSQL_FIELD  field;
-			while ((row = mysql_fetch_row(res)) != NULL)
-			{
-			  protocol->start_row();
-				protocol->store(server_name.c_str(), system_charset_info);
-				res->current_field = 0;
-				for (i = 0; i < mysql_num_fields(res); i++)
-				{
-					field = res->fields[res->current_field++];
-					protocol_store_field(protocol, field, row[i]);
-				}
-				if (protocol->end_row())
-					break; /* purecov: inspected */
-			}
-		}
-	});
+  field_list.push_back(new Item_empty_string("Server_name", NAME_CHAR_LEN));
+  field_list.push_back(
+      new Item_int(NAME_STRING("Id"), 0, MY_INT64_NUM_DECIMAL_DIGITS));
+  field_list.push_back(new Item_empty_string("User", USERNAME_CHAR_LENGTH));
+  field_list.push_back(new Item_empty_string("Host", LIST_PROCESS_HOST_LEN));
+  field_list.push_back(field = new Item_empty_string("db", NAME_CHAR_LEN));
+  field->maybe_null = 1;
+  field_list.push_back(new Item_empty_string("Command", 16));
+  field_list.push_back(field = new Item_return_int("Time", 7, MYSQL_TYPE_LONG));
+  field->unsigned_flag = 0;
+  field_list.push_back(field = new Item_empty_string("State", 30));
+  field->maybe_null = 1;
+  field_list.push_back(field = new Item_empty_string("Info", max_query_length));
+  field->maybe_null = 1;
+  if (thd->send_result_metadata(&field_list,
+                                Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+    DBUG_RETURN(1);
 
-	my_eof(thd);
-	result_map.clear();
-	DBUG_VOID_RETURN;
+  for (int i = ENUM_NODE_TYPE_BEGIN; !finished && i < ENUM_NODE_TYPE_END; ++i) {
+    enum_node_type node_type = (enum_node_type)i;
+    const map<string, MYSQL *> &conns = conn_mgr->get_conn_map(node_type);
+    map<string, MYSQL *>::const_iterator conn_it;
+
+    for (conn_it = conns.begin(); !finished && conn_it != conns.end();
+         ++conn_it) {
+      string server_name = conn_it->first;
+      if (target_server.length() &&
+          my_strcasecmp_mb(system_charset_info, server_name.c_str(),
+                           target_server.c_str())) {
+        /* Only send to target server, skip this one */
+        continue;
+      }
+
+      MYSQL_ROW row;
+      MYSQL_FIELD *fld;
+      MYSQL_RES *res;
+      MYSQL *mysql = conn_it->second;
+
+      /* Do SHOW PROCESSLIST */
+      query_mgr.store_exec_query(server_name, query, node_type);
+      tc_real_query(&query_mgr, server_name, mysql, node_type);
+      if (query_mgr.get_error() || !(res = mysql_store_result(mysql))) {
+        /* encountered error */
+        char buf[MYSQL_ERRMSG_SIZE];
+        my_snprintf(buf, sizeof(buf),
+                    "failed to SHOW PROCESSLIST from server: %s, "
+                    "error: %u, errmsg: %s",
+                    server_name.c_str(), mysql_errno(mysql),
+                    mysql_error(mysql));
+        my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), buf);
+        DBUG_RETURN(1);
+      }
+
+      /* Process results and send to client */
+      DBUG_ASSERT(mysql_num_fields(res) == 8);
+      while ((row = mysql_fetch_row(res))) {
+        protocol->start_row();
+        protocol->store(server_name.c_str(), server_name.length(),
+                        system_charset_info);
+        for (uint idx = 0; idx < mysql_num_fields(res); ++idx) {
+          fld = &res->fields[idx];
+          protocol_store_field(protocol, *fld, row[idx]);
+        }
+        if (protocol->end_row()) {
+          finished = TRUE;
+          break;
+        }
+      }
+      mysql_free_result(res);
+
+      if (target_server.length())
+        /* Break the loops for we have found target server and finished SHOW */
+        finished = TRUE;
+    }
+  }
+
+  my_eof(thd);
+  DBUG_RETURN(0);
 }
 
-/*
-  Tdbctl do show processlist.
-	transfer SHOW PROCESSLIST to all nodes executed and display
-	*/
-void tc_show_variables(THD *thd, enum_var_type type, String *wild, const char *server_name)
-{
-	map<string, MYSQL_RES*> result_map;
-	string show_sql, option, like_cause;
-	Item *field;
-	List<Item> field_list;
-	Protocol *protocol = thd->get_protocol();
-  size_t max_var_len = strlen("Variable_name") + 1;
-	size_t max_value_len = strlen("Value") + 1;
+/**
+ * @brief Get SHOW VARIABLES results from cluster nodes.
+ *
+ * @param thd Thread handler
+ * @param type Type of SHOW, either OPT_DEFAULT, OPT_SESSION or OPT_GLOBAL
+ * @param wild Variable name wildcard from the LIKE '?' statements
+ * @param from_server Server name of the target server, if not empty, only get
+ * results from the target server, otherwise get from all
+ *
+ * @retval 0 on success
+ * @retval 1 on error
+ * */
+int tc_show_variables(THD *thd, enum_var_type type, String *wild,
+                      LEX_CSTRING from_server) {
+  stringstream q_stream;
+  string query;
+  string target_server(from_server.str, from_server.length);
+  Item *field;
+  List<Item> field_list;
+  Protocol *protocol = thd->get_protocol();
+  Cluster_conn_manager *conn_mgr;
+  Query_exec_manager query_mgr(thd);
+  bool finished = FALSE;
 
-	DBUG_ENTER("tc_show_variables");
+  DBUG_ENTER("tc_show_variables");
 
-	if (wild != NULL)
-		like_cause = string("like ") + "'" + wild->ptr() + "'";
+  if (!thd->cluster_conn_manager) {
+    thd->cluster_conn_manager = new Cluster_conn_manager();
+  }
+  if (thd->cluster_conn_manager->refresh(FALSE))
+    DBUG_RETURN(1);
+  conn_mgr = thd->cluster_conn_manager;
+  query_mgr.build_server_maps(thd->cluster_conn_manager);
+  query_mgr.reset_error();
 
-	switch (type) {
-	case OPT_DEFAULT:
-		option = "";
-		break;
-	case OPT_SESSION:
-		option = "SESSION ";
-		break;
-	case OPT_GLOBAL:
-		option = "GLOBAL ";
-		break;
-	}
+  q_stream << "SHOW ";
+  if (type == OPT_SESSION) {
+    q_stream << "SESSION ";
+  } else if (type == OPT_GLOBAL) {
+    q_stream << "GLOBAL ";
+  } /* else: append nothing */
+  q_stream << "VARIABLES";
+  if (wild) {
+    q_stream << " LIKE '" << wild->ptr() << "'";
+  }
+  query = q_stream.str();
 
-	show_sql = "SHOW " + option + "VARIABLES " + like_cause;
+  field_list.push_back(new Item_empty_string("Server_name", NAME_CHAR_LEN));
+  field_list.push_back(
+      new Item_empty_string("Variable_name", MAX_VAR_NAME_LEN));
+  field_list.push_back(field =
+                           new Item_empty_string("Value", MAX_VAR_VALUE_LEN));
+  field->maybe_null = 1;
+  if (thd->send_result_metadata(&field_list,
+                                Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+    DBUG_RETURN(1);
 
-	if (server_name != NULL) {
-		//get one server's processlist result.
-		MYSQL_RES *res = tc_exec_sql_by_server(show_sql, server_name);
-		result_map.insert(pair<string, MYSQL_RES *>(server_name, std::move(res)));
-	}
-	else {
-		//get all node's processlist result
-		result_map = tc_exec_sql_paral_by_wrapper(show_sql, NULL_WRAPPER, TRUE);
-	}
+  for (int i = ENUM_NODE_TYPE_BEGIN; !finished && i < ENUM_NODE_TYPE_END; ++i) {
+    enum_node_type node_type = (enum_node_type)i;
+    const map<string, MYSQL *> &conns = conn_mgr->get_conn_map(node_type);
+    map<string, MYSQL *>::const_iterator conn_it;
 
-	//get max length from result
-	for_each(result_map.begin(), result_map.end(), [&max_var_len, &max_value_len](std::pair<string, MYSQL_RES*> its) {
-		MYSQL_RES* res = its.second;
-		if (res != NULL)
-		{
-			DBUG_ASSERT(mysql_num_fields(res) == 2);
-			MYSQL_FIELD var_field = res->fields[0];
-			MYSQL_FIELD value_field = res->fields[1];
-			if (max_var_len < var_field.max_length)
-				max_var_len = var_field.max_length;
-			if (max_value_len < value_field.max_length)
-				max_value_len = value_field.max_length;
-		}
-	});
+    for (conn_it = conns.begin(); !finished && conn_it != conns.end();
+         ++conn_it) {
+      string server_name = conn_it->first;
+      if (target_server.length() &&
+          my_strcasecmp_mb(system_charset_info, server_name.c_str(),
+                           target_server.c_str())) {
+        /* Only send to target server, skip this one */
+        continue;
+      }
 
-	field_list.push_back(new Item_empty_string("Server_name", NAME_CHAR_LEN));
-	field_list.push_back(new Item_empty_string("Variable_name", max_var_len));
-	field_list.push_back(field = new Item_empty_string("Value", max_value_len));
-	field->maybe_null = 1;
-	if (thd->send_result_metadata(&field_list,
-		Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
-		DBUG_VOID_RETURN;
+      MYSQL_ROW row;
+      MYSQL_RES *res;
+      MYSQL *mysql = conn_it->second;
 
-	for_each(result_map.begin(), result_map.end(), [&protocol](std::pair<string, MYSQL_RES*> its) {
-		string server_name = its.first;
-		MYSQL_RES* res = its.second;
-		//use to free result.
-		MYSQL_RES_GUARD(res);
-		if (res != NULL)
-		{
-			uint i;
-			MYSQL_ROW row;
-			MYSQL_FIELD  field;
-			while ((row = mysql_fetch_row(res)) != NULL)
-			{
-				protocol->start_row();
-				protocol->store(server_name.c_str(), system_charset_info);
-				res->current_field = 0;
-				for (i = 0; i < mysql_num_fields(res); i++)
-				{
-					field = res->fields[res->current_field++];
-					protocol_store_field(protocol, field, row[i]);
-				}
-				if (protocol->end_row())
-					break; /* purecov: inspected */
-			}
-		}
-	});
+      /* Do SHOW VARIABLES */
+      query_mgr.store_exec_query(server_name, query, node_type);
+      tc_real_query(&query_mgr, server_name, mysql, node_type);
+      if (query_mgr.get_error() || !(res = mysql_store_result(mysql))) {
+        /* encountered error */
+        char buf[MYSQL_ERRMSG_SIZE];
+        my_snprintf(buf, sizeof(buf),
+                    "failed to SHOW VARIABLES from server: %s, "
+                    "error: %u, errmsg: %s",
+                    server_name.c_str(), mysql_errno(mysql),
+                    mysql_error(mysql));
+        my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), buf);
+        DBUG_RETURN(1);
+      }
 
-	my_eof(thd);
-	result_map.clear();
-	DBUG_VOID_RETURN;
+      /* Process results and send to client */
+      DBUG_ASSERT(mysql_num_fields(res) == 2);
+      while ((row = mysql_fetch_row(res))) {
+        protocol->start_row();
+        protocol->store(server_name.c_str(), server_name.length(),
+                        system_charset_info);
+        /* VARIABLE_NAME */
+        protocol->store(row[0], mysql_fetch_lengths(res)[0],
+                        system_charset_info);
+        /* VALUE */
+        if (likely(row[1]))
+          protocol->store(row[1], mysql_fetch_lengths(res)[1],
+                          system_charset_info);
+        else
+          protocol->store_null();
+        if (protocol->end_row()) {
+          finished = TRUE;
+          break;
+        }
+      }
+      mysql_free_result(res);
 
+      if (target_server.length())
+        /* Break the loops for we have found target server and finished SHOW */
+        finished = TRUE;
+    }
+  }
+
+  my_eof(thd);
+  DBUG_RETURN(0);
 }
 
 int fill_schema_spider_autoinc(THD *thd, TABLE_LIST *tables, Item *cond) {

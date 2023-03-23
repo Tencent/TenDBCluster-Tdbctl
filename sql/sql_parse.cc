@@ -3905,10 +3905,10 @@ end_with_restore_list:
     if (!thd->security_context()->priv_user().str[0] &&
         check_global_access(thd,PROCESS_ACL))
       break;
-    tc_show_processlist(thd, lex->verbose, lex->server_name);
+    res = tc_show_processlist(thd, lex->verbose, lex->server_name);
     break;
   case TC_SQLCOM_SHOW_VARIABLES:
-    tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
+    res = tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
     break;
   case SQLCOM_SHOW_PRIVILEGES:
     res= mysqld_show_privileges(thd);

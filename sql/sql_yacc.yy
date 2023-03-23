@@ -2331,11 +2331,11 @@ tdbctl:
               new (YYTHD->mem_root) Sql_cmd_drop_server($5, $4);
           Lex->tc_do_grants = FALSE;
         }
-      | TDBCTL_SYM SHOW opt_server opt_full PROCESSLIST_SYM
+      | TDBCTL_SYM SHOW opt_full PROCESSLIST_SYM opt_server
         {
           Lex->sql_command = TC_SQLCOM_SHOW_PROCESSLIST;
         }
-      | TDBCTL_SYM SHOW opt_server opt_var_type VARIABLES opt_show
+      | TDBCTL_SYM SHOW opt_var_type VARIABLES opt_show opt_server
         {
           Lex->sql_command = TC_SQLCOM_SHOW_VARIABLES;
         }
@@ -2373,15 +2373,20 @@ opt_force:
         ;
 
 opt_server:
-         /* empty */ { Lex->server_name =  NULL; }
-        |TEXT_STRING
+         /* empty */ { Lex->server_name = empty_lex_cstr; }
+        | FROM ident_or_text
         {
-          Lex->server_name = $1.str;
+          Lex->server_name = to_lex_cstring($2);
+          if ($2.length == 0)
+          {
+            my_error(ER_WRONG_VALUE, MYF(0), "server name", "");
+            MYSQL_YYABORT;
+          }
         }
         ;
 
 opt_show:
-         /* empty */ { Lex->server_name =  NULL; }
+         /* empty */
         |LIKE TEXT_STRING_sys
         {
 		  Lex->wild= new (YYTHD->mem_root) String($2.str, $2.length,
