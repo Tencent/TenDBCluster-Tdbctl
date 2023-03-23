@@ -72,7 +72,7 @@ int back_up_one_server(FOREIGN_SERVER* server);
 bool update_server_version(bool* version_updated);
 void get_deleted_servers();
 bool backup_server_cache();
-void delete_redundant_routings();
+int delete_redundant_routings();
 int get_remote_changed_servers(
   MEM_ROOT* mem_root, 
   std::list<FOREIGN_SERVER*>* diff_serverlist

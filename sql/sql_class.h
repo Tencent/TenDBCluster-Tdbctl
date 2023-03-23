@@ -1682,22 +1682,6 @@ public:
   /* Slave applier execution context */
   Relay_log_info* rli_slave;
 
-  /* DEPRECATED */
-  std::map<std::string, MYSQL*> spider_conn_map;
-  std::map<std::string, std::string> spider_user_map;
-  std::map<std::string, std::string> spider_passwd_map;
-  std::set<std::string> spider_ipport_set;
-
-  std::map<std::string, MYSQL*> remote_conn_map;
-  std::map<std::string, std::string> remote_user_map;
-  std::map<std::string, std::string> remote_passwd_map;
-  std::map<std::string, std::string> remote_ipport_map;
-
-  std::map<std::string, std::string> tdbctl_user_map;
-  std::map<std::string, std::string> tdbctl_passwd_map;
-  std::map<std::string, std::string> tdbctl_ipport_map;
-
-
   bool tc_conn_init;
   bool spider_run_first;
   ulong server_version;

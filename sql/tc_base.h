@@ -12,10 +12,17 @@
 #include <sstream>
 #include <regex>
 #include <mutex>
+#include <stdlib.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <iphlpapi.h>
+#include <ws2tcpip.h>
+#else
 #include <ifaddrs.h>
 #include <netinet/in.h> 
-#include <sys/types.h>
 #include <net/if.h>
+#endif
+#include <sys/types.h>
 #include "mysql.h"
 using namespace std;
 
@@ -45,6 +52,15 @@ enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 #define TC_CONN_WRITE_TIMEOUT 600
 #define TC_CONN_CONNECT_TIMEOUT 60
 #define TC_CONN_MAX_RETRIES_ON_FAILS 3
+
+//spider node need execute sql
+#define TC_SPIDER_NEED_EXECUTE 1
+//remote node need execute sql
+#define TC_REMOTE_NEED_EXECUTE 2
+//tdbctl node need execute sql, currently not used
+#define TC_TDBCTL_NEED_EXECUTE 4
+//spider node executed before other nodes.
+#define TC_SPIDER_EXECUTE_FIRST 8
 
 enum enum_node_type {
   NODE_TYPE_SPIDER = 0, /* this should ALWAYS be the first */
@@ -84,6 +100,10 @@ const char* tc_get_new_tbname(THD *thd, LEX *lex);
 const char* tc_get_new_dbname(THD *thd, LEX *lex);
 bool tc_is_with_shard(THD *thd, LEX *lex);
 
+bool tc_unsupport_sql_type(int sql_type);
+bool tc_distribute_spider_only(int sql_type);
+bool tc_distribute_spider_and_remote(int sql_type);
+
 const char* get_stmt_type_str(int type);
 
 
@@ -103,18 +123,21 @@ typedef struct tc_execute_result
 
 typedef struct tc_parse_result
 {
-    enum_sql_command sql_type;
-    LEX_CSTRING query_string;
     string db_name;
     string table_name;
     string new_table_name;
     string new_db_name;
+
+    //original query
+    LEX_CSTRING query_string;
+    string spider_sql;
+    map<string, string> remote_sql_map;
+    int execute_flag;
+
     string shard_key;
-    string result_info;
-    bool is_with_shard;
-    bool is_with_autu;
-    bool is_with_unique;
-    bool result;
+    int shard_count;
+    tspider_shard_func shard_func;
+    tspider_shard_type shard_type;
 } TC_PARSE_RESULT;
 
 class Query_exec_manager {
@@ -210,6 +233,12 @@ public:
   /* TODO: get rid of it */
   int get_results(tc_execute_result *res) const;
 
+  /* set exec_flag */
+  void set_exec_flag(int flag) { exec_flag = flag; };
+
+  /* get exec_flag */
+  int get_exec_flag() { return exec_flag; };
+
 private:
   Query_exec_manager() {} /* =delete */
 
@@ -241,6 +270,9 @@ private:
 
   /* Real execution queries for each server store here */
   std::map<std::string, std::string> real_queries[ENUM_NODE_TYPE_COUNT];
+
+  /* flag to control execution logic */
+  int exec_flag;
 };
 
 class Cluster_conn_manager {
@@ -381,107 +413,54 @@ string tcadmin_get_shard_range_by_index(
   bool is_unsigned
 );
 
-string tc_get_spider_create_table(
+void tc_parse_spider_create_table(
   TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count,
-  tspider_shard_func shard_func,
-  tspider_shard_type shard_type,
   bool is_unsigned_key
 );
+void tc_parse_remote_create_table(TC_PARSE_RESULT *tc_parse_result_t);
 
-map<string, string> tc_get_remote_create_table(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+
+void tc_parse_spider_rename_table(
+  TC_PARSE_RESULT *tc_parse_result_t
 );
 
-string tc_get_spider_create_database(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_remote_rename_table(
+  TC_PARSE_RESULT *tc_parse_result_t
 );
 
-map<string, string> tc_get_remote_create_database(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_spider_create_table_like(
+  TC_PARSE_RESULT *tc_parse_result_t
 );
 
-string tc_get_spider_rename_table(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_remote_create_table_like(
+  TC_PARSE_RESULT *tc_parse_result_t
 );
 
-map<string, string> tc_get_remote_rename_table(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_spider_drop_table(
+  TC_PARSE_RESULT *tc_parse_result_t
 );
 
-string tc_get_spider_create_table_like(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_remote_drop_table(
+  TC_PARSE_RESULT *tc_parse_result_t
 );
 
-map<string, string> tc_get_remote_create_table_like(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_remote_create_database(TC_PARSE_RESULT *tc_parse_result_t);
+void tc_parse_remote_drop_database(TC_PARSE_RESULT *tc_parse_result_t);
+void tc_parse_remote_change_database(TC_PARSE_RESULT *tc_parse_result_t);
+
+void tc_parse_spider_alter_table(
+  TC_PARSE_RESULT *tc_parse_result_t
 );
 
-string tc_get_spider_drop_table(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_remote_alter_table(
+  TC_PARSE_RESULT *tc_parse_result_t
 );
 
-map<string, string> tc_get_remote_drop_table(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_spider_create_or_drop_index(
+  TC_PARSE_RESULT *tc_parse_result_t
 );
-
-string tc_get_spider_drop_database(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
-);
-
-map<string, string> tc_get_remote_drop_database(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
-);
-
-string tc_get_spider_change_database(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
-);
-
-map<string, string> tc_get_remote_change_database(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
-);
-
-string tc_get_spider_alter_table(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
-);
-
-map<string, string> tc_get_remote_alter_table(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
-);
-
-string tc_get_spider_create_or_drop_index(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
-);
-
-map<string, string> tc_get_remote_create_or_drop_index(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
-);
-
-string tc_get_spider_create_procedure(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
-);
-
-string tc_get_spider_drop_procedure(
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count
+void tc_parse_remote_create_or_drop_index(
+  TC_PARSE_RESULT *tc_parse_result_t
 );
 
 bool tc_query_parse(
@@ -489,6 +468,9 @@ bool tc_query_parse(
   LEX *lex, 
   TC_PARSE_RESULT *tc_parse_result_t
 );
+
+
+bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t);
 
 bool tc_query_convert(
   THD *thd, 
@@ -500,43 +482,6 @@ bool tc_query_convert(
   bool is_unsigned_key,
   string *spider_create_sql, 
   map<string, string> *remote_create_sql
-);
-
-bool tc_spider_ddl_run_async(
-  string query, 
-  map<string, MYSQL> spider_conn_map, 
-  tc_execute_result *exec_result
-);
-
-bool tc_remotedb_ddl_run_async(
-  map<string, string> remote_sql, 
-  map<string, MYSQL> remote_conn_map, 
-  map<string, string> remote_ipport_map, 
-  tc_execute_result *exec_result
-);
-
-inline bool tc_spider_run_first(THD *thd, LEX *lex) {
-    enum_sql_command sqlcom = tc_get_sql_type(thd, lex);
-    return (sqlcom == SQLCOM_CREATE_TABLE) ||
-           (sqlcom == SQLCOM_DROP_TABLE) ||
-           (sqlcom == SQLCOM_DROP_DB);
-}
-
-bool tc_ddl_run(
-  THD *thd, 
-  LEX *lex,
-  string before_sql_for_spider, 
-  string before_sql_for_remote, 
-  string spider_sql, 
-  map<string, string> remote_sql, 
-  tc_execute_result *exec_result
-);
-
-bool tc_append_before_query(
-  THD *thd, 
-  LEX *lex, 
-  string &sql_spider, 
-  string &sql_remote
 );
 
 MYSQL* tc_conn_connect(
@@ -695,6 +640,7 @@ enum enum_ident_wrapper_check
 	 IDENT_WRAPPER_OK,
 	 IDENT_WRAPPER_WRONG,
 };
+
 
 enum_ident_wrapper_check tc_check_wrapper_name(LEX_STRING *org_name);
 

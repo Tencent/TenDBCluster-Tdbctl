@@ -1173,7 +1173,7 @@ bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESU
 }
 
 
-bool tc_process_all_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESULT* exec_result)
+bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result)
 {
   if (exec_result->result)
   {/* error happened */
