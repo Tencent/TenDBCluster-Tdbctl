@@ -45,7 +45,12 @@ using namespace std;
 #define TCADMIN_PARSE_SHARD_FUNCTION_INVALID 4
 #define TCADMIN_PARSE_SHARD_TYPE_INVALID 5
 
-enum tspider_shard_func { tspider_shard_func_crc32, tspider_shard_func_crc32_ci, tspider_shard_func_none };
+enum tspider_shard_func {
+  tspider_shard_func_crc32,
+  tspider_shard_func_crc32_ci,
+  tspider_shard_func_none,
+  tspider_shard_func_murmur_jump_hash,
+};
 enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 
 #define TC_CONN_READ_TIMEOUT 600
@@ -72,6 +77,13 @@ enum enum_node_type {
 #define ENUM_NODE_TYPE_BEGIN NODE_TYPE_SPIDER
 #define ENUM_NODE_TYPE_END NODE_TYPE_END
 #define ENUM_NODE_TYPE_COUNT int(NODE_TYPE_END)
+
+#define TC_STR_MOD " % "
+#define TC_STR_COMMA ", "
+#define TC_STR_DELIMITER ";"
+
+#define TC_STR_IDENTIFIER(a) std::string("`" + (a) + "`")
+#define TC_STR_DOUBLE_QUOTED(a) std::string("\"" + (a) + "\"")
 
 //mysql guard to free mysql connection
 #define MYSQL_GUARD(p) std::shared_ptr<MYSQL> p##p(p, \
