@@ -39,6 +39,9 @@ static PSI_memory_key key_memory_bases;
 mutex remote_exec_mtx;
 mutex spider_exec_mtx;
 
+static void generate_remote_connect_info_by_idx(
+    std::stringstream &ss, int server_idx, const std::string &db,
+    const std::string &table, const std::string &server_prefix);
 
 static string tc_dbname_replace_with_point(
   string sql, 
@@ -744,7 +747,7 @@ int parse_get_spider_user_comment(
     /* stage indicators */
     enum stage_indicator {TRIM = 0, PARSE_KEY = 1, PARSE_VALUE = 2, PARSE_DONE = 3};
     
-    const int buf_len = 16;
+    const int buf_len = 32;
     char keyword_buf[buf_len], value_buf[buf_len];
     const char* pos = table_comment;
     const char* begin = NULL;
@@ -844,16 +847,17 @@ int tcadmin_validate_and_fill_value(
     tspider_shard_func* shard_func,
     tspider_shard_type* shard_type
 ) {
-    char str_shard_cnt[] = "shard_count";
-    char str_shard_func[] = "shard_func";
-    char str_shard_type[] = "shard_type";
-	char str_shard_key[] = "shard_key";
-	char str_config_table[] = "config_table";
-    char str_crc32[] = "crc32";
-    char str_crc32_ci[] = "crc32_ci";
-    char str_none[] = "none";
-    char str_type_list[] = "list";
-    char str_type_range[] = "range";
+    const char *str_shard_cnt = "shard_count";
+    const char *str_shard_func = "shard_func";
+    const char *str_shard_type = "shard_type";
+    const char *str_shard_key = "shard_key";
+    const char *str_config_table = "config_table";
+    const char *str_crc32 = "crc32";
+    const char *str_crc32_ci = "crc32_ci";
+    const char *str_murmur_jump_hash = "murmur_jump_hash";
+    const char *str_none = "none";
+    const char *str_type_list = "list";
+    const char *str_type_range = "range";
     int cnt;
 
     if (!strcasecmp(key_buf, str_shard_cnt)) {
@@ -878,6 +882,8 @@ int tcadmin_validate_and_fill_value(
             *shard_func = tspider_shard_func_crc32_ci;
         } else if (!strcasecmp(value_buf, str_none)) {
             *shard_func = tspider_shard_func_none;
+        } else if (!strcasecmp(value_buf, str_murmur_jump_hash)) {
+          *shard_func = tspider_shard_func_murmur_jump_hash;
         } else {
             return TCADMIN_PARSE_SHARD_FUNCTION_INVALID;
         }
@@ -1352,23 +1358,37 @@ string tcadmin_get_shard_range_by_index(int index, int shard_count, bool is_unsi
     return ret;
 }
 
+static void generate_remote_connect_info_by_idx(
+    std::stringstream &ss, int server_idx, const std::string &db,
+    const std::string &table, const std::string &server_prefix) {
+  ss << "COMMENT = ";
+  ss << "'"; /* start COMMENT */
+  ss << "database " << TC_STR_DOUBLE_QUOTED(db + "_" + to_string(server_idx));
+  ss << TC_STR_COMMA;
+  ss << "table " << TC_STR_DOUBLE_QUOTED(table);
+  ss << TC_STR_COMMA;
+  ss << "server " << TC_STR_DOUBLE_QUOTED(server_prefix + to_string(server_idx));
+  ss << "'"; /* end COMMENT */
+}
+
 void tc_parse_spider_create_table(
   TC_PARSE_RESULT *tc_parse_result_t,
   bool is_unsigned_key
 )
 {
-  ostringstream  sstr;
+  stringstream sstr;
+  string spider_create_sql;
   string server_name_pre = tdbctl_mysql_wrapper_prefix;
-  string spider_create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
   string db_name = tc_parse_result_t->db_name;
   string tb_name = tc_parse_result_t->table_name;
-  string connection_string;
-  string partiton_by = " partition by ";
-  string spider_partition_count_str;
   int shard_count = tc_parse_result_t->shard_count;
   tspider_shard_func shard_func = tc_parse_result_t->shard_func;
   tspider_shard_type shard_type = tc_parse_result_t->shard_type;
-  string shard_key = tc_parse_result_t->shard_key;
+  string hash_key = tc_parse_result_t->shard_key;
+
+  spider_create_sql += "USE " + db_name + TC_STR_DELIMITER;
+  spider_create_sql += string(tc_parse_result_t->query_string.str,
+                              tc_parse_result_t->query_string.length);
 
   regex pattern1("ENGINE\\s*=\\s*MyISAM", regex::icase);
   regex pattern2("ENGINE\\s*=\\s*InnoDB", regex::icase);
@@ -1376,74 +1396,81 @@ void tc_parse_spider_create_table(
   regex pattern4("ROW_FORMAT\\s*=\\s*GCS_DYNAMIC", regex::icase);
   regex pattern5("ROW_FORMAT\\s*=\\s*GCS", regex::icase);
   regex pattern6("ENGINE\\s*=\\s*heap", regex::icase);
-  spider_create_sql = regex_replace(spider_create_sql, pattern1, "ENGINE = spider");
-  spider_create_sql = regex_replace(spider_create_sql, pattern2, "ENGINE = spider");
-  spider_create_sql = regex_replace(spider_create_sql, pattern3, "ENGINE = spider");
+  spider_create_sql =
+      regex_replace(spider_create_sql, pattern1, "ENGINE = spider");
+  spider_create_sql =
+      regex_replace(spider_create_sql, pattern2, "ENGINE = spider");
+  spider_create_sql =
+      regex_replace(spider_create_sql, pattern3, "ENGINE = spider");
   spider_create_sql = regex_replace(spider_create_sql, pattern4, "");
   spider_create_sql = regex_replace(spider_create_sql, pattern5, "");
   spider_create_sql = regex_replace(spider_create_sql, pattern6, "");
 
-  sstr << shard_count;
-  spider_partition_count_str = sstr.str();
-  if (shard_type == tspider_shard_type_list)
-  {
-    partiton_by = partiton_by + "list(";
-  }
-  else
-  {   /* tspider_shard_type_range */
-    partiton_by = partiton_by + "range(";
-  }
-  if (shard_func == tspider_shard_func_crc32)
-  {
-    is_unsigned_key = true;
-    partiton_by = partiton_by + "crc32(" +
-      "`" + shard_key + "`" + ")%" + spider_partition_count_str + ") (";
-  }
-  else if (shard_func == tspider_shard_func_crc32_ci)
-  {
-    is_unsigned_key = true;
-    partiton_by = partiton_by + "crc32_ci(" +
-      "`" + shard_key + "`" + ")%" + spider_partition_count_str + ") (";
-  }
-  else
-  {   /* tspider_shard_func_none */
-    partiton_by = partiton_by +
-      "`" + shard_key + "`" + "%" + spider_partition_count_str + ") (";
+  /* Assemble PARTITION BY part */
+  sstr.str("");
+  sstr << " PARTITION BY ";
+  if (shard_type == tspider_shard_type_list) {
+    sstr << "LIST";
+  } else { /* tspider_shard_type_range */
+    sstr << "RANGE";
   }
 
-  spider_create_sql = spider_create_sql + partiton_by;
-  for (int i = 0; i < shard_count; i++)
-  {
-    sstr.str("");
-    sstr << i;
-    string hash_value = sstr.str();
-    string range_value;
-    string server_info;
-    string pt_sql;
-    string server_name = server_name_pre + hash_value;
-    server_info = "server \"" + server_name + "\"";
-    if (shard_type == tspider_shard_type_list)
-    {
-      pt_sql = "PARTITION pt" + hash_value + " values in (" + hash_value + ") COMMENT = 'database \""
-        + db_name + "_" + hash_value + "\", table \"" + tb_name + "\", " + server_info + "\' ENGINE = SPIDER";
-    }
-    else
-    {   /* range */
-      pt_sql = "PARTITION pt" + hash_value + " values less than (" + tcadmin_get_shard_range_by_index(i, shard_count, is_unsigned_key)
-        + ") COMMENT = 'database \""
-        + db_name + "_" + hash_value + "\", table \"" + tb_name + "\", " + server_info + "\' ENGINE = SPIDER";
-    }
-    if (i < shard_count - 1)
-    {
-      pt_sql = pt_sql + ",";
-    }
-    else
-    {
-      pt_sql = pt_sql + ");";
-    }
-    spider_create_sql = spider_create_sql + pt_sql;
+  sstr << "("; /* start shard function  */
+  switch (shard_func) {
+  case tspider_shard_func_crc32:
+    is_unsigned_key = true;
+    sstr << "CRC32"
+         << "(" << TC_STR_IDENTIFIER(hash_key) << ")" << TC_STR_MOD
+         << shard_count;
+    break;
+
+  case tspider_shard_func_crc32_ci:
+    is_unsigned_key = true;
+    sstr << "CRC32_CI"
+         << "(" << TC_STR_IDENTIFIER(hash_key) << ")" << TC_STR_MOD
+         << shard_count;
+    break;
+
+  case tspider_shard_func_murmur_jump_hash:
+    is_unsigned_key = true;
+    sstr << "MURMUR_JUMP_HASH"
+         << "(" << TC_STR_IDENTIFIER(hash_key) << TC_STR_COMMA << shard_count
+         << ")";
+    break;
+
+  case tspider_shard_func_none:
+  default:
+    sstr << TC_STR_IDENTIFIER(hash_key) << TC_STR_MOD << shard_count << ")";
+    break;
   }
-  spider_create_sql = "use " + db_name + ";" + spider_create_sql;
+  sstr << ")";  /* end shard function */
+  sstr << " ("; /* start PARTITION INFO */
+  spider_create_sql += sstr.str();
+
+  /* Assemble PARTITION INFO */
+  for (int i = 0; i < shard_count; i++) {
+    sstr.str("");
+    sstr << "PARTITION pt" << i << " VALUES ";
+    if (shard_type == tspider_shard_type_list) {
+      sstr << "IN (" << i << ") ";
+      generate_remote_connect_info_by_idx(sstr, i, db_name, tb_name,
+                                          server_name_pre);
+    } else { /* range */
+      sstr << "LESS THAN ("
+           << tcadmin_get_shard_range_by_index(i, shard_count, is_unsigned_key)
+           << ") ";
+      generate_remote_connect_info_by_idx(sstr, i, db_name, tb_name,
+                                          server_name_pre);
+    }
+    sstr << " ENGINE = SPIDER";
+    if (i < shard_count - 1) {
+      sstr << TC_STR_COMMA;
+    } else {
+      sstr << ")"; /* end PARTITION INFO */
+      sstr << TC_STR_DELIMITER; /* end query */
+    }
+    spider_create_sql += sstr.str();
+  }
   sstr.clear();
   tc_parse_result_t->spider_sql = spider_create_sql;
 }
