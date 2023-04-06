@@ -31,7 +31,7 @@ debug_flag=" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_CONFIG=mysql_release "
 bld_dir="bld"
 static_flag=" -DCMAKE_CXX_FLAGS=-static-libstdc++ -DCMAKE_C_FLAGS=-static-libgcc " 
 boost_dir=/home/mysql/boost/
-install_dir=/usr/local/mysql
+install_dir=/usr/local/tdbctl
 gccdir=/usr/local/gcc-5.5.0
 export LD_LIBRARY_PATH=$gccdir/lib64/:$LD_LIBRARY_PATH
 

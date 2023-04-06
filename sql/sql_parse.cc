@@ -5499,9 +5499,14 @@ end_with_restore_list:
 
       string server_name, add_address;
       list<FOREIGN_SERVER*> server_list;
-      char path[FN_REFLEN + 1];
-      char *p = my_stpnmov(path, mysql_tmpdir, sizeof(path));
-      my_snprintf(p, sizeof(path) - (p - path), "/%s_%lu%lx_%lx.sql",
+      char schema_path[FN_REFLEN + 1], grant_path[FN_REFLEN + 1];
+      char *p1 = my_stpnmov(schema_path, mysql_tmpdir, sizeof(schema_path));
+      char *p2 = my_stpnmov(grant_path, mysql_tmpdir, sizeof(grant_path));
+
+      my_snprintf(p1, sizeof(schema_path) - (p1 - schema_path), "/%s_%lu%lx_%lx_schema.sql",
+        tmp_file_prefix, current_thd->query_start(), current_pid,
+        thd->thread_id());
+      my_snprintf(p2, sizeof(grant_path) - (p2 - grant_path), "/%s_%lu%lx_%lx_grant.sql",
         tmp_file_prefix, current_thd->query_start(), current_pid,
         thd->thread_id());
 
@@ -5514,15 +5519,15 @@ end_with_restore_list:
       DBUG_ASSERT(server_list.empty() != true);
       if (server_list.size() == 1)
       {
-        //first spider node, no need to dump/restore schema, only add to mysql.servers
+        //first spider node, no need to dump/restore schema/grant, only add to mysql.servers
         push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
-                            "first spider node created, skip dump/restore schema");
+                            "first spider node created, skip dump/restore schema/grant");
         my_ok(thd);
         goto finish;
       }
 
       /*
-        dump spider's schema from first spider node.
+        dump spider's schema and grant from first spider node.
         must exclude itself
       */
       DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
@@ -5533,21 +5538,44 @@ end_with_restore_list:
         server_list.front()->port,
         server_list.front()->username,
         server_list.front()->password,
-        path))
+        schema_path))
       {
         my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
-          server_list.front()->host, server_list.front()->port);
+          schema_path, server_list.front()->host, server_list.front()->port);
         goto error;
       }
 
-      if (tc_restore_node_schema(lex->server_options.get_host(),
+      if (tc_dump_node_grant(
+        server_list.front()->host,
+        server_list.front()->port,
+        server_list.front()->username,
+        server_list.front()->password,
+        grant_path))
+      {
+        my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+          grant_path, server_list.front()->host, server_list.front()->port);
+        goto error;
+      }
+
+      if (tc_restore_to_node(lex->server_options.get_host(),
         lex->server_options.get_port(),
         lex->server_options.get_username(),
         lex->server_options.get_password(),
-        path))
+        schema_path))
       {
         my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
-          lex->server_options.get_host(), lex->server_options.get_port());
+          schema_path, lex->server_options.get_host(), lex->server_options.get_port());
+        goto error;
+      }
+
+      if (tc_restore_to_node(lex->server_options.get_host(),
+        lex->server_options.get_port(),
+        lex->server_options.get_username(),
+        lex->server_options.get_password(),
+        grant_path))
+      {
+        my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
+          grant_path, lex->server_options.get_host(), lex->server_options.get_port());
         goto error;
       }
     }

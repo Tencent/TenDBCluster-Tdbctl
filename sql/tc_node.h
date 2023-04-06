@@ -9,6 +9,6 @@
 #include "mysql.h"
 
 int tc_dump_node_schema(const char *host, uint port, const char *user, const char *password, const char *file);
-int tc_restore_node_schema(const char *host, uint port, const char *user, const char *password, const char *file);
-
+int tc_dump_node_grant(const char *host, uint port, const char *user, const char * password, const char *file);
+int tc_restore_to_node(const char *host, uint port, const char *user, const char *password, const char *file);
 #endif

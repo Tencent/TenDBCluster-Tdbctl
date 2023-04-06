@@ -2016,7 +2016,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       //unsigned type
       bool is_unsigned_key = false;
       bool with_unique = false;
-      bool with_auto = false;
+      //bool with_auto = false;
       List_iterator<Create_field> it_field;
       Create_field* cur_field;
       const char* tb_charset = NULL;
@@ -2315,7 +2315,6 @@ bool tc_exec_query_paral(Query_exec_manager *query_mgr,
 bool tc_ddl_run(THD *thd, Cluster_conn_manager *conn_mgr,
                 Query_exec_manager *query_mgr) {
   bool force = thd->variables.tc_force_execute;
-  LEX *lex = thd->lex;
   int exec_flag = query_mgr->get_exec_flag();
 
   if (exec_flag & TC_SPIDER_EXECUTE_FIRST)
