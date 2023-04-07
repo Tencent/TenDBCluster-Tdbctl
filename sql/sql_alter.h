@@ -372,6 +372,19 @@ public:
   */
   bool has_compressed_columns() const;
 
+  /* Set for all partitioning alter operations */
+  static const uint part_options =
+      ALTER_ADD_PARTITION | ALTER_DROP_PARTITION | ALTER_COALESCE_PARTITION |
+      ALTER_REORGANIZE_PARTITION | ALTER_PARTITION | ALTER_ADMIN_PARTITION |
+      ALTER_TABLE_REORG | ALTER_REBUILD_PARTITION | ALTER_ALL_PARTITION |
+      ALTER_REMOVE_PARTITIONING | ALTER_EXCHANGE_PARTITION |
+      ALTER_TRUNCATE_PARTITION | ALTER_UPGRADE_PARTITIONING;
+
+  inline bool has_alter_partitions() const { return (flags & part_options); }
+  inline bool has_non_alter_partitions() const {
+    return (flags & ~part_options);
+  }
+
 private:
   Alter_info &operator=(const Alter_info &rhs); // not implemented
   Alter_info(const Alter_info &rhs);            // not implemented

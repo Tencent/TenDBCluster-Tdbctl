@@ -1132,6 +1132,7 @@ THD::THD(bool enable_plugins)
    lex(&main_lex),
    gtid_executed_warning_issued(false),
    m_query_string(NULL_CSTR),
+   m_processed_query_string(NULL_CSTR),
    m_db(NULL_CSTR),
    rli_fake(0), rli_slave(NULL),
 #ifdef EMBEDDED_LIBRARY

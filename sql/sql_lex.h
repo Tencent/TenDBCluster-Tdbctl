@@ -3250,6 +3250,9 @@ public:
 	/* whether need do dump/restore schema for new add spider node */
 	bool tc_with_schema;
   ulong tc_flush_type;
+
+  /* start position of the PARTITION BY clause in query */
+  size_t partition_start_pos;
 private:
   bool ignore;
 public:

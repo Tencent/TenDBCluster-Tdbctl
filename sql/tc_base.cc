@@ -1371,13 +1371,12 @@ static void generate_remote_connect_info_by_idx(
   ss << "'"; /* end COMMENT */
 }
 
-void tc_parse_spider_create_table(
-  TC_PARSE_RESULT *tc_parse_result_t,
-  bool is_unsigned_key
-)
-{
+void tc_parse_spider_create_table(TC_PARSE_RESULT *tc_parse_result_t,
+                                  bool is_unsigned_key, size_t part_start) {
   stringstream sstr;
   string spider_create_sql;
+  string orig_sql = string(tc_parse_result_t->query_string.str,
+                           tc_parse_result_t->query_string.length);
   string server_name_pre = tdbctl_mysql_wrapper_prefix;
   string db_name = tc_parse_result_t->db_name;
   string tb_name = tc_parse_result_t->table_name;
@@ -1387,8 +1386,16 @@ void tc_parse_spider_create_table(
   string hash_key = tc_parse_result_t->shard_key;
 
   spider_create_sql += "USE " + db_name + TC_STR_DELIMITER;
-  spider_create_sql += string(tc_parse_result_t->query_string.str,
-                              tc_parse_result_t->query_string.length);
+  if (part_start) {
+    /*
+      PARTITION BY is present, remove it for Spider. Note that it is assumed
+      (mostly the case) that the PARTITION clause is the last part of the
+      query, so we simply do a substr().
+    */
+    spider_create_sql += orig_sql.substr(0, part_start);
+  } else {
+    spider_create_sql += orig_sql;
+  }
 
   regex pattern1("ENGINE\\s*=\\s*MyISAM", regex::icase);
   regex pattern2("ENGINE\\s*=\\s*InnoDB", regex::icase);
@@ -2016,7 +2023,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       char key_name[256];
       char result_info[256];
 
-      tc_parse_result_t->query_string = thd->query();
+      tc_parse_result_t->query_string = thd->processed_query();
       tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       if (tc_parse_getkey_for_spider(thd, key_name, result_info, sizeof(result_info), &with_unique, &is_unsigned_key))
@@ -2114,7 +2121,8 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       }
 
       //parse spider sql
-      tc_parse_spider_create_table(tc_parse_result_t, is_unsigned_key);
+      tc_parse_spider_create_table(tc_parse_result_t, is_unsigned_key,
+                                   lex->partition_start_pos);
       tc_parse_remote_create_table(tc_parse_result_t);
       tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
 
@@ -2152,9 +2160,23 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
         tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       }
-      tc_parse_spider_alter_table(tc_parse_result_t);
+      if (!lex->alter_info.has_alter_partitions()) {
+        /* Only non-partitioning operations are allowed to be sent to Spider */
+        tc_parse_spider_alter_table(tc_parse_result_t);
+        tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE;
+      } else if (lex->alter_info.has_non_alter_partitions()) {
+        /*
+          Do not allow a single ALTER query to have both partitioning and
+          non-partitioning operations, because the former could not be sent to
+          Spider nodes while the latter possibly could.
+        */
+        my_error(ER_TCADMIN_ALTER_TABLE, MYF(0),
+                 "combination of both partitioning and non-partitioning "
+                 "operations is not allowed in a single query");
+        return FALSE;
+      }
       tc_parse_remote_alter_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_REMOTE_NEED_EXECUTE;
       break;
     }
     case SQLCOM_RENAME_TABLE:

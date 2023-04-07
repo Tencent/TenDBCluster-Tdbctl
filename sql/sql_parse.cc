@@ -6210,6 +6210,9 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
         err= invoke_post_parse_rewrite_plugins(thd, false);
 
       found_semicolon= parser_state->m_lip.found_semicolon;
+      thd->set_processed_query(parser_state->m_lip.get_cpp_buf(),
+                               parser_state->m_lip.get_cpp_ptr() -
+                                   parser_state->m_lip.get_cpp_buf());
     }
 
     if (!err)

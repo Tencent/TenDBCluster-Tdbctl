@@ -488,6 +488,8 @@ void LEX::reset()
   binlog_need_explicit_defaults_ts= false;
 
   donor_transaction_id= NULL;
+
+  partition_start_pos= 0;
 }
 
 
