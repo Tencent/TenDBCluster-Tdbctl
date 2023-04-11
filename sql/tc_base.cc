@@ -1861,6 +1861,8 @@ bool tc_query_parse(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
  */
 bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 {
+  bool command_support = true;
+  bool secondary_node_allowed = true;
   switch (lex->sql_command)
   {
     case SQLCOM_SHOW_VARIABLES:
@@ -1903,6 +1905,9 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_SHOW_THREAD_STATS:
     case SQLCOM_SHOW_USER_STATS:
     case SQLCOM_HELP:
+    case SQLCOM_SET_OPTION:
+    case SQLCOM_SHUTDOWN:
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       //do nothing
       break;
     case SQLCOM_SELECT:
@@ -1956,11 +1961,9 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_START_GROUP_REPLICATION:
     case SQLCOM_STOP_GROUP_REPLICATION:
     case SQLCOM_UNLOCK_BINLOG:
-    case SQLCOM_SET_OPTION:
     case SQLCOM_RESET:
     case SQLCOM_FLUSH:
     case SQLCOM_KILL:
-    case SQLCOM_SHUTDOWN:
     case SQLCOM_UNLOCK_TABLES:
     case SQLCOM_LOCK_TABLES:
     case SQLCOM_BEGIN:
@@ -1970,8 +1973,11 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_ROLLBACK_TO_SAVEPOINT:
     case SQLCOM_SAVEPOINT:
     case SQLCOM_ALTER_DB_UPGRADE:
-      push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_UNSUPPORT_SQL_TYPE,
-                   ER(ER_TCADMIN_UNSUPPORT_SQL_TYPE), get_stmt_type_str(lex->sql_command));
+      command_support = false;
+      /*push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_UNSUPPORT_SQL_TYPE,
+                   ER(ER_TCADMIN_UNSUPPORT_SQL_TYPE), get_stmt_type_str(lex->sql_command));*/
+      if (!thd->is_error())
+        my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
       break;
 
     case SQLCOM_CREATE_EVENT:
@@ -1985,20 +1991,27 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_DROP_FUNCTION:
     case SQLCOM_CREATE_TRIGGER:
     case SQLCOM_DROP_TRIGGER:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       if (thd->db().str)
         tc_parse_result_t->db_name = thd->db().str;
       else
         tc_parse_result_t->db_name = lex->sphead->m_db.str;
       tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + thd->query().str;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_VIEW:
     case SQLCOM_DROP_VIEW:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       if (thd->db().str)
         tc_parse_result_t->db_name = thd->db().str;
       else
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + thd->query().str;
-
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_USER:
     case SQLCOM_DROP_USER:
@@ -2009,10 +2022,17 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_CREATE_SERVER:
     case SQLCOM_ALTER_SERVER:
     case SQLCOM_DROP_SERVER:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->spider_sql = thd->query().str;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_TABLE:
     {
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       //unsigned type
       bool is_unsigned_key = false;
       bool with_unique = false;
@@ -2125,22 +2145,28 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_spider_create_table(tc_parse_result_t, is_unsigned_key,
                                    lex->partition_start_pos);
       tc_parse_remote_create_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
 
       break;
     }
 
     case SQLCOM_CREATE_INDEX:
     case SQLCOM_DROP_INDEX:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       tc_parse_spider_create_or_drop_index(tc_parse_result_t);
       tc_parse_remote_create_or_drop_index(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_ALTER_TABLE:
     {
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       if (lex->alter_info.flags == Alter_info::ALTER_DROP_COLUMN)
         tc_parse_result_t->execute_flag |= TC_SPIDER_EXECUTE_FIRST;
@@ -2177,11 +2203,14 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         return FALSE;
       }
       tc_parse_remote_alter_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case SQLCOM_RENAME_TABLE:
     {
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
@@ -2197,43 +2226,56 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       }
       tc_parse_spider_rename_table(tc_parse_result_t);
       tc_parse_remote_rename_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case SQLCOM_DROP_TABLE:
     {
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       tc_parse_spider_drop_table(tc_parse_result_t);
       tc_parse_remote_drop_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_REMOTE_NEED_EXECUTE | TC_SPIDER_EXECUTE_FIRST;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_REMOTE_NEED_EXECUTE | TC_SPIDER_EXECUTE_FIRST | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case SQLCOM_CHANGE_DB:
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       //do nothing
       break;
     case SQLCOM_CREATE_DB:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = lex->name.str;
       tc_parse_result_t->spider_sql = thd->query().str;
       tc_parse_remote_create_database(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_DROP_DB:
     case SQLCOM_ALTER_DB:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = lex->name.str;
       tc_parse_result_t->spider_sql = thd->query().str;
       tc_parse_remote_drop_database(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE|TC_SPIDER_EXECUTE_FIRST;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_SPIDER_EXECUTE_FIRST | TC_TDBCTL_NEED_EXECUTE;
       break;
     case TC_SQLCOM_CREATE_TABLE_LIKE:
     {
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_spider_create_table_like(tc_parse_result_t);
       tc_parse_remote_create_table_like(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case TC_SQLCOM_CREATE_NODE:
@@ -2252,14 +2294,25 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case TC_SQLCOM_MONITOR_INIT:
     case TC_SQLCOM_SHOW_PROCESSLIST:
     case TC_SQLCOM_SHOW_VARIABLES:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       //do nothing, only work on primary tdbctl node
       break;
 
     default:
       my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-      return FALSE;
+      command_support = false;
   }
-
+  if (!command_support)
+    return FALSE;
+  // if the sql_command is not allowed to be executed on secondary node, we will return error.
+  if (!tdbctl_is_primary && !secondary_node_allowed)
+  {
+    my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0), get_stmt_type_str(lex->sql_command));
+    return FALSE;
+  }
   return TRUE;
 }
 

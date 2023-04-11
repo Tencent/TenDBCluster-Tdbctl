@@ -7831,7 +7831,7 @@ ER_TCADMIN_RENAME_TABLE
   eng "RENAME TABLE FAILED: %s"
 
 ER_TCADMIN_UNSUPPORT_SQL_TYPE
-  eng "UNSUPPORT SQL TYPE: %s WHEN TC_ADMIN=1"
+  eng "UNSUPPORT SQL TYPE: command [%s] is unsupported WHEN enable tdbctl management mode (TC_ADMIN==1)"
 
 ER_TCADMIN_CONNECT_ERROR
   eng "CONNECT FAILED: connect to %s failed"
@@ -7876,7 +7876,7 @@ ER_TCADMIN_NOT_AVAILABLE
   eng "EXECUTE FAILED: cluster is not available"
 
 ER_TCADMIN_NOT_PRIMARY
-  eng "EXECUTE FAILED: the current tdbctl is not primary node"
+  eng "EXECUTE FAILED: command [%s] is not allowed to execute on non-primary tdbctl node"
 
 ER_TCADMIN_SHARD_COMMENT_ERROR
   eng "Invalid table comment"

@@ -62,7 +62,7 @@ enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 #define TC_SPIDER_NEED_EXECUTE 1
 //remote node need execute sql
 #define TC_REMOTE_NEED_EXECUTE 2
-//tdbctl node need execute sql, currently not used
+//tdbctl node need execute sql
 #define TC_TDBCTL_NEED_EXECUTE 4
 //spider node executed before other nodes.
 #define TC_SPIDER_EXECUTE_FIRST 8
