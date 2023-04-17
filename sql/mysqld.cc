@@ -618,7 +618,9 @@ static char errorlog_filename_buff[FN_REFLEN];
 const char *log_error_dest;
 char glob_hostname[FN_REFLEN];
 char tdbctl_spider_wrapper_pre[FN_REFLEN];
+char tdbctl_spider_slave_wrapper_pre[FN_REFLEN];
 char tdbctl_mysql_wrapper_pre[FN_REFLEN];
+char tdbctl_mysql_slave_wrapper_pre[FN_REFLEN];
 char tdbctl_control_wrapper_pre[FN_REFLEN];
 char mysql_real_data_home[FN_REFLEN],
      lc_messages_dir[FN_REFLEN], reg_ext[FN_EXTLEN],
@@ -641,7 +643,9 @@ Time_zone *default_tz;
 char *mysql_data_home= const_cast<char*>(".");
 const char *mysql_real_data_home_ptr= mysql_real_data_home;
 const char *tdbctl_mysql_wrapper_prefix = tdbctl_mysql_wrapper_pre;
+const char *tdbctl_mysql_slave_wrapper_prefix = tdbctl_control_wrapper_pre;
 const char *tdbctl_spider_wrapper_prefix = tdbctl_spider_wrapper_pre;
+const char *tdbctl_spider_slave_wrapper_prefix = tdbctl_spider_slave_wrapper_pre;
 const char *tdbctl_control_wrapper_prefix = tdbctl_control_wrapper_pre;
 char server_version[SERVER_VERSION_LENGTH];
 char *mysqld_unix_port, *opt_mysql_tmpdir;

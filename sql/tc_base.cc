@@ -2372,8 +2372,11 @@ bool tc_ddl_run(THD *thd, Cluster_conn_manager *conn_mgr,
 
   if (exec_flag & TC_SPIDER_EXECUTE_FIRST)
   {
-    if (!tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
-                             NODE_TYPE_SPIDER) || force) {
+    if ((!tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
+         NODE_TYPE_SPIDER) && 
+         !tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_SPIDER_SLAVE),
+         NODE_TYPE_SPIDER_SLAVE))
+        || force) {
       return tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
                                  NODE_TYPE_REMOTE);
     }
@@ -2381,7 +2384,9 @@ bool tc_ddl_run(THD *thd, Cluster_conn_manager *conn_mgr,
     if (!tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
                              NODE_TYPE_REMOTE) || force) {
       return tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
-                                 NODE_TYPE_SPIDER);
+                                 NODE_TYPE_SPIDER) ||
+             tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_SPIDER_SLAVE),
+                                 NODE_TYPE_SPIDER_SLAVE);
     }
   }
 
@@ -2393,14 +2398,15 @@ set<string> get_spider_ipport_set(
   MEM_ROOT *mem, 
   map<string, string> &spider_user_map, 
   map<string, string> &spider_passwd_map,
-  bool with_slave
+  bool with_slave,
+  string wrapper_name
 )
 {
     set<string> ipport_set;
     FOREIGN_SERVER *server;
     ostringstream  sstr;
     list<FOREIGN_SERVER*> server_list;
-    string wrapper_name = tdbctl_spider_wrapper_prefix;
+    //string wrapper_name = tdbctl_spider_wrapper_prefix;
     spider_user_map.clear();
     spider_passwd_map.clear();
 
@@ -2429,13 +2435,15 @@ set<string> get_spider_ipport_set(
 map<string, string> get_remote_ipport_map(
   MEM_ROOT* mem, 
   map<string, string> &remote_user_map, 
-  map<string, string> &remote_passwd_map
+  map<string, string> &remote_passwd_map,
+  bool with_slave /* = false (default value)*/
 )
 {
     map<string, string> ipport_map;
     FOREIGN_SERVER *server, server_buffer;
     ostringstream  sstr;
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
+    string server_slave_name_pre = tdbctl_mysql_slave_wrapper_prefix;
     ulong records = get_servers_count();
     remote_user_map.clear();
     remote_passwd_map.clear();
@@ -2458,6 +2466,24 @@ map<string, string> get_remote_ipport_map(
             ipport_map.insert(pair<string, string>(server_name, s));
             remote_user_map.insert(pair<string, string>(s, user));
             remote_passwd_map.insert(pair<string, string>(s, passwd));
+        }
+
+        if (with_slave)
+        {
+          string server_slave_name = server_slave_name_pre + hash_value;
+          if ((server = get_server_by_name(mem, server_slave_name.c_str(), &server_buffer)))
+          {
+            string host = server->host;
+            string user = server->username;
+            string passwd = server->password;
+            sstr.str("");
+            sstr << server->port;
+            string ports = sstr.str();
+            string s = host + "#" + ports;
+            ipport_map.insert(pair<string, string>(server_slave_name, s));
+            remote_user_map.insert(pair<string, string>(s, user));
+            remote_passwd_map.insert(pair<string, string>(s, passwd));
+          }
         }
     }
     return ipport_map;
@@ -2494,6 +2520,37 @@ map<string, string> get_server_name_map(
   }
 
   return server_name_map;
+}
+
+/*
+  get server_name with specifc wrapper
+
+  @retval
+  set for result
+*/
+set<string> get_server_name_set(
+	MEM_ROOT *mem,
+  map<string, string> &server_user_map, 
+  map<string, string> &server_passwd_map,
+	const char* wrapper
+)
+{
+  set<string> server_name_set;
+  ostringstream  sstr;
+  list<FOREIGN_SERVER*> server_list;
+
+  get_server_by_wrapper(server_list, mem, wrapper, false);
+  for (auto &server : server_list)
+  {
+    string server_name = server->server_name;
+    string user = server->username;
+    string passwd = server->password;
+    server_name_set.insert(server_name);
+    server_user_map.insert(pair<string, string>(server_name, user));
+    server_passwd_map.insert(pair<string, string>(server_name, passwd));
+  }
+
+  return server_name_set;
 }
 
 /*
@@ -2977,9 +3034,9 @@ bool tc_exec_sql_paral(
   map<string, tc_exec_info>::iterator its2;
   for (its = conn_map.begin(); its != conn_map.end(); its++)
   {
-    string ipport = its->first;
+    string ipport_or_servername = its->first;
     MYSQL* mysql = its->second;
-    thread tmp_t(tc_exec_sql_up, mysql, exec_sql, &result_map[ipport]);
+    thread tmp_t(tc_exec_sql_up, mysql, exec_sql, &result_map[ipport_or_servername]);
     thread_array[i] = move(tmp_t);
     i++;
   }
@@ -2992,7 +3049,7 @@ bool tc_exec_sql_paral(
 
   for (its2 = result_map.begin(); its2 != result_map.end(); its2++)
   {/* */
-    string ipport = its2->first;
+    string ipport_or_servername = its2->first;
     tc_exec_info exec_info = its2->second;
     if (exec_info.err_code > 0)
     {
@@ -3002,14 +3059,14 @@ bool tc_exec_sql_paral(
         while (retry_times-- > 0)
         {/* retry 3 times, 2 seconds interval */
           sleep(2);
-          if (conn_map[ipport])
+          if (conn_map[ipport_or_servername])
           {
-            mysql_close(conn_map[ipport]);
-            conn_map[ipport] = NULL;
+            mysql_close(conn_map[ipport_or_servername]);
+            conn_map[ipport_or_servername] = NULL;
           }
-          if (!tc_reconnect(ipport, conn_map, user_map, passwd_map))
+          if (!tc_reconnect(ipport_or_servername, conn_map, user_map, passwd_map))
           {
-            if (!tc_exec_sql_up(conn_map[ipport], exec_sql, &exec_info))
+            if (!tc_exec_sql_up(conn_map[ipport_or_servername], exec_sql, &exec_info))
               break;
           }
         }
@@ -3328,7 +3385,7 @@ string tc_get_spider_grant_sql(
   Generate internal tdbctl GRANT sql according to mysql.servers's info.
   All tdbctl should do [GRANT ALL PRIVILEGES] sql for all spiders, which use
   to transfer sql from spider to tdbctl.
-  All spiders should do [GRANT ALL PRIVILEGES] sql for other tdbctl, which use
+  All tdbctl should do [GRANT ALL PRIVILEGES] sql for other tdbctl, which use
   to connect and manager cluster, if not, after failure, new elected primary tdbctl
   may had no privileges to connect other tdbctl
   In replication scenario, only primary/master node need to do this, which ensure to sync privileges
@@ -3528,6 +3585,8 @@ uint tc_get_primary_node(std::string &host, uint *port)
     anytime call this function, should consider deadlock.
     if we call this in mysql_execute_command, MGR's work thread
     may deadlock when do command internal use Sql_service_command_interface
+  
+  @todo: this func need to be assessed in the future
 */
 int tc_is_primary_tdbctl_node()
 {
@@ -3602,7 +3661,7 @@ int tc_is_primary_tdbctl_node()
     return tdbctl_is_primary;
   }
 
-  return ret;
+  return tdbctl_is_primary;
 }
 
 /*
@@ -3891,6 +3950,8 @@ const char *get_wrapper_name_by_node_type(enum_node_type type) {
   switch (type) {
   case NODE_TYPE_SPIDER:
     return SPIDER_WRAPPER;
+  case NODE_TYPE_SPIDER_SLAVE:
+    return SPIDER_SLAVE_WRAPPER;
   case NODE_TYPE_REMOTE:
     return MYSQL_WRAPPER;
   case NODE_TYPE_CTL:
@@ -3931,7 +3992,7 @@ int Query_exec_manager::make_real_query(const std::string &exec_query,
     real_query += "';";
 
     /* 3.(only for Spider) */
-    if (node_type == NODE_TYPE_SPIDER)
+    if (node_type == NODE_TYPE_SPIDER || node_type == NODE_TYPE_SPIDER_SLAVE)
       real_query += "/*!50600 SET ddl_execute_by_ctl=0 */;";
 
     real_query += exec_query;
@@ -4039,6 +4100,10 @@ int Query_exec_manager::get_results(tc_execute_result *res) const {
        it != exec_results[NODE_TYPE_SPIDER].end(); ++it) {
     res->spider_result_info.insert(std::make_pair(it->first, it->second));
   }
+  for (it = exec_results[NODE_TYPE_SPIDER_SLAVE].begin();
+       it != exec_results[NODE_TYPE_SPIDER_SLAVE].end(); ++it) {
+    res->spider_slave_result_info.insert(std::make_pair(it->first, it->second));
+  }
   for (it = exec_results[NODE_TYPE_REMOTE].begin();
        it != exec_results[NODE_TYPE_REMOTE].end(); ++it) {
     res->remote_result_info.insert(std::make_pair(it->first, it->second));
@@ -4104,7 +4169,7 @@ bool Cluster_conn_manager::refresh(bool force, bool no_connect) {
     DBUG_ASSERT(wrapper);
     if (unlikely(!wrapper))
       continue;
-    get_server_by_wrapper(server_list, &mem_root, wrapper, true);
+    get_server_by_wrapper(server_list, &mem_root, wrapper, false);
 
     FOREIGN_SERVER *server;
     list<FOREIGN_SERVER *>::iterator it;

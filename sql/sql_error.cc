@@ -1191,6 +1191,18 @@ bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result)
       }
     }
 
+    for (map<string, tc_exec_info>::iterator iter = exec_result->spider_slave_result_info.begin(); iter != exec_result->spider_slave_result_info.end(); iter++)
+    {
+      const string &server_name = iter->first;
+      const tc_exec_info &exec_info = iter->second;
+      if (exec_info.err_code)
+      {
+        err_msg += "Spider_SLAVE@" + server_name + ": (Error ";
+        err_msg += std::to_string(exec_info.err_code);
+        err_msg +=  ": " + exec_info.err_msg + ")\n";
+      }
+    }
+
     for (map<string, tc_exec_info>::iterator iter = exec_result->remote_result_info.begin(); iter != exec_result->remote_result_info.end(); iter++) {
       const string &name = iter->first;
       const tc_exec_info &exec_info = iter->second;

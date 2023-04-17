@@ -6375,10 +6375,20 @@ static Sys_var_charptr Sys_tc_spider_wrapper_prefix(
   READ_ONLY GLOBAL_VAR(tdbctl_spider_wrapper_prefix),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPIDER"));
 
+static Sys_var_charptr Sys_tc_spider_slave_wrapper_prefix(
+  "tc_spider_slave_wrapper_prefix", "prefix of server name for SPIDER_SLAVE wrapper",
+  READ_ONLY GLOBAL_VAR(tdbctl_spider_slave_wrapper_prefix),
+  CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPIDER_SLAVE"));
+
 static Sys_var_charptr Sys_tc_mysql_wrapper_prefix(
   "tc_mysql_wrapper_prefix", "prefix of server name for MYSQL wrapper",
   READ_ONLY GLOBAL_VAR(tdbctl_mysql_wrapper_prefix),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPT"));
+
+static Sys_var_charptr Sys_tc_mysql_slvae_wrapper_prefix(
+  "tc_mysql_slave_wrapper_prefix", "prefix of server name for MYSQL_SlAVE wrapper",
+  READ_ONLY GLOBAL_VAR(tdbctl_mysql_slave_wrapper_prefix),
+  CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPT_SLAVE"));
 
 static Sys_var_charptr Sys_tc_control_wrapper_prefix(
   "tc_control_wrapper_prefix", "prefix of server name for TDBCTL wrapper",

@@ -5393,7 +5393,7 @@ mysql_execute_command(THD *thd, bool first_level)
                          [&](FOREIGN_SERVER *server) -> bool
                          {
                            string current_address = string(server->host) + "#" + to_string(server->port);
-                           if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0)
+                           if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 || strcasecmp(lex->server_options.get_scheme(), MYSQL_SLAVE_WRAPPER) == 0)
                              return false;
                            return add_address.compare(current_address) == 0;
                          }) != server_list.end())
@@ -5402,8 +5402,8 @@ mysql_execute_command(THD *thd, bool first_level)
           goto error;
         }
 
-        // Only flush mysql.servers to this new added spider, exclude spider_slave
-        if (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0)
+        // Only flush mysql.servers to this new added spider or spider_slave
+        if (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0 || strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)
           lex->tc_flush_type = FLUSH_ROUTING_BY_SERVER;
 
         break;
@@ -5420,9 +5420,10 @@ mysql_execute_command(THD *thd, bool first_level)
           goto error;
         }
         /* At present, only support alter MYSQL wrapper node */
-        if (strcasecmp(server->scheme, MYSQL_WRAPPER) != 0)
+        if (!(strcasecmp(server->scheme, MYSQL_WRAPPER) == 0 ||
+            strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER) == 0))
         {
-          my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), "only support mysql wrapper");
+          my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), "only support mysql wrapper or mysql_slave wrapper");
           goto error;
         }
 
@@ -5434,15 +5435,15 @@ mysql_execute_command(THD *thd, bool first_level)
 
         FOREIGN_SERVER *server =
             get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
-        /* At present, only support alter MYSQL wrapper node */
-        if (server && strcasecmp(server->scheme, MYSQL_WRAPPER) == 0)
+
+        if (server && (strcasecmp(server->scheme, MYSQL_WRAPPER) == 0 || strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER) == 0))
         {
           if (lex->is_tc_flush_force != TRUE)
           {
-            my_error(ER_TCADMIN_DROP_NODE_ERROR, MYF(0), "drop mysql wrapper node must with FORCE option");
+            my_error(ER_TCADMIN_DROP_NODE_ERROR, MYF(0), "drop mysql wrapper node or mysql_slave wrapper node must be used with FORCE option");
             goto error;
           }
-          // if drop mysql wrapper node, need do flush all routing.
+          // if drop mysql wrapper node or mysql_slave wrapper node, need do flush all routing.
           lex->tc_flush_type = FLUSH_ALL_ROUTING;
         }
         break;
@@ -5501,7 +5502,7 @@ mysql_execute_command(THD *thd, bool first_level)
           goto finish;
         }
 
-        string server_name, add_address;
+        //string server_name, add_address;
         list<FOREIGN_SERVER *> server_list;
         char schema_path[FN_REFLEN + 1], grant_path[FN_REFLEN + 1];
         char *p1 = my_stpnmov(schema_path, mysql_tmpdir, sizeof(schema_path));
@@ -5626,7 +5627,10 @@ mysql_execute_command(THD *thd, bool first_level)
     query_exec_manager.reset_error();
     query_exec_manager.set_exec_flag(parse_result.execute_flag);
     if (parse_result.execute_flag & TC_SPIDER_NEED_EXECUTE)
+    {
       query_exec_manager.store_exec_query(parse_result.spider_sql, NODE_TYPE_SPIDER);
+      query_exec_manager.store_exec_query(parse_result.spider_sql, NODE_TYPE_SPIDER_SLAVE);
+    }
     if (parse_result.execute_flag & TC_REMOTE_NEED_EXECUTE)
       query_exec_manager.store_exec_query(parse_result.remote_sql_map, NODE_TYPE_REMOTE);
 

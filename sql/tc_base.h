@@ -69,9 +69,10 @@ enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 
 enum enum_node_type {
   NODE_TYPE_SPIDER = 0, /* this should ALWAYS be the first */
-  NODE_TYPE_REMOTE = 1,
-  NODE_TYPE_CTL = 2,
-  NODE_TYPE_END = 3, /* this should ALWAYS be the last */
+  NODE_TYPE_SPIDER_SLAVE = 1,
+  NODE_TYPE_REMOTE = 2,
+  NODE_TYPE_CTL = 3,
+  NODE_TYPE_END = 4, /* this should ALWAYS be the last */
 };
 
 #define ENUM_NODE_TYPE_BEGIN NODE_TYPE_SPIDER
@@ -130,6 +131,7 @@ typedef struct tc_execute_result
 {
     bool result; // TURE, error happened; FALASE, SUCCEED
     map<string, tc_exec_info> spider_result_info;
+    map<string, tc_exec_info> spider_slave_result_info;
     map<string, tc_exec_info> remote_result_info;
 } TC_EXEC_RESULT;
 
@@ -592,19 +594,28 @@ set<string> get_spider_ipport_set(
   MEM_ROOT *mem, 
   map<string, string> &spider_user_map, 
   map<string, string> &spider_passwd_map, 
-  bool with_slave
+  bool with_slave,
+  string wrapper_name = SPIDER_WRAPPER
 );
 
 map<string, string> get_remote_ipport_map(
   MEM_ROOT *mem, 
   map<string, string> &remote_user_map, 
-  map<string, string> &remote_passwd_map
+  map<string, string> &remote_passwd_map,
+  bool with_slave = false
 );
 
 map<string, string> get_server_name_map(
 	MEM_ROOT *mem,
 	const char *wrapper,
 	bool with_slave
+);
+
+set<string> get_server_name_set(
+	MEM_ROOT *mem,
+  map<string, string> &server_user_map, 
+  map<string, string> &server_passwd_map,
+	const char* wrapper
 );
 
 map<string, string> get_tdbctl_ipport_map(
