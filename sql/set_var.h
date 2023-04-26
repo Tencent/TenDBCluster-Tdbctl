@@ -89,7 +89,8 @@ public:
     READONLY=     0x0400, // 1024
     ALLOCATED=    0x0800, // 2048
     INVISIBLE=    0x1000, // 4096
-    TRI_LEVEL=    0x2000  // 8192 - default is neither GLOBAL nor SESSION
+    TRI_LEVEL=    0x2000, // 8192 - default is neither GLOBAL nor SESSION
+    TDBCTL=       0x4000  // 16384
   };
   static const int PARSE_EARLY= 1;
   static const int PARSE_NORMAL= 2;
@@ -166,6 +167,7 @@ public:
   }
   bool not_visible() const { return flags & INVISIBLE; }
   bool is_trilevel() const { return flags & TRI_LEVEL; }
+  bool is_tdbctl() const { return flags & TDBCTL; }
   /**
     the following is only true for keycache variables,
     that support the syntax @@keycache_name.variable_name
@@ -246,6 +248,7 @@ public:
   virtual int check(THD *thd)=0;           /* To check privileges etc. */
   virtual int update(THD *thd)=0;                  /* To set the value */
   virtual int light_check(THD *thd) { return check(thd); }   /* for PS */
+  virtual int check_tdbctl_var() { return 0;} /*check whether it is tdbctl variables*/
   virtual void print(THD *thd, String *str)=0;	/* To self-print */
   /// @returns whether this variable is @@@@optimizer_trace.
   virtual bool is_var_optimizer_trace() const { return false; }
@@ -278,6 +281,7 @@ public:
   int check(THD *thd);
   int update(THD *thd);
   int light_check(THD *thd);
+  int check_tdbctl_var();
   void print(THD *thd, String *str);	/* To self-print */
 #ifdef OPTIMIZER_TRACE
   virtual bool is_var_optimizer_trace() const

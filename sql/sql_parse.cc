@@ -5622,7 +5622,7 @@ mysql_execute_command(THD *thd, bool first_level)
   //if parse_result.execute_flag is set to TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE,
   // this means that tc_admin need to send query to spider or remote node
   if (!thd->is_error() && tc_admin == 1 && 
-    (parse_result.execute_flag & (TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE)))
+    (parse_result.execute_flag & (TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE|TC_ONLY_ONE_SPIDER_NEED_EXECUTE)))
   {
     thd->get_stmt_da()->reset_diagnostics_area();
     /*
@@ -5641,6 +5641,15 @@ mysql_execute_command(THD *thd, bool first_level)
       query_exec_manager.store_exec_query(parse_result.spider_sql, NODE_TYPE_SPIDER);
       query_exec_manager.store_exec_query(parse_result.spider_sql, NODE_TYPE_SPIDER_SLAVE);
     }
+    else if (parse_result.execute_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE)
+    {
+      list<FOREIGN_SERVER *> server_list;
+      get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
+      if (!server_list.empty())
+      {
+        query_exec_manager.store_exec_query(server_list.front()->server_name, parse_result.spider_sql, NODE_TYPE_SPIDER);
+      }
+    }
     if (parse_result.execute_flag & TC_REMOTE_NEED_EXECUTE)
       query_exec_manager.store_exec_query(parse_result.remote_sql_map, NODE_TYPE_REMOTE);
 
@@ -5653,7 +5662,7 @@ mysql_execute_command(THD *thd, bool first_level)
     }
     tc_ddl_run(thd, thd->cluster_conn_manager, &query_exec_manager);
     query_exec_manager.get_results(&exec_result);
-    res = tc_process_all_result(thd, &exec_result);
+    res = tc_process_all_result(thd, &exec_result, parse_result.result_set_flag);
     goto finish;
   }
 

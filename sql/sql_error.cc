@@ -1173,7 +1173,7 @@ bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESU
 }
 
 
-bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result)
+bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, int result_set_flag)
 {
   if (exec_result->result)
   {/* error happened */
@@ -1222,6 +1222,48 @@ bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result)
     my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), err_msg.c_str());
     return TRUE;
   }
+
+  if (result_set_flag & RETURN_RESULT_SET_FROM_ONE_NODE)
+  {
+    bool result_set_success = false;
+    for (map<std::string, tc_exec_info>::iterator iter = exec_result->spider_result_info.begin(); iter != exec_result->spider_result_info.end(); iter++)
+    {
+      const tc_exec_info &exec_info = iter->second;
+      if (exec_info.prepare_sql)
+      {
+        // return the result set from the node to client
+        result_set_success = !tc_store_mysql_result_into_protocol(thd, exec_info.res);
+        break;
+      }
+    }
+
+    if (!result_set_success)
+    {
+      for (map<std::string, tc_exec_info>::iterator iter = exec_result->remote_result_info.begin(); iter != exec_result->remote_result_info.end(); iter++)
+      {
+        const tc_exec_info &exec_info = iter->second;
+        if (exec_info.prepare_sql)
+        {
+          // return the result set from the node to client
+          result_set_success = !tc_store_mysql_result_into_protocol(thd, exec_info.res);
+          break;
+        }
+      }
+    }
+
+    if (!result_set_success)
+    {
+      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "failed to create the result set according to MYSQL_RES from other node");
+      return TRUE;
+    }
+    else
+      return FALSE;
+  }
+  else if (result_set_flag & RETURN_RESULT_SET_FROM_MULTI_NODES)
+  {
+    //to do
+  }
+
   my_ok(thd);
   return FALSE;
 }

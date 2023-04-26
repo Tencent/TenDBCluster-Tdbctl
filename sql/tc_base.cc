@@ -1259,6 +1259,7 @@ void tc_parse_result_init(TC_PARSE_RESULT *parse_result_t)
   parse_result_t->shard_func = tspider_shard_func_crc32;
   parse_result_t->shard_type = tspider_shard_type_list;
   parse_result_t->execute_flag = 0;
+  parse_result_t->result_set_flag = 0;
 }
 
 void tc_parse_result_destory(TC_PARSE_RESULT *parse_result_t)
@@ -1863,8 +1864,17 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 {
   bool command_support = true;
   bool secondary_node_allowed = true;
+
+  set_var_base *var;
+  int tdbctl_var_num = 0;
+  int total_var_num = 0;
+  List<set_var_base> *lex_var_list = &lex->var_list;
+  List_iterator_fast<set_var_base> var_it(*lex_var_list);
+
   switch (lex->sql_command)
   {
+    // Whether it is a tcadmin master or a slave node,
+    // these commands are executed on tdbctl itself
     case SQLCOM_SHOW_VARIABLES:
     case SQLCOM_SHOW_EVENTS:
     case SQLCOM_SHOW_STATUS:
@@ -1873,23 +1883,13 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_SHOW_DATABASES:
     case SQLCOM_SHOW_TABLES:
     case SQLCOM_SHOW_TRIGGERS:
-    case SQLCOM_SHOW_TABLE_STATUS:
-    case SQLCOM_SHOW_OPEN_TABLES:
-    case SQLCOM_SHOW_PLUGINS:
     case SQLCOM_SHOW_FIELDS:
     case SQLCOM_SHOW_KEYS:
-    case SQLCOM_SHOW_CHARSETS:
-    case SQLCOM_SHOW_COLLATIONS:
-    case SQLCOM_SHOW_STORAGE_ENGINES:
-    case SQLCOM_SHOW_PROFILE:
     case SQLCOM_SHOW_WARNS:
     case SQLCOM_SHOW_ERRORS:
-    case SQLCOM_SHOW_ENGINE_STATUS:
-    case SQLCOM_SHOW_ENGINE_MUTEX:
     case SQLCOM_SHOW_BINLOGS:
     case SQLCOM_SHOW_CREATE:
     case SQLCOM_SHOW_PROCESSLIST:
-    case SQLCOM_SHOW_ENGINE_LOGS:
     case SQLCOM_SHOW_CREATE_DB:
     case SQLCOM_SHOW_PRIVILEGES:
     case SQLCOM_SHOW_CREATE_USER:
@@ -1899,35 +1899,37 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_SHOW_CREATE_PROC:
     case SQLCOM_SHOW_CREATE_FUNC:
     case SQLCOM_SHOW_CREATE_TRIGGER:
-    case SQLCOM_SHOW_CLIENT_STATS:
-    case SQLCOM_SHOW_INDEX_STATS:
-    case SQLCOM_SHOW_TABLE_STATS:
-    case SQLCOM_SHOW_THREAD_STATS:
-    case SQLCOM_SHOW_USER_STATS:
     case SQLCOM_HELP:
-    case SQLCOM_SET_OPTION:
-    case SQLCOM_SHUTDOWN:
-      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
-      //do nothing
-      break;
     case SQLCOM_SELECT:
-    case SQLCOM_PREPARE:
-    case SQLCOM_EXECUTE:
-    case SQLCOM_DEALLOCATE_PREPARE:
-    case SQLCOM_EMPTY_QUERY:
     case SQLCOM_PURGE:
     case SQLCOM_PURGE_BEFORE:
     case SQLCOM_SHOW_PROFILES:
+    case SQLCOM_BINLOG_BASE64_EVENT:
+    case SQLCOM_CHANGE_REPLICATION_FILTER:
+    case SQLCOM_LOCK_BINLOG_FOR_BACKUP:
+    case SQLCOM_LOCK_TABLES_FOR_BACKUP:
+    case SQLCOM_START_GROUP_REPLICATION:
+    case SQLCOM_STOP_GROUP_REPLICATION:
+    case SQLCOM_UNLOCK_BINLOG:
+    case SQLCOM_FLUSH:
+    case SQLCOM_KILL:
+    case SQLCOM_SHUTDOWN:
+    case SQLCOM_RELEASE_SAVEPOINT:
+    case SQLCOM_ROLLBACK_TO_SAVEPOINT:
+    case SQLCOM_SAVEPOINT:
+    case SQLCOM_ALTER_DB_UPGRADE:
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
+      break;
+    // These commands are not supported in tcadmin primary or secondary mode.
+    case SQLCOM_SHOW_PLUGINS:
+    case SQLCOM_SHOW_PROFILE:
+    case SQLCOM_SHOW_ENGINE_STATUS:
+    case SQLCOM_SHOW_ENGINE_MUTEX:
+    case SQLCOM_SHOW_ENGINE_LOGS:
+    case SQLCOM_EMPTY_QUERY:
     case SQLCOM_ASSIGN_TO_KEYCACHE:
     case SQLCOM_PRELOAD_KEYS:
     case SQLCOM_CHECKSUM:
-    case SQLCOM_UPDATE:
-    case SQLCOM_UPDATE_MULTI:
-    case SQLCOM_REPLACE:
-    case SQLCOM_REPLACE_SELECT:
-    case SQLCOM_INSERT_SELECT:
-    case SQLCOM_DELETE:
-    case SQLCOM_DELETE_MULTI:
     case SQLCOM_LOAD:
     case SQLCOM_XA_START:
     case SQLCOM_XA_END:
@@ -1942,44 +1944,106 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_CHECK:
     case SQLCOM_OPTIMIZE:
     case SQLCOM_REPAIR:
-    case SQLCOM_TRUNCATE:
     case SQLCOM_SIGNAL:
     case SQLCOM_RESIGNAL:
     case SQLCOM_GET_DIAGNOSTICS:
-    case SQLCOM_CALL:
-    case SQLCOM_BINLOG_BASE64_EVENT:
     case SQLCOM_HA_OPEN:
     case SQLCOM_HA_CLOSE:
     case SQLCOM_HA_READ:
     case SQLCOM_ALTER_INSTANCE:
-    case SQLCOM_CHANGE_REPLICATION_FILTER:
     case SQLCOM_CREATE_COMPRESSION_DICTIONARY:
     case SQLCOM_DROP_COMPRESSION_DICTIONARY:
     case SQLCOM_EXPLAIN_OTHER:
-    case SQLCOM_LOCK_BINLOG_FOR_BACKUP:
-    case SQLCOM_LOCK_TABLES_FOR_BACKUP:
-    case SQLCOM_START_GROUP_REPLICATION:
-    case SQLCOM_STOP_GROUP_REPLICATION:
-    case SQLCOM_UNLOCK_BINLOG:
-    case SQLCOM_RESET:
-    case SQLCOM_FLUSH:
-    case SQLCOM_KILL:
-    case SQLCOM_UNLOCK_TABLES:
-    case SQLCOM_LOCK_TABLES:
-    case SQLCOM_BEGIN:
-    case SQLCOM_COMMIT:
-    case SQLCOM_ROLLBACK:
-    case SQLCOM_RELEASE_SAVEPOINT:
-    case SQLCOM_ROLLBACK_TO_SAVEPOINT:
-    case SQLCOM_SAVEPOINT:
-    case SQLCOM_ALTER_DB_UPGRADE:
+    case SQLCOM_CREATE_SERVER:
+    case SQLCOM_ALTER_SERVER:
+    case SQLCOM_DROP_SERVER:
       command_support = false;
       /*push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_UNSUPPORT_SQL_TYPE,
                    ER(ER_TCADMIN_UNSUPPORT_SQL_TYPE), get_stmt_type_str(lex->sql_command));*/
       if (!thd->is_error())
         my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
       break;
+    // These commands are executed on only one spider node in tcadmin primary mode, 
+    // and are executed on tdbctl itself in tcadmin secondary mode.
+    case SQLCOM_SHOW_TABLE_STATUS:
+    case SQLCOM_SHOW_OPEN_TABLES:
+    case SQLCOM_SHOW_CHARSETS:
+    case SQLCOM_SHOW_COLLATIONS:
+    case SQLCOM_SHOW_STORAGE_ENGINES:
+      if (tdbctl_is_primary)
+      {
+        tc_parse_result_t->spider_sql = thd->query().str;
+        tc_parse_result_t->execute_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+        tc_parse_result_t->result_set_flag |= RETURN_RESULT_SET_FROM_ONE_NODE;
+      }
+      else
+        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
+      break;
+    // These commands are executed on only one spider node in tcadmin primary mode, 
+    // and not allowed to be executed in tcadmin secondary mode.
+    case SQLCOM_PREPARE:
+    case SQLCOM_EXECUTE:
+    case SQLCOM_DEALLOCATE_PREPARE:
+    case SQLCOM_UPDATE:
+    case SQLCOM_UPDATE_MULTI:
+    case SQLCOM_REPLACE:
+    case SQLCOM_REPLACE_SELECT:
+    case SQLCOM_INSERT:
+    case SQLCOM_INSERT_SELECT:
+    case SQLCOM_DELETE:
+    case SQLCOM_DELETE_MULTI:
+    case SQLCOM_TRUNCATE:
+    case SQLCOM_CALL:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
+       if (thd->db().str)
+        tc_parse_result_t->db_name = thd->db().str;
+      else
+        tc_parse_result_t->db_name = lex->sphead->m_db.str;
+      tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + thd->query().str;
+      tc_parse_result_t->execute_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+      break;
+    // These commands are executed on only one spider node and tdbctl itself in tcadmin primary mode,
+    // and not allowed to be executed in tcadmin secondary mode.
+    case SQLCOM_BEGIN:
+    case SQLCOM_COMMIT:
+    case SQLCOM_ROLLBACK:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
+      tc_parse_result_t->spider_sql = thd->query().str;
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+      break;
+    case SQLCOM_SET_OPTION:
+    case SQLCOM_RESET:
+      // if the sys_var is tdbctl var, we only execute it on tdbctl itself
+      while ((var = var_it++))
+      {
+        if(var->check_tdbctl_var())
+          tdbctl_var_num++;
+        total_var_num++;
+      }
+      if (tdbctl_var_num > 0 && tdbctl_var_num == total_var_num)
+      {
+        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
+        break;
+      } else if (tdbctl_var_num > 0 && tdbctl_var_num != total_var_num)
+      {
+        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "can't set tdbctl-only var and common var at the same time");
+        return FALSE;
+      }
 
+      if (tdbctl_is_primary)
+      {
+        tc_parse_result_t->spider_sql = thd->query().str;
+        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+      }
+      else
+        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
+      break;
+    case SQLCOM_UNLOCK_TABLES:
+    case SQLCOM_LOCK_TABLES:
     case SQLCOM_CREATE_EVENT:
     case SQLCOM_ALTER_EVENT:
     case SQLCOM_CREATE_FUNCTION:                  // UDF function
@@ -2019,14 +2083,11 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_RENAME_USER:
     case SQLCOM_REVOKE:
     case SQLCOM_GRANT:
-    case SQLCOM_CREATE_SERVER:
-    case SQLCOM_ALTER_SERVER:
-    case SQLCOM_DROP_SERVER:
       secondary_node_allowed = false;
       if (!tdbctl_is_primary)
         break;
       tc_parse_result_t->spider_sql = thd->query().str;
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_TABLE:
     {
@@ -2298,7 +2359,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (!tdbctl_is_primary)
         break;
       tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
-      //do nothing, only work on primary tdbctl node
       break;
 
     default:
@@ -2316,6 +2376,186 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
   return TRUE;
 }
 
+int tc_store_mysql_result_into_protocol(THD *thd, MYSQL_RES *res)
+{
+  List<Item> field_list;
+  Protocol *protocol= thd->get_protocol();
+  MYSQL_ROW row;
+
+  uint field_num = mysql_num_fields(res);
+  for (uint i = 0; i < field_num; i++)
+  {
+    field_list.push_back(tc_make_item(&res->fields[i]));
+  }
+  if (thd->send_result_metadata(&field_list,
+                                Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+    DBUG_RETURN(1);
+
+  while ((row = mysql_fetch_row(res)))
+  {
+    protocol->start_row();
+    for (uint idx = 0; idx < field_num; ++idx)
+    {
+      protocol_store_field(protocol, res->fields[idx], row[idx]);
+    }
+    if(protocol->end_row())
+      break;
+  }
+
+  my_eof(thd);
+  DBUG_RETURN(0);
+}
+
+void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row)
+{
+	DBUG_ENTER("protocol_store_field");
+	if (row == NULL) {
+		protocol->store_null();
+		DBUG_VOID_RETURN;
+	}
+
+	switch (field.type) {
+  case MYSQL_TYPE_NULL:
+  case MYSQL_TYPE_DECIMAL:
+  case MYSQL_TYPE_ENUM:
+  case MYSQL_TYPE_SET:
+  case MYSQL_TYPE_TINY_BLOB:
+  case MYSQL_TYPE_MEDIUM_BLOB:
+  case MYSQL_TYPE_LONG_BLOB:
+  case MYSQL_TYPE_BLOB:
+  case MYSQL_TYPE_GEOMETRY:
+  case MYSQL_TYPE_STRING:
+  case MYSQL_TYPE_VAR_STRING:
+  case MYSQL_TYPE_VARCHAR:
+  case MYSQL_TYPE_BIT:
+  case MYSQL_TYPE_NEWDECIMAL:
+  case MYSQL_TYPE_JSON:
+  {
+    protocol->store(row, strlen(row), get_charset(field.charsetnr, MYF(MY_WME)));
+    break;
+  }
+  case MYSQL_TYPE_TINY:
+  {
+    protocol->store_tiny(atoll(row));
+    break;
+  }
+  case MYSQL_TYPE_SHORT:
+  case MYSQL_TYPE_YEAR:
+  {
+    protocol->store_short(atoll(row));
+    break;
+  }
+  case MYSQL_TYPE_INT24:
+  case MYSQL_TYPE_LONG:
+  {
+    protocol->store_long(atoll(row));
+    break;
+  }
+  case MYSQL_TYPE_LONGLONG:
+  {
+    protocol->store_longlong(atoll(row), (field.flags & MY_I_S_UNSIGNED));
+    break;
+  }
+  case MYSQL_TYPE_FLOAT:
+  {
+    //protocol->store((float)atof(row), field.length%10, buffer);
+    protocol->store(row, strlen(row), get_charset(field.charsetnr, MYF(MY_WME)));
+    break;
+  }
+  case MYSQL_TYPE_DOUBLE:
+  {
+    //protocol->store(atof(row), field.length%10, buffer);
+    protocol->store(row, strlen(row), get_charset(field.charsetnr, MYF(MY_WME)));
+    break;
+  }
+  case MYSQL_TYPE_DATETIME:
+  case MYSQL_TYPE_DATE:
+  case MYSQL_TYPE_TIMESTAMP:
+  {
+    protocol->store(row, strlen(row), get_charset(field.charsetnr, MYF(MY_WME)));
+    break;
+  }
+  case MYSQL_TYPE_TIME:
+  {
+    //protocol->store_time(&tm, decimals);
+    protocol->store(row, strlen(row), get_charset(field.charsetnr, MYF(MY_WME)));
+    break;
+  }
+	default:
+		protocol->store(row, get_charset(field.charsetnr, MYF(MY_WME)));
+		break;
+	}
+
+	DBUG_VOID_RETURN;
+}
+
+Item* tc_make_item(MYSQL_FIELD* field)
+{
+  Item* item;
+  switch (field->type)
+  {
+    case MYSQL_TYPE_TINY:
+    case MYSQL_TYPE_LONG:
+    case MYSQL_TYPE_SHORT:
+    case MYSQL_TYPE_LONGLONG:
+    case MYSQL_TYPE_INT24:
+    {
+      item = new Item_return_int(field->name, field->length, field->type);
+      item->unsigned_flag = (field->flags & MY_I_S_UNSIGNED);
+      break;
+    }
+    case MYSQL_TYPE_DATE:
+    case MYSQL_TYPE_TIME:
+    case MYSQL_TYPE_TIMESTAMP:
+    case MYSQL_TYPE_DATETIME:
+    {
+      const Name_string field_name(field->name, field->length);
+      item = new Item_temporal(field->type, field_name, 0, 0);
+
+      if (field->type == MYSQL_TYPE_TIMESTAMP ||
+          field->type == MYSQL_TYPE_DATETIME)
+        item->decimals= field->length;
+      break;
+    }
+    case MYSQL_TYPE_FLOAT:
+    case MYSQL_TYPE_DOUBLE:
+    {
+      const Name_string field_name(field->name, field->length);
+      item = new Item_float(field_name, 0.0, NOT_FIXED_DEC, field->length);
+      break;
+    }
+    case MYSQL_TYPE_DECIMAL:
+    case MYSQL_TYPE_NEWDECIMAL:
+    {
+      item = new Item_decimal(atoll(field->def), false);
+      item->unsigned_flag = (field->flags & MY_I_S_UNSIGNED);
+      item->decimals = field->length%10;
+      item->max_length = (field->length/100)%100;
+      if (item->unsigned_flag == 0)
+        item->max_length+= 1;
+      if (item->decimals > 0)
+        item->max_length+= 1;
+      item->item_name.copy(field->name);
+      break;
+    }
+    case MYSQL_TYPE_TINY_BLOB:
+    case MYSQL_TYPE_MEDIUM_BLOB:
+    case MYSQL_TYPE_LONG_BLOB:
+    case MYSQL_TYPE_BLOB:
+    {
+      item = new Item_blob(field->name, field->length);
+      break;
+    }
+    case MYSQL_TYPE_STRING:
+    default:
+    {
+      item = new Item_empty_string(field->name, field->length, system_charset_info);
+      break;
+    }
+  }
+  return item;
+}
+
 void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
                    MYSQL *mysql, enum_node_type node_type) {
   DBUG_ENTER("tc_real_query");
@@ -2324,19 +2564,33 @@ void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
   string query;
   tc_exec_info exec_info;
 
-  if ((err = query_mgr->get_real_query(server_name, query, node_type))) {
+  if ((err = query_mgr->get_real_query(server_name, query, node_type)))
+  {
     DBUG_ASSERT(0);
     query = "";
   }
   exec_info.err_code = 0;
   exec_info.err_msg = "";
+  exec_info.prepare_sql = false;
+  exec_info.res = NULL;
   // If we dont prepare sql statements for some instances(spider or remote node),
   // we will skip querying to these instances.
-  if (query != string()) {
+  if (query != string())
+  {
     err = mysql_real_query(mysql, query.c_str(), query.length());
-    while (!err) {
+    exec_info.prepare_sql = true;
+    exec_info.res = mysql_store_result(mysql);
+
+    while (!err)
+    {
+      if (exec_info.res)
+      {
+        mysql_free_result(exec_info.res);
+      }
+      exec_info.res = mysql_store_result(mysql);
       err = tc_mysql_next_result(mysql);
     }
+
     if (err != -1) {
       exec_info.err_code = mysql_errno(mysql);
       exec_info.err_msg = mysql_error(mysql);

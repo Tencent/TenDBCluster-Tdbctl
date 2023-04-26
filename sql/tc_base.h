@@ -58,14 +58,19 @@ enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 #define TC_CONN_CONNECT_TIMEOUT 60
 #define TC_CONN_MAX_RETRIES_ON_FAILS 3
 
-//spider node need execute sql
+//all spider node(inlcuding spider slave node) need execute sql
 #define TC_SPIDER_NEED_EXECUTE 1
-//remote node need execute sql
+//all remote node need execute sql
 #define TC_REMOTE_NEED_EXECUTE 2
-//tdbctl node need execute sql
+//all tdbctl node need execute sql
 #define TC_TDBCTL_NEED_EXECUTE 4
-//spider node executed before other nodes.
+//all spider node executed before other nodes.
 #define TC_SPIDER_EXECUTE_FIRST 8
+//only one spider node execute sql
+#define TC_ONLY_ONE_SPIDER_NEED_EXECUTE 16
+
+#define RETURN_RESULT_SET_FROM_ONE_NODE 1
+#define RETURN_RESULT_SET_FROM_MULTI_NODES 2
 
 enum enum_node_type {
   NODE_TYPE_SPIDER = 0, /* this should ALWAYS be the first */
@@ -123,6 +128,10 @@ const char* get_stmt_type_str(int type);
 typedef struct tc_exec_info
 {
     uint err_code;
+    // 0 means no sql statment was sent to the node
+    // 1 means some sql statements are ready to be sent to the node
+    bool prepare_sql;
+    MYSQL_RES *res;
     string err_msg;
     ulonglong row_affect;
 } TC_EXEC_INFO;
@@ -147,6 +156,7 @@ typedef struct tc_parse_result
     string spider_sql;
     map<string, string> remote_sql_map;
     int execute_flag;
+    int result_set_flag;
 
     string shard_key;
     int shard_count;
@@ -756,6 +766,35 @@ get_ip_local_addresses(std::set<std::string>& out,
  */
 bool verify_validity_of_routing_host(MEM_ROOT *mem, const char *server_host);
 
+/**
+ * @brief parse the result from the mysqlconn, and then send 
+newly constructed result set to client.
+ * 
+ * @param thd Thread handler
+ * @param res MYSQL_RES
+ * @param server_name the mysql_result from 
+ * 
+ * @return 0 on success
+ * @return 1 on error 
+ */
+int tc_store_mysql_result_into_protocol(THD *thd, MYSQL_RES *res);
+
+/**
+ * @brief build a item according to field_type
+ * 
+ * @param field MYSQL_FIELD
+ * @return Item* 
+ */
+Item* tc_make_item(MYSQL_FIELD *field);
+
+/**
+ * @brief store the row into protocol
+ * 
+ * @param protocol Protocol
+ * @param field  MYSQL_FIELD
+ * @param row 
+ */
+void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row);
 void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
                    MYSQL *mysql, enum_node_type node_type);
 bool tc_exec_query_paral(Query_exec_manager *query_mgr,

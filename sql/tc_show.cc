@@ -52,33 +52,6 @@ ST_FIELD_INFO cluster_processlist_fields_info[] = {
     {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
 };
 
-static void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row)
-{
-	DBUG_ENTER("protocol_store_field");
-	if (row == NULL) {
-		protocol->store_null();
-		DBUG_VOID_RETURN;
-	}
-
-	switch (field.type) {
-	case MYSQL_TYPE_LONGLONG:
-	case MYSQL_TYPE_DOUBLE:
-		protocol->store_longlong(atoll(row), true);
-		break;
-	case MYSQL_TYPE_VAR_STRING:
-		protocol->store(row, get_charset(field.charsetnr, MYF(MY_WME)));
-		break;
-	case MYSQL_TYPE_LONG:
-		protocol->store_long(atol(row));
-		break;
-	default:
-		protocol->store(row, get_charset(field.charsetnr, MYF(MY_WME)));
-		break;
-	}
-
-	DBUG_VOID_RETURN;
-}
-
 /**
  * @brief Get SHOW PROCESSLIST results from cluster nodes.
  *
