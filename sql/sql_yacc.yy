@@ -2600,6 +2600,10 @@ server_option:
           {
             Lex->server_options.set_port($2);
           }
+        | NUMBER_SYM ulong_num
+          {
+            Lex->server_options.set_num($2);
+          }
         ;
 
 event_tail:

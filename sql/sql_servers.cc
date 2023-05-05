@@ -504,6 +504,7 @@ void Server_options::reset()
   m_server_name.str= NULL;
   m_server_name.length= 0;
   m_port= PORT_NOT_SET;
+  m_num= NUM_NOT_SET;
   m_host.str= NULL;
   m_host.length= 0;
   m_db.str= NULL;
@@ -1240,6 +1241,18 @@ string get_new_server_name_by_wrapper(
 
   server_name << max_suffix_num;
 
+  return server_name.str();
+}
+
+std::string get_new_server_name_by_number(
+    const char* wrapper_name,
+    const long number
+)
+{
+  std::ostringstream server_name;
+  server_name.str("");
+  server_name << get_wrapper_prefix_by_wrapper(wrapper_name);
+  server_name << number;
   return server_name.str();
 }
 

@@ -5373,8 +5373,16 @@ mysql_execute_command(THD *thd, bool first_level)
           goto error;
         }
 
-        /* get an unique server_name by wrapper */
-        string server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme());
+        std::string server_name;
+        if (lex->server_options.get_num() == lex->server_options.NUM_NOT_SET)
+        {
+          /* get an unique server_name by wrapper */
+          server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme());
+        } else {
+          // produce server_name with server_options->m_num
+          server_name = get_new_server_name_by_number(lex->server_options.get_scheme(),
+                                                      lex->server_options.get_num());
+        }
         DBUG_ASSERT(server_name.length() != 0);
         lex->server_options.m_server_name.length = server_name.length();
         lex->server_options.m_server_name.str =
@@ -5393,6 +5401,8 @@ mysql_execute_command(THD *thd, bool first_level)
                          [&](FOREIGN_SERVER *server) -> bool
                          {
                            string current_address = string(server->host) + "#" + to_string(server->port);
+                           if (strcasecmp(lex->server_options.m_server_name.str, server->server_name) == 0)
+                             return true;
                            if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 || strcasecmp(lex->server_options.get_scheme(), MYSQL_SLAVE_WRAPPER) == 0)
                              return false;
                            return add_address.compare(current_address) == 0;
