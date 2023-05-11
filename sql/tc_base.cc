@@ -2021,7 +2021,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       if (tc_parse_getkey_for_spider(thd, key_name, result_info, sizeof(result_info), &with_unique, &is_unsigned_key))
       {
-        my_error(ER_TCADMIN_SHARD_COUNT_NOT_VALID, MYF(0), result_info);
+        my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), result_info);
         return FALSE;
       }
       tc_parse_result_t->shard_key = key_name;
