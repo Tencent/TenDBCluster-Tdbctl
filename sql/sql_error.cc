@@ -1223,15 +1223,17 @@ bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, int result_set
     return TRUE;
   }
 
+  // create a new result set according to the result set from other node
   if (result_set_flag & RETURN_RESULT_SET_FROM_ONE_NODE)
   {
     bool result_set_success = false;
+    // scan spider_result_info
     for (map<std::string, tc_exec_info>::iterator iter = exec_result->spider_result_info.begin(); iter != exec_result->spider_result_info.end(); iter++)
     {
       const tc_exec_info &exec_info = iter->second;
       if (exec_info.prepare_sql)
       {
-        // return the result set from the node to client
+        // return the newly constructed result set to client
         result_set_success = !tc_store_mysql_result_into_protocol(thd, exec_info.res);
         break;
       }
@@ -1239,12 +1241,13 @@ bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, int result_set
 
     if (!result_set_success)
     {
+      // scan remote_result_info
       for (map<std::string, tc_exec_info>::iterator iter = exec_result->remote_result_info.begin(); iter != exec_result->remote_result_info.end(); iter++)
       {
         const tc_exec_info &exec_info = iter->second;
         if (exec_info.prepare_sql)
         {
-          // return the result set from the node to client
+          // return the newly constructed result set to client
           result_set_success = !tc_store_mysql_result_into_protocol(thd, exec_info.res);
           break;
         }
@@ -1263,6 +1266,7 @@ bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, int result_set
   {
     //to do
   }
+  tc_clean_exec_result(exec_result);
 
   my_ok(thd);
   return FALSE;

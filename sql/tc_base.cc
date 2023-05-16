@@ -2556,6 +2556,35 @@ Item* tc_make_item(MYSQL_FIELD* field)
   return item;
 }
 
+void tc_clean_exec_result(TC_EXEC_RESULT* exec_result)
+{
+  for (map<string, tc_exec_info>::iterator iter = exec_result->spider_result_info.begin(); iter != exec_result->spider_result_info.end(); iter++)
+  {
+    tc_exec_info &exec_info = iter->second;
+    if (!exec_info.res)
+    {
+      mysql_free_result(exec_info.res);
+    }
+  }
+  for (map<string, tc_exec_info>::iterator iter = exec_result->spider_slave_result_info.begin(); iter != exec_result->spider_slave_result_info.end(); iter++)
+  {
+    tc_exec_info &exec_info = iter->second;
+    if (!exec_info.res)
+    {
+      mysql_free_result(exec_info.res);
+    }
+  }
+  for (map<string, tc_exec_info>::iterator iter = exec_result->remote_result_info.begin(); iter != exec_result->remote_result_info.end(); iter++)
+  {
+    tc_exec_info &exec_info = iter->second;
+    if (!exec_info.res)
+    {
+      mysql_free_result(exec_info.res);
+    }
+  }
+  DBUG_VOID_RETURN;
+}
+
 void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
                    MYSQL *mysql, enum_node_type node_type) {
   DBUG_ENTER("tc_real_query");
@@ -3461,6 +3490,7 @@ MYSQL_RES* tc_exec_sql_with_result(MYSQL* mysql, string sql)
   MYSQL_RES* result;
   if (mysql_real_query(mysql, sql.c_str(), sql.length()))
   {
+    sql_print_error("failed to query: %s . errno : %d; error msg: %s", sql.c_str(), mysql_errno(mysql), mysql_error(mysql));
     result = NULL;
   }
   else

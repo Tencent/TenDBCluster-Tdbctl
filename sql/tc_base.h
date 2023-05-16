@@ -774,8 +774,8 @@ newly constructed result set to client.
  * @param res MYSQL_RES
  * @param server_name the mysql_result from 
  * 
- * @return 0 on success
- * @return 1 on error 
+ * @retval 0 on success
+ * @retval 1 on error 
  */
 int tc_store_mysql_result_into_protocol(THD *thd, MYSQL_RES *res);
 
@@ -795,6 +795,14 @@ Item* tc_make_item(MYSQL_FIELD *field);
  * @param row 
  */
 void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row);
+
+/**
+ * @brief clean MYSQL_RESULT* of exec_result.result_info
+ * 
+ * @param exec_result TC_EXEC_RESULT*
+ */
+void tc_clean_exec_result(TC_EXEC_RESULT* exec_result);
+
 void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
                    MYSQL *mysql, enum_node_type node_type);
 bool tc_exec_query_paral(Query_exec_manager *query_mgr,
