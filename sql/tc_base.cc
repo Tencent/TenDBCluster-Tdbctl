@@ -31,6 +31,7 @@
 #include <WinSock2.h>
 #endif
 
+#include <errmsg.h>
 
 using namespace std;
 
@@ -2266,7 +2267,7 @@ void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
       exec_info.err_msg = mysql_error(mysql);
     }
   }
-  query_mgr->store_result(server_name, exec_info, node_type);
+  query_mgr->store_exec_info(server_name, exec_info, node_type);
 
   DBUG_VOID_RETURN;
 }
@@ -3878,7 +3879,7 @@ bool Query_exec_manager::get_real_query(const std::string &server_name,
   return false;
 }
 
-void Query_exec_manager::store_result(const std::string &server_name,
+void Query_exec_manager::store_exec_info(const std::string &server_name,
                                      const tc_exec_info &exec_info,
                                      enum_node_type node_type) {
   result_mtx.lock();
@@ -3886,6 +3887,14 @@ void Query_exec_manager::store_result(const std::string &server_name,
     error = 1;
   exec_results[node_type][server_name] = exec_info;
   result_mtx.unlock();
+}
+
+int Query_exec_manager::get_exec_info(const std::string &server_name, tc_exec_info &exec_info,
+                  enum_node_type node_type) {
+  result_mtx.lock();
+  exec_info = exec_results[node_type][server_name];
+  result_mtx.unlock();
+  return 0;
 }
 
 MY_ATTRIBUTE((unused))
@@ -4003,7 +4012,7 @@ void Cluster_conn_manager::clear() {
   shard_count = 0;
 }
 
-bool Cluster_conn_manager::refresh(bool force) {
+bool Cluster_conn_manager::refresh(bool force, bool no_connect) {
   DBUG_ENTER("Cluster_conn_manager::refresh");
 
   bool outdated = check_server_version();
@@ -4049,11 +4058,14 @@ bool Cluster_conn_manager::refresh(bool force) {
       MYSQL *mysql;
       const string &server_name = it->first;
       const AUTH_INFO &auth = it->second;
+      if (no_connect) {
+        conn_map[server_name] = NULL;
+        continue;
+      }
       if ((mysql =
                tc_conn_connect(auth.host, auth.port, auth.user, auth.passwd))) {
         conn_map[server_name] = mysql;
       } else {
-        /* TODO: add retrying */
         my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), auth.ipport_str.c_str());
         err = 1;
         break;
@@ -4071,6 +4083,94 @@ bool Cluster_conn_manager::refresh(bool force) {
   shard_count = server_conns[NODE_TYPE_REMOTE].size();
   initialized = true;
   DBUG_RETURN(false);
+}
+
+bool Cluster_conn_manager::connect(const std::string &server_name,
+                                   enum_node_type type, bool passive) {
+  int err;
+  char errmsg[128];
+  DBUG_ENTER("Cluster_conn_manager::connect");
+  DBUG_PRINT("info", ("connecting to server: %s", server_name.c_str()));
+
+  DBUG_ASSERT(initialized);
+  if (unlikely(!initialized))
+    DBUG_RETURN(TRUE);
+
+  if (!server_conns[type].count(server_name)) {
+    snprintf(errmsg, sizeof(errmsg), "cannot find server: %s",
+             server_name.c_str());
+    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
+    DBUG_RETURN(TRUE);
+  }
+
+  MYSQL *mysql = server_conns[type][server_name];
+  const AUTH_INFO &auth = server_auths[type][server_name];
+
+  if (mysql) {
+    if (!(err = ping(mysql))) /* existing connection is valid, do nothing */
+      DBUG_RETURN(FALSE);
+    else {
+      mysql_close(mysql);
+      server_conns[type][server_name] = mysql = NULL;
+    }
+  }
+  if (err) {
+    /*
+      Most likely an error occurred when pinging, maybe because the old
+      connection was killed. The old connection does not matter to us, so we
+      reset the error status and try creating a new connection.
+    */
+    THD *thd = current_thd;
+    thd->get_stmt_da()->reset_diagnostics_area();
+  }
+
+  if ((mysql = tc_conn_connect(auth.host, auth.port, auth.user, auth.passwd))) {
+    server_conns[type][server_name] = mysql;
+  } else if (passive) {
+    server_conns[type][server_name] = NULL;
+  } else {
+    my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), auth.ipport_str.c_str());
+    DBUG_RETURN(TRUE);
+  }
+
+  DBUG_RETURN(FALSE);
+}
+
+bool Cluster_conn_manager::connect(const std::string &server_name, bool passive) {
+  char errmsg[128];
+  DBUG_ENTER("Cluster_conn_manager::connect");
+
+  DBUG_ASSERT(initialized);
+  if (unlikely(!initialized))
+    DBUG_RETURN(TRUE);
+
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_END; ++i) {
+    if (server_conns[i].count(server_name))
+      DBUG_RETURN(connect(server_name, enum_node_type(i), passive));
+  }
+
+  /* failed to find the server */
+  snprintf(errmsg, sizeof(errmsg), "cannot find server: %s",
+           server_name.c_str());
+  my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
+  DBUG_RETURN(TRUE);
+}
+
+bool Cluster_conn_manager::connect(enum_node_type type, bool passive) {
+  DBUG_ENTER("Cluster_conn_manager::connect");
+
+  DBUG_ASSERT(initialized);
+  if (unlikely(!initialized))
+    DBUG_RETURN(TRUE);
+
+  map<string, AUTH_INFO>::const_iterator it;
+  for (it = server_auths[type].begin(); it != server_auths[type].end(); ++it) {
+    const string &server_name = it->first;
+    if (connect(server_name, type, passive))
+      DBUG_RETURN(TRUE);
+  }
+
+  DBUG_RETURN(FALSE);
 }
 
 bool Cluster_conn_manager::check_query_manager_validity(
@@ -4103,6 +4203,15 @@ bool Cluster_conn_manager::check_server_version() {
     return true;
   }
   return false;
+}
+
+int Cluster_conn_manager::ping(MYSQL *mysql) {
+  int res;
+  DBUG_ENTER("Cluster_conn_manager::ping");
+  res = simple_command(mysql, COM_PING, 0, 0, 0);
+  if (res == CR_SERVER_LOST && mysql->reconnect)
+    res = simple_command(mysql, COM_PING, 0, 0, 0);
+  DBUG_RETURN(res);
 }
 
 void free_cluster_conn_manager(THD *thd) {

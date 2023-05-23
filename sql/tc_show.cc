@@ -107,12 +107,15 @@ int tc_show_processlist(THD *thd, bool verbose, LEX_CSTRING from_server) {
   Protocol *protocol = thd->get_protocol();
   Cluster_conn_manager *conn_mgr;
   Query_exec_manager query_mgr(thd);
+  bool no_connect = target_server.length();
   DBUG_ENTER("tc_show_processlist");
 
   if (!thd->cluster_conn_manager) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
-  if (thd->cluster_conn_manager->refresh(FALSE))
+  if (thd->cluster_conn_manager->refresh(FALSE, no_connect))
+    DBUG_RETURN(1);
+  if (no_connect && thd->cluster_conn_manager->connect(target_server, FALSE))
     DBUG_RETURN(1);
   conn_mgr = thd->cluster_conn_manager;
   query_mgr.build_server_maps(thd->cluster_conn_manager);
@@ -221,13 +224,16 @@ int tc_show_variables(THD *thd, enum_var_type type, String *wild,
   Cluster_conn_manager *conn_mgr;
   Query_exec_manager query_mgr(thd);
   bool finished = FALSE;
+  bool no_connect = target_server.length();
 
   DBUG_ENTER("tc_show_variables");
 
   if (!thd->cluster_conn_manager) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
-  if (thd->cluster_conn_manager->refresh(FALSE))
+  if (thd->cluster_conn_manager->refresh(FALSE, no_connect))
+    DBUG_RETURN(1);
+  if (no_connect && thd->cluster_conn_manager->connect(target_server, FALSE))
     DBUG_RETURN(1);
   conn_mgr = thd->cluster_conn_manager;
   query_mgr.build_server_maps(thd->cluster_conn_manager);
@@ -336,7 +342,7 @@ int fill_schema_spider_autoinc(THD *thd, TABLE_LIST *tables, Item *cond) {
   if (!thd->cluster_conn_manager) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
-  if (thd->cluster_conn_manager->refresh(FALSE))
+  if (thd->cluster_conn_manager->refresh(FALSE, FALSE))
     DBUG_RETURN(1);
   conn_mgr = thd->cluster_conn_manager;
 
@@ -419,7 +425,7 @@ int fill_schema_cluster_processlist(THD *thd, TABLE_LIST *tables, Item *cond) {
   if (!thd->cluster_conn_manager) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
-  if (thd->cluster_conn_manager->refresh(FALSE))
+  if (thd->cluster_conn_manager->refresh(FALSE, FALSE))
     DBUG_RETURN(1);
   conn_mgr = thd->cluster_conn_manager;
 
