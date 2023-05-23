@@ -1637,6 +1637,8 @@ private:
     The query associated with this statement.
   */
   LEX_CSTRING m_query_string;
+  /* query with C-style comments removed */
+  LEX_CSTRING m_processed_query_string;
   String m_normalized_query;
 
   /**
@@ -4578,6 +4580,10 @@ public:
     return m_query_string;
   }
 
+  const LEX_CSTRING &processed_query() const {
+    return m_processed_query_string;
+  }
+
   /**
     The current query in normalized form. The format is intended to be
     identical to the digest text of performance_schema, but not limited in
@@ -4605,6 +4611,12 @@ public:
   {
     LEX_CSTRING tmp= { query_arg, query_length_arg };
     set_query(tmp);
+  }
+  void set_processed_query(const char *query_arg, size_t query_length_arg)
+  {
+    mysql_mutex_lock(&LOCK_thd_query);
+    m_processed_query_string = (LEX_CSTRING){ query_arg, query_length_arg };
+    mysql_mutex_unlock(&LOCK_thd_query);
   }
   void set_query(const LEX_CSTRING& query_arg);
   void reset_query() { set_query(LEX_CSTRING()); }

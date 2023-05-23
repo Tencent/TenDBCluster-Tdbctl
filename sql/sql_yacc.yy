@@ -5379,6 +5379,8 @@ partitioning:
           {
             LEX *lex= Lex;
             lex->part_info= new partition_info();
+            lex->partition_start_pos = YYTHD->m_parser_state->m_lip.get_cpp_ptr() -
+              YYTHD->m_parser_state->m_lip.get_cpp_buf() - sizeof("PARTITION") + 1;
             if (!lex->part_info)
             {
               mem_alloc_error(sizeof(partition_info));
