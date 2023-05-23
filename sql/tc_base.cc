@@ -2000,7 +2000,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
        if (thd->db().str)
         tc_parse_result_t->db_name = thd->db().str;
       else
-        tc_parse_result_t->db_name = lex->sphead->m_db.str;
+        tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + thd->query().str;
       tc_parse_result_t->execute_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
       break;
@@ -2360,7 +2360,13 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         break;
       tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
-
+    case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
+      tc_parse_result_t->execute_flag |= TC_DESIGNATED_NODE_NEED_EXECUTE;
+      tc_parse_result_t->result_set_flag |= RETURN_RESULT_SET_FROM_ONE_NODE;
+      break;
     default:
       my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
       command_support = false;
@@ -2381,6 +2387,12 @@ int tc_store_mysql_result_into_protocol(THD *thd, MYSQL_RES *res)
   List<Item> field_list;
   Protocol *protocol= thd->get_protocol();
   MYSQL_ROW row;
+
+  if (!res)
+  {
+    my_ok(thd);
+    DBUG_RETURN(0);
+  }
 
   uint field_num = mysql_num_fields(res);
   for (uint i = 0; i < field_num; i++)
@@ -2558,28 +2570,15 @@ Item* tc_make_item(MYSQL_FIELD* field)
 
 void tc_clean_exec_result(TC_EXEC_RESULT* exec_result)
 {
-  for (map<string, tc_exec_info>::iterator iter = exec_result->spider_result_info.begin(); iter != exec_result->spider_result_info.end(); iter++)
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_COUNT_EXCLUDE_TDBCTL; i++)
   {
-    tc_exec_info &exec_info = iter->second;
-    if (!exec_info.res)
+    for (map<std::string, tc_exec_info>::iterator iter = exec_result->result_info[i].begin(); iter != exec_result->result_info[i].end(); iter++)
     {
-      mysql_free_result(exec_info.res);
-    }
-  }
-  for (map<string, tc_exec_info>::iterator iter = exec_result->spider_slave_result_info.begin(); iter != exec_result->spider_slave_result_info.end(); iter++)
-  {
-    tc_exec_info &exec_info = iter->second;
-    if (!exec_info.res)
-    {
-      mysql_free_result(exec_info.res);
-    }
-  }
-  for (map<string, tc_exec_info>::iterator iter = exec_result->remote_result_info.begin(); iter != exec_result->remote_result_info.end(); iter++)
-  {
-    tc_exec_info &exec_info = iter->second;
-    if (!exec_info.res)
-    {
-      mysql_free_result(exec_info.res);
+      const tc_exec_info &exec_info = iter->second;
+      if (!exec_info.res)
+      {
+        mysql_free_result(exec_info.res);
+      }
     }
   }
   DBUG_VOID_RETURN;
@@ -4382,15 +4381,19 @@ int Query_exec_manager::get_results(tc_execute_result *res) const {
   std::map<string, tc_exec_info>::const_iterator it;
   for (it = exec_results[NODE_TYPE_SPIDER].begin();
        it != exec_results[NODE_TYPE_SPIDER].end(); ++it) {
-    res->spider_result_info.insert(std::make_pair(it->first, it->second));
+    res->result_info[NODE_TYPE_SPIDER].insert(std::make_pair(it->first, it->second));
   }
   for (it = exec_results[NODE_TYPE_SPIDER_SLAVE].begin();
        it != exec_results[NODE_TYPE_SPIDER_SLAVE].end(); ++it) {
-    res->spider_slave_result_info.insert(std::make_pair(it->first, it->second));
+    res->result_info[NODE_TYPE_SPIDER_SLAVE].insert(std::make_pair(it->first, it->second));
   }
   for (it = exec_results[NODE_TYPE_REMOTE].begin();
        it != exec_results[NODE_TYPE_REMOTE].end(); ++it) {
-    res->remote_result_info.insert(std::make_pair(it->first, it->second));
+    res->result_info[NODE_TYPE_REMOTE].insert(std::make_pair(it->first, it->second));
+  }
+  for (it = exec_results[NODE_TYPE_REMOTE_SLAVE].begin();
+       it != exec_results[NODE_TYPE_REMOTE_SLAVE].end(); ++it) {
+    res->result_info[NODE_TYPE_REMOTE_SLAVE].insert(std::make_pair(it->first, it->second));
   }
   return 0;
 }
@@ -4640,6 +4643,32 @@ int Cluster_conn_manager::ping(MYSQL *mysql) {
 void free_cluster_conn_manager(THD *thd) {
   delete thd->cluster_conn_manager;
 }
+
+bool check_tc_command(bool tc_admin, LEX *lex)
+{
+  bool allowed = true;
+  switch (lex->sql_command)
+  {
+    case TC_SQLCOM_CREATE_NODE:
+    case TC_SQLCOM_ALTER_NODE:
+    case TC_SQLCOM_DROP_NODE:
+    case TC_SQLCOM_FLUSH_ROUTING:
+    case TC_SQLCOM_MONITOR_INIT:
+    case TC_SQLCOM_SHOW_PROCESSLIST:
+    case TC_SQLCOM_SHOW_VARIABLES:
+    case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
+      if(!tc_admin)
+      {
+        allowed = false;
+        my_error(ER_TCADMIN_COMMAND_DISABLED, MYF(0));
+      }
+      break;
+    default:
+      break;
+  }
+  return allowed;
+}
+
 
 enum_sql_command tc_unsupport_types[] = { SQLCOM_SHOW_EVENTS, SQLCOM_SHOW_STATUS, SQLCOM_SHOW_STATUS_PROC, SQLCOM_SHOW_STATUS_FUNC,
   SQLCOM_SHOW_DATABASES, SQLCOM_SHOW_TABLES, SQLCOM_SHOW_TRIGGERS, SQLCOM_SHOW_TABLE_STATUS, SQLCOM_SHOW_OPEN_TABLES, SQLCOM_SHOW_PLUGINS,

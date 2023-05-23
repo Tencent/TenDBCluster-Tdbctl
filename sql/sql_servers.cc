@@ -1256,6 +1256,22 @@ std::string get_new_server_name_by_number(
   return server_name.str();
 }
 
+int get_node_type_by_wrapper(
+  const char* wrapper_name
+)
+{
+  int node_type;
+  if (strcasecmp(wrapper_name, SPIDER_WRAPPER) == 0)
+    return node_type = NODE_TYPE_SPIDER;
+  else if (strcasecmp(wrapper_name, SPIDER_SLAVE_WRAPPER) == 0)
+    return node_type = NODE_TYPE_SPIDER_SLAVE;
+  else if (strcasecmp(wrapper_name, MYSQL_WRAPPER) == 0)
+    return node_type = NODE_TYPE_REMOTE;
+  else if (strcasecmp(wrapper_name, MYSQL_SLAVE_WRAPPER) == 0)
+    return node_type = NODE_TYPE_REMOTE_SLAVE;
+  return -1;
+}
+
 const char *get_wrapper_prefix_by_wrapper(
     const char *wrapper_name
 )

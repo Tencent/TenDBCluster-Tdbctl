@@ -566,6 +566,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 %token  CONCURRENT
 %token  CONDITION_SYM                 /* SQL-2003-R, SQL-2008-R */
 %token  CONNECTION_SYM
+%token  CONNECT_SYM
 %token  CONSISTENT_SYM
 %token  CONSTRAINT                    /* SQL-2003-R */
 %token  CONSTRAINT_CATALOG_SYM        /* SQL-2003-N */
@@ -2338,6 +2339,12 @@ tdbctl:
       | TDBCTL_SYM SHOW opt_var_type VARIABLES opt_show opt_server
         {
           Lex->sql_command = TC_SQLCOM_SHOW_VARIABLES;
+        }
+      | TDBCTL_SYM CONNECT_SYM NODE_SYM TEXT_STRING_sys EXECUTE_SYM TEXT_STRING_sys
+        {
+          Lex->sql_command = TC_SQLCOM_CONN_NODE_EXECUTE_SQL;
+          Lex->sql_statement = $6;
+          Lex->server_options.m_server_name = $4;
         }
         ;
 

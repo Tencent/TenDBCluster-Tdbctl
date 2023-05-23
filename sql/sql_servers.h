@@ -66,6 +66,10 @@ std::string get_new_server_name_by_number(
   const long number
 );
 
+int get_node_type_by_wrapper(
+  const char* wrapper_name
+);
+
 const char *get_wrapper_prefix_by_wrapper(
 	const char *wrapper_name
 );

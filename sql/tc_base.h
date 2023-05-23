@@ -68,6 +68,8 @@ enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 #define TC_SPIDER_EXECUTE_FIRST 8
 //only one spider node execute sql
 #define TC_ONLY_ONE_SPIDER_NEED_EXECUTE 16
+//the designated node need execute sql
+#define TC_DESIGNATED_NODE_NEED_EXECUTE 32
 
 #define RETURN_RESULT_SET_FROM_ONE_NODE 1
 #define RETURN_RESULT_SET_FROM_MULTI_NODES 2
@@ -76,13 +78,15 @@ enum enum_node_type {
   NODE_TYPE_SPIDER = 0, /* this should ALWAYS be the first */
   NODE_TYPE_SPIDER_SLAVE = 1,
   NODE_TYPE_REMOTE = 2,
-  NODE_TYPE_CTL = 3,
-  NODE_TYPE_END = 4, /* this should ALWAYS be the last */
+  NODE_TYPE_REMOTE_SLAVE = 3,
+  NODE_TYPE_CTL = 4, /* this should ALWAYS be the second to last */
+  NODE_TYPE_END = 5, /* this should ALWAYS be the last */
 };
 
 #define ENUM_NODE_TYPE_BEGIN NODE_TYPE_SPIDER
 #define ENUM_NODE_TYPE_END NODE_TYPE_END
 #define ENUM_NODE_TYPE_COUNT int(NODE_TYPE_END)
+#define ENUM_NODE_TYPE_COUNT_EXCLUDE_TDBCTL int(NODE_TYPE_END) - 1
 
 #define TC_STR_MOD " % "
 #define TC_STR_COMMA ", "
@@ -139,9 +143,7 @@ typedef struct tc_exec_info
 typedef struct tc_execute_result
 {
     bool result; // TURE, error happened; FALASE, SUCCEED
-    map<string, tc_exec_info> spider_result_info;
-    map<string, tc_exec_info> spider_slave_result_info;
-    map<string, tc_exec_info> remote_result_info;
+    map<string, tc_exec_info> result_info[ENUM_NODE_TYPE_COUNT_EXCLUDE_TDBCTL];
 } TC_EXEC_RESULT;
 
 typedef struct tc_parse_result
@@ -802,6 +804,16 @@ void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *ro
  * @param exec_result TC_EXEC_RESULT*
  */
 void tc_clean_exec_result(TC_EXEC_RESULT* exec_result);
+
+/**
+ * @brief tc_command is disabled when tc_admin == 0
+ * 
+ * @param tc_admin 
+ * @param lex 
+ * @retval true means tc_command is allowed to execute
+ * @retval false means tc_command is not allowed
+ */
+bool check_tc_command(bool tc_admin, LEX *lex);
 
 void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
                    MYSQL *mysql, enum_node_type node_type);

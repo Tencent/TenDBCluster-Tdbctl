@@ -782,6 +782,7 @@ void init_update_queries(void)
   sql_command_flags[TC_SQLCOM_CREATE_NODE]|=          CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[TC_SQLCOM_ALTER_NODE]|=           CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[TC_SQLCOM_DROP_NODE]|=            CF_ALLOW_PROTOCOL_PLUGIN;
+  sql_command_flags[TC_SQLCOM_CONN_NODE_EXECUTE_SQL]|= CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[SQLCOM_END]|=                     CF_ALLOW_PROTOCOL_PLUGIN;
   /*
   Mark statements that are disallowed if cluster is unavailable.
@@ -2978,6 +2979,12 @@ mysql_execute_command(THD *thd, bool first_level)
   //   my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0));
   //   goto finish;
   // }
+
+
+  if(!check_tc_command(tc_admin, lex))
+  {
+    goto error;
+  }
 
   // When enable tdbctl management mode, the sql_command from 
   // slave_sql_thread should skip tcadmin parsing.
@@ -5642,7 +5649,7 @@ mysql_execute_command(THD *thd, bool first_level)
   //if parse_result.execute_flag is set to TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE,
   // this means that tc_admin need to send query to spider or remote node
   if (!thd->is_error() && tc_admin == 1 && 
-    (parse_result.execute_flag & (TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE|TC_ONLY_ONE_SPIDER_NEED_EXECUTE)))
+    (parse_result.execute_flag & (TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE|TC_ONLY_ONE_SPIDER_NEED_EXECUTE|TC_DESIGNATED_NODE_NEED_EXECUTE)))
   {
     thd->get_stmt_da()->reset_diagnostics_area();
     /*
@@ -5672,6 +5679,24 @@ mysql_execute_command(THD *thd, bool first_level)
     }
     if (parse_result.execute_flag & TC_REMOTE_NEED_EXECUTE)
       query_exec_manager.store_exec_query(parse_result.remote_sql_map, NODE_TYPE_REMOTE);
+    if (parse_result.execute_flag & TC_DESIGNATED_NODE_NEED_EXECUTE)
+    {
+      FOREIGN_SERVER *server =
+            get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
+      if (!server)
+      {
+        my_error(ER_FOREIGN_SERVER_DOESNT_EXIST, MYF(0), lex->server_options.m_server_name.str);
+        goto error;
+      }
+      int node_type = get_node_type_by_wrapper(server->scheme);
+      if (node_type < 0)
+      {
+        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0),
+                 "The node type is unsupported.");
+        goto error;
+      }
+      query_exec_manager.store_exec_query(server->server_name, lex->sql_statement.str, (enum_node_type)node_type);
+    }
 
     if (thd->cluster_conn_manager->check_query_manager_validity(
       &query_exec_manager)) {

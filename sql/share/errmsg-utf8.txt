@@ -7896,6 +7896,9 @@ ER_TCADMIN_NO_REMOTE_DB_FOUND
 ER_TCADMIN_INTERNAL_ERROR
   eng "Internal error: %s"
 
+ER_TCADMIN_COMMAND_DISABLED
+  eng "execute TCADMIN COMMAND without enabling tdbctl management mode (TC_ADMIN==1)"
+
 #
 # End of MyRocks specific messages
 #

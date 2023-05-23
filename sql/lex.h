@@ -146,6 +146,7 @@ static const SYMBOL symbols[] = {
   { SYM("ENCRYPTION",               ENCRYPTION_SYM)},
   { SYM("CONCURRENT",               CONCURRENT)},
   { SYM("CONDITION",                CONDITION_SYM)},
+  { SYM("CONNECT",                  CONNECT_SYM)},
   { SYM("CONNECTION",               CONNECTION_SYM)},
   { SYM("CONSISTENT",               CONSISTENT_SYM)},
   { SYM("CONSTRAINT",               CONSTRAINT)},
