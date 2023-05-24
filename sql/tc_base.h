@@ -817,6 +817,18 @@ bool check_tc_command(bool tc_admin, LEX *lex);
 
 void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
                    MYSQL *mysql, enum_node_type node_type);
+
+/**
+ * @brief get query results from mysql connection.
+ *        query_mgr->store_result() only store the last query result from mysql connection.
+ * 
+ * @param query_mgr 
+ * @param server_name 
+ * @param mysql Mysql connection
+ * @param node_type 
+ */
+void tc_get_query_result(Query_exec_manager *query_mgr, const string &server_name,
+                         MYSQL *mysql, enum_node_type node_type);
 bool tc_exec_query_paral(Query_exec_manager *query_mgr,
                       const std::map<std::string, MYSQL *> &conns,
                       enum_node_type node_type);

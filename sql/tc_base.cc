@@ -1863,6 +1863,8 @@ bool tc_query_parse(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 {
   bool command_support = true;
+  /* The secondary_node_allowed indicates that whether the sql_cmd is allowed to execute
+     on the tdbctl secondary node */
   bool secondary_node_allowed = true;
 
   set_var_base *var;
@@ -1899,6 +1901,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_SHOW_CREATE_PROC:
     case SQLCOM_SHOW_CREATE_FUNC:
     case SQLCOM_SHOW_CREATE_TRIGGER:
+    case SQLCOM_SHOW_SLAVE_HOSTS:
     case SQLCOM_HELP:
     case SQLCOM_SELECT:
     case SQLCOM_PURGE:
@@ -1918,6 +1921,14 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_ROLLBACK_TO_SAVEPOINT:
     case SQLCOM_SAVEPOINT:
     case SQLCOM_ALTER_DB_UPGRADE:
+    case SQLCOM_CHANGE_MASTER:
+    case SQLCOM_SHOW_BINLOG_EVENTS:
+    case SQLCOM_SHOW_CREATE_EVENT:
+    case SQLCOM_SHOW_MASTER_STAT:
+    case SQLCOM_SHOW_RELAYLOG_EVENTS:
+    case SQLCOM_SHOW_SLAVE_STAT:
+    case SQLCOM_SLAVE_START:
+    case SQLCOM_SLAVE_STOP:
       tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     // These commands are not supported in tcadmin primary or secondary mode.
@@ -1957,6 +1968,11 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_CREATE_SERVER:
     case SQLCOM_ALTER_SERVER:
     case SQLCOM_DROP_SERVER:
+    case SQLCOM_SHOW_CLIENT_STATS:
+    case SQLCOM_SHOW_INDEX_STATS:
+    case SQLCOM_SHOW_TABLE_STATS:
+    case SQLCOM_SHOW_THREAD_STATS:
+    case SQLCOM_SHOW_USER_STATS:
       command_support = false;
       /*push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_UNSUPPORT_SQL_TYPE,
                    ER(ER_TCADMIN_UNSUPPORT_SQL_TYPE), get_stmt_type_str(lex->sql_command));*/
@@ -2046,6 +2062,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_LOCK_TABLES:
     case SQLCOM_CREATE_EVENT:
     case SQLCOM_ALTER_EVENT:
+    case SQLCOM_DROP_EVENT:
     case SQLCOM_CREATE_FUNCTION:                  // UDF function
     case SQLCOM_CREATE_PROCEDURE:
     case SQLCOM_CREATE_SPFUNCTION:
@@ -2083,6 +2100,8 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_RENAME_USER:
     case SQLCOM_REVOKE:
     case SQLCOM_GRANT:
+    case SQLCOM_DO:
+    case SQLCOM_REVOKE_ALL:
       secondary_node_allowed = false;
       if (!tdbctl_is_primary)
         break;
@@ -2592,6 +2611,39 @@ void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
   string query;
   tc_exec_info exec_info;
 
+  if ((err = query_mgr->get_real_query(server_name, query, node_type))) {
+    DBUG_ASSERT(0);
+    query = "";
+  }
+  exec_info.err_code = 0;
+  exec_info.err_msg = "";
+
+  // If we dont prepare sql statements for some instances(spider or remote node),
+  // we will skip querying to these instances.
+  if (query != string()) {
+    err = mysql_real_query(mysql, query.c_str(), query.length());
+    while (!err) {
+      err = tc_mysql_next_result(mysql);
+    }
+
+    if (err != -1) {
+      exec_info.err_code = mysql_errno(mysql);
+      exec_info.err_msg = mysql_error(mysql);
+    }
+  }
+  query_mgr->store_exec_info(server_name, exec_info, node_type);
+
+  DBUG_VOID_RETURN;
+}
+
+void tc_get_query_result(Query_exec_manager *query_mgr, const string &server_name,
+                   MYSQL *mysql, enum_node_type node_type) {
+  DBUG_ENTER("tc_get_query_result");
+  DBUG_PRINT("info", ("server_name: %s", server_name.c_str()));
+  int err = 0;
+  string query;
+  tc_exec_info exec_info;
+
   if ((err = query_mgr->get_real_query(server_name, query, node_type)))
   {
     DBUG_ASSERT(0);
@@ -2609,6 +2661,7 @@ void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
     exec_info.prepare_sql = true;
     exec_info.res = mysql_store_result(mysql);
 
+    // scan all query results from mysql, and store the last query result in to exec_info.res
     while (!err)
     {
       if (exec_info.res)
@@ -2638,7 +2691,7 @@ bool tc_exec_query_paral(Query_exec_manager *query_mgr,
   map<string, MYSQL *>::const_iterator it;
 
   for (i = 0, it = conns.begin(); it != conns.end(); ++it, ++i) {
-    thread t(tc_real_query, query_mgr, it->first, it->second, node_type);
+    thread t(tc_get_query_result, query_mgr, it->first, it->second, node_type);
     threads[i] = move(t);
   }
   for (i = 0; i < server_cnt; ++i) {

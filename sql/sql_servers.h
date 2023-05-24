@@ -74,6 +74,9 @@ const char *get_wrapper_prefix_by_wrapper(
 	const char *wrapper_name
 );
 
+void trim_server_name_slave_suffix(std::string &server_name);
+void trim_wrapper_name_slave_suffix(std::string &wrapper_name);
+
 ulong get_servers_count();
 ulong get_modify_server_version();
 ulong get_server_version_by_name(const char* server_name);

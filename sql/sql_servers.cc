@@ -1290,6 +1290,34 @@ const char *get_wrapper_prefix_by_wrapper(
     return wrapper_name;
 }
 
+//This is only used for mysql_slave node now
+void trim_server_name_slave_suffix(std::string &server_name)
+{
+  std::string subset = "_SLAVE";
+  size_t pos = server_name.find(subset);
+  if (pos != std::string::npos)
+    server_name.replace(pos, subset.size(), "");
+}
+
+//This is only used for mysql_slave node now
+void trim_wrapper_name_slave_suffix(std::string &wrapper_name)
+{
+  if (strcasecmp(wrapper_name.c_str(), SPIDER_SLAVE_WRAPPER) == 0)
+  {
+    std::string subset = "_SLAVE";
+    size_t pos = wrapper_name.find(subset);
+    if (pos != std::string::npos)
+      wrapper_name.replace(pos, subset.size(), "");
+  }
+  else if (strcasecmp(wrapper_name.c_str(), MYSQL_SLAVE_WRAPPER) == 0)
+  {
+    std::string subset = "_slave";
+    size_t pos = wrapper_name.find(subset);
+    if (pos != std::string::npos)
+      wrapper_name.replace(pos, subset.size(), "");
+  }
+}
+
 /*
   get server info from mysql.servers and generate SQL statement
 
@@ -1344,23 +1372,17 @@ static string dump_servers_to_sql(bool is_slave_routing)
       if (!is_slave_routing && (!strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) || !strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER)))
         continue;
       //sql_print_information("slave %d, server_name %s", is_slave_routing, server->server_name);
-      string replace_sql_cur = "(";
-      string server_name;
-      string wrapper_name;
+      std::string replace_sql_cur = "(";
+      std::string server_name;
+      std::string wrapper_name;
       if (!strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER))
       {
         // convert server_name: SPT_SLAVEn -> SPTn
         // convert wrapper: mysql_slave -> mysql
         server_name = server->server_name;
         wrapper_name = server->scheme;
-        string subset = "_SLAVE";
-        string subset1 = "_slave";
-        size_t pos = server_name.find(subset);
-        size_t pos1 = wrapper_name.find(subset1);
-        if (pos != std::string::npos)
-          server_name.replace(pos, subset.size(), "");
-        if (pos1 != std::string::npos)
-          wrapper_name.replace(pos1, subset1.size(), "");
+        trim_server_name_slave_suffix(server_name);
+        trim_wrapper_name_slave_suffix(wrapper_name);
       }
       else
       {

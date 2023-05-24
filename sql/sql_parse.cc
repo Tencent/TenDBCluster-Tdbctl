@@ -5533,16 +5533,17 @@ mysql_execute_command(THD *thd, bool first_level)
 
         //string server_name, add_address;
         list<FOREIGN_SERVER *> server_list;
-        char schema_path[FN_REFLEN + 1], grant_path[FN_REFLEN + 1];
+        char schema_path[FN_REFLEN + 1];
+        //char grant_path[FN_REFLEN + 1];
         char *p1 = my_stpnmov(schema_path, mysql_tmpdir, sizeof(schema_path));
-        char *p2 = my_stpnmov(grant_path, mysql_tmpdir, sizeof(grant_path));
+        //char *p2 = my_stpnmov(grant_path, mysql_tmpdir, sizeof(grant_path));
 
         my_snprintf(p1, sizeof(schema_path) - (p1 - schema_path), "/%s_%lu%lx_%lx_schema.sql",
                     tmp_file_prefix, current_thd->query_start(), current_pid,
                     thd->thread_id());
-        my_snprintf(p2, sizeof(grant_path) - (p2 - grant_path), "/%s_%lu%lx_%lx_grant.sql",
+        /*my_snprintf(p2, sizeof(grant_path) - (p2 - grant_path), "/%s_%lu%lx_%lx_grant.sql",
                     tmp_file_prefix, current_thd->query_start(), current_pid,
-                    thd->thread_id());
+                    thd->thread_id());*/
 
         /*
           get spider_list from mysql.servers, exclude slave spiders
@@ -5581,6 +5582,7 @@ mysql_execute_command(THD *thd, bool first_level)
           goto error;
         }
 
+        /*
         if (tc_dump_node_grant(
                 server_list.front()->host,
                 server_list.front()->port,
@@ -5593,7 +5595,7 @@ mysql_execute_command(THD *thd, bool first_level)
           my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
                    grant_path, server_list.front()->host, server_list.front()->port);
           goto error;
-        }
+        }*/
 
         if (tc_restore_to_node(lex->server_options.get_host(),
                                lex->server_options.get_port(),
@@ -5608,6 +5610,7 @@ mysql_execute_command(THD *thd, bool first_level)
           goto error;
         }
 
+        /*
         if (tc_restore_to_node(lex->server_options.get_host(),
                                lex->server_options.get_port(),
                                lex->server_options.get_username(),
@@ -5619,7 +5622,7 @@ mysql_execute_command(THD *thd, bool first_level)
           my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
                    grant_path, lex->server_options.get_host(), lex->server_options.get_port());
           goto error;
-        }
+        }*/
       }
 
       my_ok(thd);

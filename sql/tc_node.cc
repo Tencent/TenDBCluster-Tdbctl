@@ -36,7 +36,7 @@ int tc_dump_node_schema(
   dump_bin += "/bin/mysqldump";
 #endif
   dump_options = "--single-transaction --no-autocommit=FALSE  --skip-opt --create-options --routines "
-                "--quick --no-data --all-databases --add-not-exists";
+                "--quick --no-data --all-databases";
   dump_options += space + "-r" + file + space + "--log-error=" + file;
 	dump_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port) + space+ "-h" + host;
   if (tc_skip_dump_db_list)
@@ -170,7 +170,7 @@ int tc_restore_to_node(
   }
   std::string sql = "set @old_ddl_execute_by_ctl = @@ddl_execute_by_ctl";
   tc_exec_sql_with_result(conn, sql);
-  sql = "set global ddl_execute_by_ctl = off";
+  sql = "/*!50600 set global ddl_execute_by_ctl=0 */";
   tc_exec_sql_with_result(conn, sql);
 
   string space = " ";

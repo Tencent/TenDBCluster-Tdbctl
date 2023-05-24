@@ -90,7 +90,7 @@ public:
     ALLOCATED=    0x0800, // 2048
     INVISIBLE=    0x1000, // 4096
     TRI_LEVEL=    0x2000, // 8192 - default is neither GLOBAL nor SESSION
-    TDBCTL=       0x4000  // 16384
+    TDBCTL=       0x4000  // 16384 - This represents the var is only available in tdbctl
   };
   static const int PARSE_EARLY= 1;
   static const int PARSE_NORMAL= 2;

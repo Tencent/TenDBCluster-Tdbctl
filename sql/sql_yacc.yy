@@ -2340,7 +2340,7 @@ tdbctl:
         {
           Lex->sql_command = TC_SQLCOM_SHOW_VARIABLES;
         }
-      | TDBCTL_SYM CONNECT_SYM NODE_SYM TEXT_STRING_sys EXECUTE_SYM TEXT_STRING_sys
+      | TDBCTL_SYM CONNECT_SYM NODE_SYM ident_or_text EXECUTE_SYM TEXT_STRING_sys
         {
           Lex->sql_command = TC_SQLCOM_CONN_NODE_EXECUTE_SQL;
           Lex->sql_statement = $6;
