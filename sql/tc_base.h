@@ -152,6 +152,14 @@ typedef struct tc_parse_result
     tspider_shard_type shard_type;
 } TC_PARSE_RESULT;
 
+struct AUTH_INFO {
+  uint port;
+  std::string host;
+  std::string ipport_str;
+  std::string user;
+  std::string passwd;
+};
+
 class Query_exec_manager {
 public:
   friend class Cluster_conn_manager;
@@ -187,9 +195,13 @@ public:
    * @param[in] exec_info a struct containing exec results
    * @param[in] node_type node's type
    * */
-  void store_result(const std::string &server_name,
+  void store_exec_info(const std::string &server_name,
                    const tc_exec_info &exec_info,
                    enum_node_type node_type);
+
+  int get_exec_info(const std::string &server_name,
+                    tc_exec_info &exec_info,
+                    enum_node_type node_type);
 
   /**
    * @brief Store an exec query for a node identified by server_name
@@ -201,7 +213,6 @@ public:
    * @param[in] query exec query for the node
    * @param[in] node_type node's type
    * */
-  MY_ATTRIBUTE((unused))
   void store_exec_query(const std::string &server_name,
                         const std::string &query, enum_node_type node_type);
 
@@ -298,16 +309,58 @@ public:
   /**
    * @brief Read mysql.servers table and initialize auth info & conns
    *
+   * Unless no_connect is TRUE, this function would build connections to every
+   * server and report an error if either attempt fails.
+   *
    * @param force If false, refresh only when server_version is outdated
+   * @param no_connect If true, do not build connections to any servers
    *
    * @retval FALSE on success, TRUE on error
    * */
-  bool refresh(bool force);
+  bool refresh(bool force, bool no_connect);
+
+  /**
+   * @brief Connect to a server identified by server_name (w/ node_type)
+   *
+   * @param server_name Server's identifier
+   * @param type Node type of server
+   * @param passive If true, simply set conn=NULL when connection fails, instead
+   * of raising an error
+   *
+   * @retval TRUE on failure, FALSE on success
+   * */
+  bool connect(const std::string &server_name, enum_node_type type, bool passive);
+
+  /**
+   * @brief Connect to a server identified by server_name (w/o node_type)
+   *
+   * @param server_name Server's identifier
+   * @param passive If true, simply set conn=NULL when connection fails, instead
+   * of raising an error
+   *
+   * @retval TRUE on failure, FALSE on success
+   * */
+  bool connect(const std::string &server_name, bool passive);
+
+  /**
+   * @brief Connect to all nodes of a specific type
+   *
+   * @param type Node type
+   * @param passive If true, simply set conn=NULL when connection fails, instead
+   * of raising an error
+   *
+   * @retval TRUE on failure, FALSE on success
+   * */
+  bool connect(enum_node_type type, bool passive);
 
   /**
    * @brief Clear everything
    * */
   void clear();
+
+  inline const std::map<std::string, AUTH_INFO> &get_auth_map(enum_node_type type) {
+    return server_auths[type];
+  }
 
   inline const std::map<std::string, MYSQL *> &get_conn_map(enum_node_type type) {
     return server_conns[type];
@@ -331,13 +384,6 @@ public:
   bool check_query_manager_validity(Query_exec_manager *query_mgr);
 
 private:
-  struct AUTH_INFO {
-    uint port;
-    std::string host;
-    std::string ipport_str;
-    std::string user;
-    std::string passwd;
-  };
 
   bool initialized;
 
@@ -371,6 +417,8 @@ private:
    * @retval TRUE if current server_version is outdated, FALSE otherwise
    * */
   bool check_server_version();
+
+  int ping(MYSQL *mysql);
 };
 
 void tc_parse_result_init(TC_PARSE_RESULT *parse_result_t);

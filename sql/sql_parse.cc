@@ -2982,7 +2982,7 @@ mysql_execute_command(THD *thd, bool first_level)
       thd->cluster_conn_manager = new Cluster_conn_manager();
     }
 
-    if (thd->cluster_conn_manager->refresh(FALSE))
+    if (thd->cluster_conn_manager->refresh(FALSE, FALSE))
       goto error;
 
     query_exec_manager.build_server_maps(thd->cluster_conn_manager);
