@@ -7899,6 +7899,12 @@ ER_TCADMIN_INTERNAL_ERROR
 ER_TCADMIN_COMMAND_DISABLED
   eng "execute TCADMIN COMMAND without enabling tdbctl management mode (TC_ADMIN==1)"
 
+ER_TCADMIN_ENABLE_PRIMARY
+  eng "Failed to enable Primary Mode: %s"
+
+ER_TCADMIN_GET_PRIMARY
+  eng "Failed to get Primary: %s"
+
 #
 # End of MyRocks specific messages
 #

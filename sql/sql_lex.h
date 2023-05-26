@@ -3245,7 +3245,7 @@ public:
   enum enum_yes_no_unknown tx_chain, tx_release;
   bool safe_to_cache_query;
   bool subqueries;
-  my_bool is_tc_flush_force;
+  my_bool tc_force;
 	/* whether need do grants when flush routing, for tdbctl statement */
 	bool tc_do_grants;
 	/* whether need do dump/restore schema for new add spider node */

@@ -2346,6 +2346,18 @@ tdbctl:
           Lex->sql_statement = $6;
           Lex->server_options.m_server_name = $4;
         }
+      | TDBCTL_SYM ENABLE_SYM PRIMARY_SYM opt_force
+        {
+          Lex->sql_command = TC_SQLCOM_ENABLE_PRIMARY;
+        }
+      | TDBCTL_SYM DISABLE_SYM PRIMARY_SYM
+        {
+          Lex->sql_command = TC_SQLCOM_DISABLE_PRIMARY;
+        }
+      | TDBCTL_SYM GET_SYM PRIMARY_SYM
+        {
+          Lex->sql_command = TC_SQLCOM_GET_PRIMARY;
+        }
         ;
 
           
@@ -2372,10 +2384,10 @@ opt_with_schema:
          ;
 
 opt_force:
-         /* empty */ { Lex->is_tc_flush_force =  FALSE; }
+         /* empty */ { Lex->tc_force =  FALSE; }
         | FORCE_SYM
         {
-          Lex->is_tc_flush_force = TRUE;
+          Lex->tc_force = TRUE;
         }
         ;
 

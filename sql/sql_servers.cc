@@ -1873,7 +1873,7 @@ bool tc_flush_routing(LEX* lex)
 {
   int ret = 0;
   bool result = FALSE;
-	bool is_force = lex->is_tc_flush_force;
+	bool is_force = lex->tc_force;
   int retry_times = 3;
   map<string, MYSQL*> spider_conn_map;
   map<string, string> spider_user_map;

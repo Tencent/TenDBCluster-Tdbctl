@@ -35,6 +35,8 @@
 
 using namespace std;
 
+#define SQL_SELECT_SERVER_UUID_STR "SELECT @@server_uuid"
+
 static PSI_memory_key key_memory_bases;
 
 mutex remote_exec_mtx;
@@ -2377,6 +2379,14 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       secondary_node_allowed = false;
       if (!tdbctl_is_primary)
         break;
+    /*
+      fallthrough:
+      ENABLE/DISABLE/GET PRIMARY commands should be allowed to be executed on
+      secondary nodes.
+    */
+    case TC_SQLCOM_ENABLE_PRIMARY:
+    case TC_SQLCOM_DISABLE_PRIMARY:
+    case TC_SQLCOM_GET_PRIMARY:
       tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
@@ -4612,7 +4622,8 @@ bool Cluster_conn_manager::connect(const std::string &server_name,
       reset the error status and try creating a new connection.
     */
     THD *thd = current_thd;
-    thd->get_stmt_da()->reset_diagnostics_area();
+    if (thd)
+      thd->get_stmt_da()->reset_diagnostics_area();
   }
 
   if ((mysql = tc_conn_connect(auth.host, auth.port, auth.user, auth.passwd))) {
@@ -4662,6 +4673,49 @@ bool Cluster_conn_manager::connect(enum_node_type type, bool passive) {
   }
 
   DBUG_RETURN(FALSE);
+}
+
+bool Cluster_conn_manager::identify_self() {
+  DBUG_ENTER("Cluster_conn_manager::identify_self");
+
+  DBUG_ASSERT(initialized);
+  if (unlikely(!initialized))
+    DBUG_RETURN(TRUE);
+
+  bool found = FALSE;
+  const map<string, MYSQL *> &conns = server_conns[NODE_TYPE_CTL];
+  map<string, MYSQL *>::const_iterator conn_it;
+  for (conn_it = conns.begin(); conn_it != conns.end(); ++conn_it) {
+    MYSQL_ROW row;
+    MYSQL_RES *res;
+    const string &server_name = conn_it->first;
+    MYSQL *mysql = conn_it->second;
+    if (!mysql)
+      continue;
+    /* Get @@server_uuid from server */
+    if (mysql_real_query(mysql, SQL_SELECT_SERVER_UUID_STR,
+                         sizeof(SQL_SELECT_SERVER_UUID_STR) - 1)) {
+      sql_print_error(
+          "mysql_real_query() failed when getting server_uuid from %s",
+          server_name.c_str());
+      continue;
+    }
+    if (!(res = mysql_store_result(mysql))) {
+      sql_print_error(
+          "mysql_store_result() failed when getting server_uuid from %s",
+          server_name.c_str());
+      continue;
+    }
+    DBUG_ASSERT(mysql_num_rows(res) == 1);
+    row = mysql_fetch_row(res);
+    /* Check if it is the same as this server's */
+    if ((found = !strncasecmp(row[0], server_uuid_ptr, UUID_LENGTH))) {
+      my_server_name = server_name;
+      break;
+    }
+  }
+
+  DBUG_RETURN(!found);
 }
 
 bool Cluster_conn_manager::check_query_manager_validity(
@@ -4722,6 +4776,9 @@ bool check_tc_command(bool tc_admin, LEX *lex)
     case TC_SQLCOM_SHOW_PROCESSLIST:
     case TC_SQLCOM_SHOW_VARIABLES:
     case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
+    case TC_SQLCOM_ENABLE_PRIMARY:
+    case TC_SQLCOM_DISABLE_PRIMARY:
+    case TC_SQLCOM_GET_PRIMARY:
       if(!tc_admin)
       {
         allowed = false;
