@@ -2427,7 +2427,7 @@ int tc_store_mysql_result_into_protocol(THD *thd, MYSQL_RES *res)
     protocol->start_row();
     for (uint idx = 0; idx < field_num; ++idx)
     {
-      protocol_store_field(protocol, res->fields[idx], row[idx]);
+      protocol_store_field(protocol, res->fields[idx], row[idx], mysql_fetch_lengths(res)[idx]);
     }
     if(protocol->end_row())
       break;
@@ -2437,7 +2437,7 @@ int tc_store_mysql_result_into_protocol(THD *thd, MYSQL_RES *res)
   DBUG_RETURN(0);
 }
 
-void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row)
+void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row, ulong length)
 {
 	DBUG_ENTER("protocol_store_field");
 	if (row == NULL) {
@@ -2462,7 +2462,7 @@ void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *ro
   case MYSQL_TYPE_NEWDECIMAL:
   case MYSQL_TYPE_JSON:
   {
-    protocol->store(row, strlen(row), get_charset(field.charsetnr, MYF(MY_WME)));
+    protocol->store(row, length, get_charset(field.charsetnr, MYF(MY_WME)));
     break;
   }
   case MYSQL_TYPE_TINY:
@@ -2490,26 +2490,26 @@ void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *ro
   case MYSQL_TYPE_FLOAT:
   {
     //protocol->store((float)atof(row), field.length%10, buffer);
-    protocol->store(row, strlen(row), get_charset(field.charsetnr, MYF(MY_WME)));
+    protocol->store(row, length, get_charset(field.charsetnr, MYF(MY_WME)));
     break;
   }
   case MYSQL_TYPE_DOUBLE:
   {
     //protocol->store(atof(row), field.length%10, buffer);
-    protocol->store(row, strlen(row), get_charset(field.charsetnr, MYF(MY_WME)));
+    protocol->store(row, length, get_charset(field.charsetnr, MYF(MY_WME)));
     break;
   }
   case MYSQL_TYPE_DATETIME:
   case MYSQL_TYPE_DATE:
   case MYSQL_TYPE_TIMESTAMP:
   {
-    protocol->store(row, strlen(row), get_charset(field.charsetnr, MYF(MY_WME)));
+    protocol->store(row, length, get_charset(field.charsetnr, MYF(MY_WME)));
     break;
   }
   case MYSQL_TYPE_TIME:
   {
     //protocol->store_time(&tm, decimals);
-    protocol->store(row, strlen(row), get_charset(field.charsetnr, MYF(MY_WME)));
+    protocol->store(row, length, get_charset(field.charsetnr, MYF(MY_WME)));
     break;
   }
 	default:
@@ -2593,8 +2593,8 @@ void tc_clean_exec_result(TC_EXEC_RESULT* exec_result)
   {
     for (map<std::string, tc_exec_info>::iterator iter = exec_result->result_info[i].begin(); iter != exec_result->result_info[i].end(); iter++)
     {
-      const tc_exec_info &exec_info = iter->second;
-      if (!exec_info.res)
+      tc_exec_info &exec_info = iter->second;
+      if (exec_info.res)
       {
         mysql_free_result(exec_info.res);
       }
@@ -2700,24 +2700,34 @@ bool tc_exec_query_paral(Query_exec_manager *query_mgr,
   return query_mgr->get_error();
 }
 
-bool tc_ddl_run(THD *thd, Cluster_conn_manager *conn_mgr,
+bool tc_run_command(THD *thd, Cluster_conn_manager *conn_mgr,
                 Query_exec_manager *query_mgr) {
   bool force = thd->variables.tc_force_execute;
   int exec_flag = query_mgr->get_exec_flag();
 
+  //tc_exec_query_paral() will skip sending sql to the node if no sql statement was prepared for the node
   if (exec_flag & TC_SPIDER_EXECUTE_FIRST)
   {
     if ((!tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
-         NODE_TYPE_SPIDER) && 
+                              NODE_TYPE_SPIDER) &&
          !tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_SPIDER_SLAVE),
-         NODE_TYPE_SPIDER_SLAVE))
-        || force) {
+                              NODE_TYPE_SPIDER_SLAVE)) ||
+        force)
+    {
       return tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
-                                 NODE_TYPE_REMOTE);
+                                 NODE_TYPE_REMOTE) ||
+             tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_REMOTE_SLAVE),
+                                 NODE_TYPE_REMOTE_SLAVE);
     }
-  } else {
-    if (!tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
-                             NODE_TYPE_REMOTE) || force) {
+  }
+  else
+  {
+    if ((!tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
+                              NODE_TYPE_REMOTE) &&
+         tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_REMOTE_SLAVE),
+                             NODE_TYPE_REMOTE_SLAVE)) ||
+        force)
+    {
       return tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
                                  NODE_TYPE_SPIDER) ||
              tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_SPIDER_SLAVE),
@@ -4290,6 +4300,8 @@ const char *get_wrapper_name_by_node_type(enum_node_type type) {
     return SPIDER_SLAVE_WRAPPER;
   case NODE_TYPE_REMOTE:
     return MYSQL_WRAPPER;
+  case NODE_TYPE_REMOTE_SLAVE:
+    return MYSQL_SLAVE_WRAPPER;
   case NODE_TYPE_CTL:
     return TDBCTL_WRAPPER;
   default: /* should be unreachable */

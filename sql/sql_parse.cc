@@ -5708,7 +5708,7 @@ mysql_execute_command(THD *thd, bool first_level)
         "connections");
       goto error;
     }
-    tc_ddl_run(thd, thd->cluster_conn_manager, &query_exec_manager);
+    tc_run_command(thd, thd->cluster_conn_manager, &query_exec_manager);
     query_exec_manager.get_results(&exec_result);
     res = tc_process_all_result(thd, &exec_result, parse_result.result_set_flag);
     goto finish;

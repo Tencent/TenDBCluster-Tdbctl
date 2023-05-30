@@ -155,7 +155,7 @@ int tc_show_processlist(THD *thd, bool verbose, LEX_CSTRING from_server) {
                         system_charset_info);
         for (uint idx = 0; idx < mysql_num_fields(res); ++idx) {
           fld = &res->fields[idx];
-          protocol_store_field(protocol, *fld, row[idx]);
+          protocol_store_field(protocol, *fld, row[idx], mysql_fetch_lengths(res)[idx]);
         }
         if (protocol->end_row()) {
           finished = TRUE;

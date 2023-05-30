@@ -795,8 +795,9 @@ Item* tc_make_item(MYSQL_FIELD *field);
  * @param protocol Protocol
  * @param field  MYSQL_FIELD
  * @param row 
+ * @param length the length of the row
  */
-void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row);
+void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row, ulong length);
 
 /**
  * @brief clean MYSQL_RESULT* of exec_result.result_info
@@ -832,7 +833,18 @@ void tc_get_query_result(Query_exec_manager *query_mgr, const string &server_nam
 bool tc_exec_query_paral(Query_exec_manager *query_mgr,
                       const std::map<std::string, MYSQL *> &conns,
                       enum_node_type node_type);
-bool tc_ddl_run(THD *thd, Cluster_conn_manager *conn_mgr,
+
+/**
+ * @brief execute the prepared sql statements on [SPIDER|SPIDER_SLAVE|REMOTE|REMOTE_SLAVE] nodes,
+ *        according to the exec_flag(query_mgr->get_exec_flag()). 
+ * 
+ * @param thd 
+ * @param conn_mgr 
+ * @param query_mgr 
+ * @retval true  
+ * @retval false 
+ */
+bool tc_run_command(THD *thd, Cluster_conn_manager *conn_mgr,
                 Query_exec_manager *query_mgr);
 const char *get_wrapper_name_by_node_type(enum_node_type type);
 

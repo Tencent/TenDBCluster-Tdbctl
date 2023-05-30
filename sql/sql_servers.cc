@@ -1269,6 +1269,8 @@ int get_node_type_by_wrapper(
     return node_type = NODE_TYPE_REMOTE;
   else if (strcasecmp(wrapper_name, MYSQL_SLAVE_WRAPPER) == 0)
     return node_type = NODE_TYPE_REMOTE_SLAVE;
+  else if (strcasecmp(wrapper_name, TDBCTL_WRAPPER) == 0)
+    return node_type = NODE_TYPE_CTL;
   return -1;
 }
 
