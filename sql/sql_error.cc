@@ -1128,7 +1128,7 @@ bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESU
   if (exec_result->result)
   {/* error happened */
     map<string, tc_exec_info>::iterator its;
-    for (its = exec_result->spider_result_info.begin(); its != exec_result->spider_result_info.end(); its++)
+    for (its = exec_result->result_info[NODE_TYPE_SPIDER].begin(); its != exec_result->result_info[NODE_TYPE_SPIDER].end(); its++)
     {
       string ipport = its->first;
       tc_exec_info exec_info = its->second;
@@ -1150,7 +1150,7 @@ bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESU
   if (exec_result->result)
   {/* error happened */
     map<string, tc_exec_info>::iterator its;
-    for (its = exec_result->remote_result_info.begin(); its != exec_result->remote_result_info.end(); its++)
+    for (its = exec_result->result_info[NODE_TYPE_REMOTE].begin(); its != exec_result->result_info[NODE_TYPE_REMOTE].end(); its++)
     {
       string ipport = its->first;
       tc_exec_info exec_info = its->second;
@@ -1172,14 +1172,36 @@ bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESU
   DBUG_RETURN(FALSE);
 }
 
+bool tc_return_one_valid_result(THD* thd, TC_EXEC_RESULT* exec_result)
+{
+  bool result = false;
+  // scan spider_result_info
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_COUNT_EXCLUDE_TDBCTL; i++)
+  {
+    if (result)
+      break;
+    for (map<std::string, tc_exec_info>::iterator iter = exec_result->result_info[i].begin(); iter != exec_result->result_info[i].end(); iter++)
+    {
+      const tc_exec_info &exec_info = iter->second;
+      if (exec_info.prepare_sql)
+      {
+        // return the newly constructed result set or query ok to client
+        result = !tc_store_mysql_result_into_protocol(thd, exec_info.res);
+        break;
+      }
+    }
+  }
+  
+  return result;
+}
 
-bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result)
+bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, int result_set_flag)
 {
   if (exec_result->result)
   {/* error happened */
     string err_msg = "\n";
 
-    for (map<string, tc_exec_info>::iterator iter = exec_result->spider_result_info.begin(); iter != exec_result->spider_result_info.end(); iter++)
+    for (map<string, tc_exec_info>::iterator iter = exec_result->result_info[NODE_TYPE_SPIDER].begin(); iter != exec_result->result_info[NODE_TYPE_SPIDER].end(); iter++)
     {
       const string &server_name = iter->first;
       const tc_exec_info &exec_info = iter->second;
@@ -1191,7 +1213,19 @@ bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result)
       }
     }
 
-    for (map<string, tc_exec_info>::iterator iter = exec_result->remote_result_info.begin(); iter != exec_result->remote_result_info.end(); iter++) {
+    for (map<string, tc_exec_info>::iterator iter = exec_result->result_info[NODE_TYPE_SPIDER_SLAVE].begin(); iter != exec_result->result_info[NODE_TYPE_SPIDER_SLAVE].end(); iter++)
+    {
+      const string &server_name = iter->first;
+      const tc_exec_info &exec_info = iter->second;
+      if (exec_info.err_code)
+      {
+        err_msg += "Spider_SLAVE@" + server_name + ": (Error ";
+        err_msg += std::to_string(exec_info.err_code);
+        err_msg +=  ": " + exec_info.err_msg + ")\n";
+      }
+    }
+
+    for (map<string, tc_exec_info>::iterator iter = exec_result->result_info[NODE_TYPE_REMOTE].begin(); iter != exec_result->result_info[NODE_TYPE_REMOTE].end(); iter++) {
       const string &name = iter->first;
       const tc_exec_info &exec_info = iter->second;
       if (exec_info.err_code) {
@@ -1210,6 +1244,26 @@ bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result)
     my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), err_msg.c_str());
     return TRUE;
   }
+
+  // create a new result set according to the result set from other node
+  if (result_set_flag & RETURN_RESULT_SET_FROM_ONE_NODE)
+  {
+    bool return_result = tc_return_one_valid_result(thd, exec_result);
+
+    if (!return_result)
+    {
+      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "failed to create the [result set] or [query ok] according to MYSQL_RES from other node");
+      return TRUE;
+    }
+    else
+      return FALSE;
+  }
+  else if (result_set_flag & RETURN_RESULT_SET_FROM_MULTI_NODES)
+  {
+    //to do
+  }
+  tc_clean_exec_result(exec_result);
+
   my_ok(thd);
   return FALSE;
 }

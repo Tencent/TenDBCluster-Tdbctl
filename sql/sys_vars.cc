@@ -6323,43 +6323,43 @@ static Sys_var_charptr Sys_disabled_storage_engines(
 static Sys_var_mybool Sys_tc_admin(
        "tc_admin",
        "If set to TRUE, as config center to process query",
-       SESSION_VAR(tc_admin), CMD_LINE(OPT_ARG),
+       TDBCTL SESSION_VAR(tc_admin), CMD_LINE(OPT_ARG),
        DEFAULT(FALSE));
 
 static Sys_var_mybool Sys_tc_force_execute(
        "tc_force_execute",
        "If set to TRUE, go on running spider query if remote failed",
-       SESSION_VAR(tc_force_execute), CMD_LINE(OPT_ARG),
+       TDBCTL SESSION_VAR(tc_force_execute), CMD_LINE(OPT_ARG),
        DEFAULT(TRUE));
 
 static Sys_var_mybool Sys_tc_check_repair_routing(
        "tc_check_repair_routing",
        "If set to TRUE, check and repair routing between tdbctl and spiders",
-       GLOBAL_VAR(tc_check_repair_routing), CMD_LINE(OPT_ARG),
+       TDBCTL GLOBAL_VAR(tc_check_repair_routing), CMD_LINE(OPT_ARG),
        DEFAULT(FALSE));
 
 static Sys_var_mybool Sys_tc_check_availability(
 	"tc_check_availability",
 	"If set to TRUE, check the availability of the cluster, and record in system table",
-	GLOBAL_VAR(tc_check_availability), CMD_LINE(OPT_ARG),
+	TDBCTL GLOBAL_VAR(tc_check_availability), CMD_LINE(OPT_ARG),
 	DEFAULT(FALSE));
 
 static Sys_var_ulong Sys_tc_check_repair_routing_interval(
       "tc_check_repair_routing_interval",
       "The interval time of checking and repairing routing between tdbctl and spiders",
-      GLOBAL_VAR(tc_check_repair_routing_interval), CMD_LINE(REQUIRED_ARG),
+      TDBCTL GLOBAL_VAR(tc_check_repair_routing_interval), CMD_LINE(REQUIRED_ARG),
       VALID_RANGE(8, 65535), DEFAULT(300), BLOCK_SIZE(1));
 
 static Sys_var_ulong Sys_tc_check_availability_interval(
 	"tc_check_availability_interval",
 	"The interval time of  check the availability of the cluster",
-	GLOBAL_VAR(tc_check_availability_interval), CMD_LINE(REQUIRED_ARG),
+	TDBCTL GLOBAL_VAR(tc_check_availability_interval), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(3, 65535), DEFAULT(10), BLOCK_SIZE(1));
 
 static Sys_var_mybool Sys_tc_check_repair_trans(
   "tc_check_repair_trans",
   "If set to TRUE, check and repair  prepared transaction of remote data node",
-  GLOBAL_VAR(tc_check_repair_trans), CMD_LINE(OPT_ARG),
+  TDBCTL GLOBAL_VAR(tc_check_repair_trans), CMD_LINE(OPT_ARG),
   DEFAULT(FALSE));
 
 static Sys_var_ulong Sys_tc_max_prepared_time(
@@ -6367,93 +6367,103 @@ static Sys_var_ulong Sys_tc_max_prepared_time(
   "The max transaction prepared time of remote data node," 
   "if this transaction prepared time is exceeded,"  
   "background thread processing is required",
-  GLOBAL_VAR(tc_max_prepared_time), CMD_LINE(REQUIRED_ARG),
+  TDBCTL GLOBAL_VAR(tc_max_prepared_time), CMD_LINE(REQUIRED_ARG),
   VALID_RANGE(8, 604800), DEFAULT(60), BLOCK_SIZE(1));
 
 static Sys_var_charptr Sys_tc_spider_wrapper_prefix(
   "tc_spider_wrapper_prefix", "prefix of server name for SPIDER wrapper",
-  READ_ONLY GLOBAL_VAR(tdbctl_spider_wrapper_prefix),
+  TDBCTL READ_ONLY GLOBAL_VAR(tdbctl_spider_wrapper_prefix),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPIDER"));
+
+static Sys_var_charptr Sys_tc_spider_slave_wrapper_prefix(
+  "tc_spider_slave_wrapper_prefix", "prefix of server name for SPIDER_SLAVE wrapper",
+  TDBCTL READ_ONLY GLOBAL_VAR(tdbctl_spider_slave_wrapper_prefix),
+  CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPIDER_SLAVE"));
 
 static Sys_var_charptr Sys_tc_mysql_wrapper_prefix(
   "tc_mysql_wrapper_prefix", "prefix of server name for MYSQL wrapper",
-  READ_ONLY GLOBAL_VAR(tdbctl_mysql_wrapper_prefix),
+  TDBCTL READ_ONLY GLOBAL_VAR(tdbctl_mysql_wrapper_prefix),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPT"));
+
+static Sys_var_charptr Sys_tc_mysql_slvae_wrapper_prefix(
+  "tc_mysql_slave_wrapper_prefix", "prefix of server name for MYSQL_SlAVE wrapper",
+  TDBCTL READ_ONLY GLOBAL_VAR(tdbctl_mysql_slave_wrapper_prefix),
+  CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("SPT_SLAVE"));
 
 static Sys_var_charptr Sys_tc_control_wrapper_prefix(
   "tc_control_wrapper_prefix", "prefix of server name for TDBCTL wrapper",
-  READ_ONLY GLOBAL_VAR(tdbctl_control_wrapper_prefix),
+  TDBCTL READ_ONLY GLOBAL_VAR(tdbctl_control_wrapper_prefix),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT("TDBCTL"));
 
 static Sys_var_mybool Sys_tc_set_changed_node_read_only(
   "tc_set_changed_node_read_only",
   "If set to TRUE, set the old data node read only when switch error (partly failed to modify routing) ",
-  GLOBAL_VAR(tc_set_changed_node_read_only), CMD_LINE(OPT_ARG),
+  TDBCTL GLOBAL_VAR(tc_set_changed_node_read_only), CMD_LINE(OPT_ARG),
   DEFAULT(FALSE));
 
 static Sys_var_mybool Sys_tc_enable_internal_dump(
   "tc_enable_internal_dump",
   "If ON, when a new spider node added to cluster, an internal dump will active for schema restore",
-  GLOBAL_VAR(tc_enable_internal_dump), CMD_LINE(OPT_ARG),
+  TDBCTL GLOBAL_VAR(tc_enable_internal_dump), CMD_LINE(OPT_ARG),
   DEFAULT(TRUE));
 
 static Sys_var_mybool Sys_tc_enable_internal_grant(
   "tc_enable_internal_grant",
   "If ON, when a new spider node added to cluster, an internal GRANT will active for cluster privileges",
-  GLOBAL_VAR(tc_enable_internal_grant), CMD_LINE(OPT_ARG),
+  TDBCTL GLOBAL_VAR(tc_enable_internal_grant), CMD_LINE(OPT_ARG),
   DEFAULT(TRUE));
 
 static Sys_var_mybool Sys_sort_when_partition_prefix_order(
   "sort_when_partition_prefix_order",
   " using file sort when query with partition table + prefix index + order by ",
-  GLOBAL_VAR(sort_when_partition_prefix_order),
+  TDBCTL GLOBAL_VAR(sort_when_partition_prefix_order),
   CMD_LINE(OPT_ARG), DEFAULT(TRUE));
 
 static Sys_var_ulong Sys_max__commit_logs(
 	"tc_max_cluster_heartbeat_log",
 	"The max rows of cluster_heartbeat_log",
-	GLOBAL_VAR(max_heartbeat_log), CMD_LINE(REQUIRED_ARG),
+	TDBCTL GLOBAL_VAR(max_heartbeat_log), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(10, ULONG_MAX), DEFAULT(1000000), BLOCK_SIZE(1));
 
 static Sys_var_mybool Sys_tc_partition_admin(
 	"tc_partition_admin",
 	"If set to TRUE, admin partition of  the cluster, and record in system table",
-	GLOBAL_VAR(tc_partition_admin), CMD_LINE(OPT_ARG),
+	TDBCTL GLOBAL_VAR(tc_partition_admin), CMD_LINE(OPT_ARG),
 	DEFAULT(TRUE));
 
 static Sys_var_ulong Sys_tc_partition_admin_interval(
 	"tc_partition_admin_interval",
 	"The interval time of  admin partition of the cluster",
-	GLOBAL_VAR(tc_partition_admin_interval), CMD_LINE(REQUIRED_ARG),
+	TDBCTL GLOBAL_VAR(tc_partition_admin_interval), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(3600, 30*86400), DEFAULT(86400), BLOCK_SIZE(1));
 
 static Sys_var_ulong Sys_tc_partition_init_interval(
 	"tc_partition_init_interval",
 	"The interval time of  init partition of the cluster",
-	GLOBAL_VAR(tc_partition_init_interval), CMD_LINE(REQUIRED_ARG),
+	TDBCTL GLOBAL_VAR(tc_partition_init_interval), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(100, 86400), DEFAULT(300), BLOCK_SIZE(1));
 
 static Sys_var_ulong Sys_tc_partition_admin_time(
 	"tc_partition_admin_time",
 	"The time of admin partition of the cluster",
-	GLOBAL_VAR(tc_partition_admin_time), CMD_LINE(REQUIRED_ARG),
+	TDBCTL GLOBAL_VAR(tc_partition_admin_time), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(0, 86400), DEFAULT(3600), BLOCK_SIZE(1));
 
 static Sys_var_long Sys_tc_is_primary(
 	"tc_is_primary",
 	"where the node is primary,-1 for unknown,0 for not-primary,1 for primary",
-	GLOBAL_VAR(tdbctl_is_primary), CMD_LINE(REQUIRED_ARG),
+	TDBCTL GLOBAL_VAR(tdbctl_is_primary), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(-1, 1), DEFAULT(0), BLOCK_SIZE(1));
 
 static Sys_var_charptr Sys_tc_skip_dump_db(
   "tc_skip_dump_db_list",
   "the list of database's schema will ignore sync to new add spider node",
-  READ_ONLY GLOBAL_VAR(tc_skip_dump_db_list),
+  TDBCTL READ_ONLY GLOBAL_VAR(tc_skip_dump_db_list),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET,
-  DEFAULT("performance_schema,information_schema,mysql,test,db_infobase"));
+  DEFAULT("performance_schema,information_schema,mysql,test"));
 
 static Sys_var_mybool Sys_tc_restrict_query_from_spider(
   "tc_restrict_query_from_spider",
   "when tc_admin=1 , the query must be from spider node",
-  GLOBAL_VAR(tc_restrict_query_from_spider), CMD_LINE(OPT_ARG),
+  TDBCTL GLOBAL_VAR(tc_restrict_query_from_spider), CMD_LINE(OPT_ARG),
   DEFAULT(TRUE));

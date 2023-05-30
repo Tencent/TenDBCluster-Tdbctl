@@ -61,9 +61,21 @@ std::string get_new_server_name_by_wrapper(
 		const char* wrapper_name
 );
 
+std::string get_new_server_name_by_number(
+  const char* wrapper_name,
+  const long number
+);
+
+int get_node_type_by_wrapper(
+  const char* wrapper_name
+);
+
 const char *get_wrapper_prefix_by_wrapper(
 	const char *wrapper_name
 );
+
+void trim_server_name_slave_suffix(std::string &server_name);
+void trim_wrapper_name_slave_suffix(std::string &wrapper_name);
 
 ulong get_servers_count();
 ulong get_modify_server_version();
@@ -100,9 +112,11 @@ class Server_options
 {
 public:
   static const long PORT_NOT_SET= -1;
+  static const long NUM_NOT_SET= -1;
   LEX_STRING m_server_name;
 private:
   long m_port;
+  long m_num;
   LEX_STRING m_host;
   LEX_STRING m_db;
   LEX_STRING m_username;
@@ -113,6 +127,7 @@ private:
 
 public:
   void set_port(long port)               { m_port= port; }
+  void set_num(long num)                 { m_num= num; }
   void set_host(LEX_STRING host)         { m_host= host; }
   void set_db(LEX_STRING db)             { m_db= db; }
   void set_username(LEX_STRING username) { m_username= username; }
@@ -122,6 +137,7 @@ public:
   void set_owner(LEX_STRING owner)       { m_owner= owner; }
 
   long get_port() const            { return m_port; }
+  long get_num() const             { return m_num; }
   const char *get_host() const     { return m_host.str; }
   const char *get_db() const       { return m_db.str; }
   const char *get_username() const { return m_username.str; }

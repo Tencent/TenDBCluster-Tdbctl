@@ -1259,6 +1259,7 @@ void tc_parse_result_init(TC_PARSE_RESULT *parse_result_t)
   parse_result_t->shard_func = tspider_shard_func_crc32;
   parse_result_t->shard_type = tspider_shard_type_list;
   parse_result_t->execute_flag = 0;
+  parse_result_t->result_set_flag = 0;
 }
 
 void tc_parse_result_destory(TC_PARSE_RESULT *parse_result_t)
@@ -1861,8 +1862,21 @@ bool tc_query_parse(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
  */
 bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 {
+  bool command_support = true;
+  /* The secondary_node_allowed indicates that whether the sql_cmd is allowed to execute
+     on the tdbctl secondary node */
+  bool secondary_node_allowed = true;
+
+  set_var_base *var;
+  int tdbctl_var_num = 0;
+  int total_var_num = 0;
+  List<set_var_base> *lex_var_list = &lex->var_list;
+  List_iterator_fast<set_var_base> var_it(*lex_var_list);
+
   switch (lex->sql_command)
   {
+    // Whether it is a tcadmin master or a slave node,
+    // these commands are executed on tdbctl itself
     case SQLCOM_SHOW_VARIABLES:
     case SQLCOM_SHOW_EVENTS:
     case SQLCOM_SHOW_STATUS:
@@ -1871,23 +1885,13 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_SHOW_DATABASES:
     case SQLCOM_SHOW_TABLES:
     case SQLCOM_SHOW_TRIGGERS:
-    case SQLCOM_SHOW_TABLE_STATUS:
-    case SQLCOM_SHOW_OPEN_TABLES:
-    case SQLCOM_SHOW_PLUGINS:
     case SQLCOM_SHOW_FIELDS:
     case SQLCOM_SHOW_KEYS:
-    case SQLCOM_SHOW_CHARSETS:
-    case SQLCOM_SHOW_COLLATIONS:
-    case SQLCOM_SHOW_STORAGE_ENGINES:
-    case SQLCOM_SHOW_PROFILE:
     case SQLCOM_SHOW_WARNS:
     case SQLCOM_SHOW_ERRORS:
-    case SQLCOM_SHOW_ENGINE_STATUS:
-    case SQLCOM_SHOW_ENGINE_MUTEX:
     case SQLCOM_SHOW_BINLOGS:
     case SQLCOM_SHOW_CREATE:
     case SQLCOM_SHOW_PROCESSLIST:
-    case SQLCOM_SHOW_ENGINE_LOGS:
     case SQLCOM_SHOW_CREATE_DB:
     case SQLCOM_SHOW_PRIVILEGES:
     case SQLCOM_SHOW_CREATE_USER:
@@ -1897,32 +1901,46 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_SHOW_CREATE_PROC:
     case SQLCOM_SHOW_CREATE_FUNC:
     case SQLCOM_SHOW_CREATE_TRIGGER:
-    case SQLCOM_SHOW_CLIENT_STATS:
-    case SQLCOM_SHOW_INDEX_STATS:
-    case SQLCOM_SHOW_TABLE_STATS:
-    case SQLCOM_SHOW_THREAD_STATS:
-    case SQLCOM_SHOW_USER_STATS:
+    case SQLCOM_SHOW_SLAVE_HOSTS:
     case SQLCOM_HELP:
-      //do nothing
-      break;
     case SQLCOM_SELECT:
-    case SQLCOM_PREPARE:
-    case SQLCOM_EXECUTE:
-    case SQLCOM_DEALLOCATE_PREPARE:
-    case SQLCOM_EMPTY_QUERY:
     case SQLCOM_PURGE:
     case SQLCOM_PURGE_BEFORE:
     case SQLCOM_SHOW_PROFILES:
+    case SQLCOM_BINLOG_BASE64_EVENT:
+    case SQLCOM_CHANGE_REPLICATION_FILTER:
+    case SQLCOM_LOCK_BINLOG_FOR_BACKUP:
+    case SQLCOM_LOCK_TABLES_FOR_BACKUP:
+    case SQLCOM_START_GROUP_REPLICATION:
+    case SQLCOM_STOP_GROUP_REPLICATION:
+    case SQLCOM_UNLOCK_BINLOG:
+    case SQLCOM_FLUSH:
+    case SQLCOM_KILL:
+    case SQLCOM_SHUTDOWN:
+    case SQLCOM_RELEASE_SAVEPOINT:
+    case SQLCOM_ROLLBACK_TO_SAVEPOINT:
+    case SQLCOM_SAVEPOINT:
+    case SQLCOM_ALTER_DB_UPGRADE:
+    case SQLCOM_CHANGE_MASTER:
+    case SQLCOM_SHOW_BINLOG_EVENTS:
+    case SQLCOM_SHOW_CREATE_EVENT:
+    case SQLCOM_SHOW_MASTER_STAT:
+    case SQLCOM_SHOW_RELAYLOG_EVENTS:
+    case SQLCOM_SHOW_SLAVE_STAT:
+    case SQLCOM_SLAVE_START:
+    case SQLCOM_SLAVE_STOP:
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
+      break;
+    // These commands are not supported in tcadmin primary or secondary mode.
+    case SQLCOM_SHOW_PLUGINS:
+    case SQLCOM_SHOW_PROFILE:
+    case SQLCOM_SHOW_ENGINE_STATUS:
+    case SQLCOM_SHOW_ENGINE_MUTEX:
+    case SQLCOM_SHOW_ENGINE_LOGS:
+    case SQLCOM_EMPTY_QUERY:
     case SQLCOM_ASSIGN_TO_KEYCACHE:
     case SQLCOM_PRELOAD_KEYS:
     case SQLCOM_CHECKSUM:
-    case SQLCOM_UPDATE:
-    case SQLCOM_UPDATE_MULTI:
-    case SQLCOM_REPLACE:
-    case SQLCOM_REPLACE_SELECT:
-    case SQLCOM_INSERT_SELECT:
-    case SQLCOM_DELETE:
-    case SQLCOM_DELETE_MULTI:
     case SQLCOM_LOAD:
     case SQLCOM_XA_START:
     case SQLCOM_XA_END:
@@ -1937,45 +1955,114 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_CHECK:
     case SQLCOM_OPTIMIZE:
     case SQLCOM_REPAIR:
-    case SQLCOM_TRUNCATE:
     case SQLCOM_SIGNAL:
     case SQLCOM_RESIGNAL:
     case SQLCOM_GET_DIAGNOSTICS:
-    case SQLCOM_CALL:
-    case SQLCOM_BINLOG_BASE64_EVENT:
     case SQLCOM_HA_OPEN:
     case SQLCOM_HA_CLOSE:
     case SQLCOM_HA_READ:
     case SQLCOM_ALTER_INSTANCE:
-    case SQLCOM_CHANGE_REPLICATION_FILTER:
     case SQLCOM_CREATE_COMPRESSION_DICTIONARY:
     case SQLCOM_DROP_COMPRESSION_DICTIONARY:
     case SQLCOM_EXPLAIN_OTHER:
-    case SQLCOM_LOCK_BINLOG_FOR_BACKUP:
-    case SQLCOM_LOCK_TABLES_FOR_BACKUP:
-    case SQLCOM_START_GROUP_REPLICATION:
-    case SQLCOM_STOP_GROUP_REPLICATION:
-    case SQLCOM_UNLOCK_BINLOG:
-    case SQLCOM_SET_OPTION:
-    case SQLCOM_RESET:
-    case SQLCOM_FLUSH:
-    case SQLCOM_KILL:
-    case SQLCOM_SHUTDOWN:
-    case SQLCOM_UNLOCK_TABLES:
-    case SQLCOM_LOCK_TABLES:
+    case SQLCOM_CREATE_SERVER:
+    case SQLCOM_ALTER_SERVER:
+    case SQLCOM_DROP_SERVER:
+    case SQLCOM_SHOW_CLIENT_STATS:
+    case SQLCOM_SHOW_INDEX_STATS:
+    case SQLCOM_SHOW_TABLE_STATS:
+    case SQLCOM_SHOW_THREAD_STATS:
+    case SQLCOM_SHOW_USER_STATS:
+      command_support = false;
+      /*push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_UNSUPPORT_SQL_TYPE,
+                   ER(ER_TCADMIN_UNSUPPORT_SQL_TYPE), get_stmt_type_str(lex->sql_command));*/
+      if (!thd->is_error())
+        my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
+      break;
+    // These commands are executed on only one spider node in tcadmin primary mode, 
+    // and are executed on tdbctl itself in tcadmin secondary mode.
+    case SQLCOM_SHOW_TABLE_STATUS:
+    case SQLCOM_SHOW_OPEN_TABLES:
+    case SQLCOM_SHOW_CHARSETS:
+    case SQLCOM_SHOW_COLLATIONS:
+    case SQLCOM_SHOW_STORAGE_ENGINES:
+      if (tdbctl_is_primary)
+      {
+        tc_parse_result_t->spider_sql = thd->query().str;
+        tc_parse_result_t->execute_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+        tc_parse_result_t->result_set_flag |= RETURN_RESULT_SET_FROM_ONE_NODE;
+      }
+      else
+        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
+      break;
+    // These commands are executed on only one spider node in tcadmin primary mode, 
+    // and not allowed to be executed in tcadmin secondary mode.
+    case SQLCOM_PREPARE:
+    case SQLCOM_EXECUTE:
+    case SQLCOM_DEALLOCATE_PREPARE:
+    case SQLCOM_UPDATE:
+    case SQLCOM_UPDATE_MULTI:
+    case SQLCOM_REPLACE:
+    case SQLCOM_REPLACE_SELECT:
+    case SQLCOM_INSERT:
+    case SQLCOM_INSERT_SELECT:
+    case SQLCOM_DELETE:
+    case SQLCOM_DELETE_MULTI:
+    case SQLCOM_TRUNCATE:
+    case SQLCOM_CALL:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
+       if (thd->db().str)
+        tc_parse_result_t->db_name = thd->db().str;
+      else
+        tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
+      tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + thd->query().str;
+      tc_parse_result_t->execute_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+      break;
+    // These commands are executed on only one spider node and tdbctl itself in tcadmin primary mode,
+    // and not allowed to be executed in tcadmin secondary mode.
     case SQLCOM_BEGIN:
     case SQLCOM_COMMIT:
     case SQLCOM_ROLLBACK:
-    case SQLCOM_RELEASE_SAVEPOINT:
-    case SQLCOM_ROLLBACK_TO_SAVEPOINT:
-    case SQLCOM_SAVEPOINT:
-    case SQLCOM_ALTER_DB_UPGRADE:
-      push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_UNSUPPORT_SQL_TYPE,
-                   ER(ER_TCADMIN_UNSUPPORT_SQL_TYPE), get_stmt_type_str(lex->sql_command));
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
+      tc_parse_result_t->spider_sql = thd->query().str;
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
       break;
+    case SQLCOM_SET_OPTION:
+    case SQLCOM_RESET:
+      // if the sys_var is tdbctl var, we only execute it on tdbctl itself
+      while ((var = var_it++))
+      {
+        if(var->check_tdbctl_var())
+          tdbctl_var_num++;
+        total_var_num++;
+      }
+      if (tdbctl_var_num > 0 && tdbctl_var_num == total_var_num)
+      {
+        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
+        break;
+      } else if (tdbctl_var_num > 0 && tdbctl_var_num != total_var_num)
+      {
+        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "can't set tdbctl-only var and common var at the same time");
+        return FALSE;
+      }
 
+      if (tdbctl_is_primary)
+      {
+        tc_parse_result_t->spider_sql = thd->query().str;
+        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+      }
+      else
+        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
+      break;
+    case SQLCOM_UNLOCK_TABLES:
+    case SQLCOM_LOCK_TABLES:
     case SQLCOM_CREATE_EVENT:
     case SQLCOM_ALTER_EVENT:
+    case SQLCOM_DROP_EVENT:
     case SQLCOM_CREATE_FUNCTION:                  // UDF function
     case SQLCOM_CREATE_PROCEDURE:
     case SQLCOM_CREATE_SPFUNCTION:
@@ -1985,20 +2072,27 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_DROP_FUNCTION:
     case SQLCOM_CREATE_TRIGGER:
     case SQLCOM_DROP_TRIGGER:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       if (thd->db().str)
         tc_parse_result_t->db_name = thd->db().str;
       else
         tc_parse_result_t->db_name = lex->sphead->m_db.str;
       tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + thd->query().str;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_VIEW:
     case SQLCOM_DROP_VIEW:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       if (thd->db().str)
         tc_parse_result_t->db_name = thd->db().str;
       else
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + thd->query().str;
-
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_USER:
     case SQLCOM_DROP_USER:
@@ -2006,17 +2100,23 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_RENAME_USER:
     case SQLCOM_REVOKE:
     case SQLCOM_GRANT:
-    case SQLCOM_CREATE_SERVER:
-    case SQLCOM_ALTER_SERVER:
-    case SQLCOM_DROP_SERVER:
+    case SQLCOM_DO:
+    case SQLCOM_REVOKE_ALL:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->spider_sql = thd->query().str;
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_TABLE:
     {
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       //unsigned type
       bool is_unsigned_key = false;
       bool with_unique = false;
-      bool with_auto = false;
+      //bool with_auto = false;
       List_iterator<Create_field> it_field;
       Create_field* cur_field;
       const char* tb_charset = NULL;
@@ -2125,22 +2225,28 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_spider_create_table(tc_parse_result_t, is_unsigned_key,
                                    lex->partition_start_pos);
       tc_parse_remote_create_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
 
       break;
     }
 
     case SQLCOM_CREATE_INDEX:
     case SQLCOM_DROP_INDEX:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       tc_parse_spider_create_or_drop_index(tc_parse_result_t);
       tc_parse_remote_create_or_drop_index(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_ALTER_TABLE:
     {
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       if (lex->alter_info.flags == Alter_info::ALTER_DROP_COLUMN)
         tc_parse_result_t->execute_flag |= TC_SPIDER_EXECUTE_FIRST;
@@ -2177,11 +2283,14 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         return FALSE;
       }
       tc_parse_remote_alter_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case SQLCOM_RENAME_TABLE:
     {
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
@@ -2197,43 +2306,56 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       }
       tc_parse_spider_rename_table(tc_parse_result_t);
       tc_parse_remote_rename_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case SQLCOM_DROP_TABLE:
     {
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       tc_parse_spider_drop_table(tc_parse_result_t);
       tc_parse_remote_drop_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_REMOTE_NEED_EXECUTE | TC_SPIDER_EXECUTE_FIRST;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_REMOTE_NEED_EXECUTE | TC_SPIDER_EXECUTE_FIRST | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case SQLCOM_CHANGE_DB:
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       //do nothing
       break;
     case SQLCOM_CREATE_DB:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = lex->name.str;
       tc_parse_result_t->spider_sql = thd->query().str;
       tc_parse_remote_create_database(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_DROP_DB:
     case SQLCOM_ALTER_DB:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_result_t->db_name = lex->name.str;
       tc_parse_result_t->spider_sql = thd->query().str;
       tc_parse_remote_drop_database(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE|TC_SPIDER_EXECUTE_FIRST;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_SPIDER_EXECUTE_FIRST | TC_TDBCTL_NEED_EXECUTE;
       break;
     case TC_SQLCOM_CREATE_TABLE_LIKE:
     {
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
       tc_parse_result_t->query_string = thd->query();
       tc_parse_spider_create_table_like(tc_parse_result_t);
       tc_parse_remote_create_table_like(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case TC_SQLCOM_CREATE_NODE:
@@ -2252,15 +2374,233 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case TC_SQLCOM_MONITOR_INIT:
     case TC_SQLCOM_SHOW_PROCESSLIST:
     case TC_SQLCOM_SHOW_VARIABLES:
-      //do nothing, only work on primary tdbctl node
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
-
+    case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
+      tc_parse_result_t->execute_flag |= TC_DESIGNATED_NODE_NEED_EXECUTE;
+      tc_parse_result_t->result_set_flag |= RETURN_RESULT_SET_FROM_ONE_NODE;
+      break;
     default:
       my_error(ER_TCADMIN_UNSUPPORT_SQL_TYPE, MYF(0), get_stmt_type_str(lex->sql_command));
-      return FALSE;
+      command_support = false;
+  }
+  if (!command_support)
+    return FALSE;
+  // if the sql_command is not allowed to be executed on secondary node, we will return error.
+  if (!tdbctl_is_primary && !secondary_node_allowed)
+  {
+    my_error(ER_TCADMIN_NOT_PRIMARY, MYF(0), get_stmt_type_str(lex->sql_command));
+    return FALSE;
+  }
+  return TRUE;
+}
+
+int tc_store_mysql_result_into_protocol(THD *thd, MYSQL_RES *res)
+{
+  List<Item> field_list;
+  Protocol *protocol= thd->get_protocol();
+  MYSQL_ROW row;
+
+  if (!res)
+  {
+    my_ok(thd);
+    DBUG_RETURN(0);
   }
 
-  return TRUE;
+  uint field_num = mysql_num_fields(res);
+  for (uint i = 0; i < field_num; i++)
+  {
+    field_list.push_back(tc_make_item(&res->fields[i]));
+  }
+  if (thd->send_result_metadata(&field_list,
+                                Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+    DBUG_RETURN(1);
+
+  while ((row = mysql_fetch_row(res)))
+  {
+    protocol->start_row();
+    for (uint idx = 0; idx < field_num; ++idx)
+    {
+      protocol_store_field(protocol, res->fields[idx], row[idx], mysql_fetch_lengths(res)[idx]);
+    }
+    if(protocol->end_row())
+      break;
+  }
+
+  my_eof(thd);
+  DBUG_RETURN(0);
+}
+
+void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row, ulong length)
+{
+	DBUG_ENTER("protocol_store_field");
+	if (row == NULL) {
+		protocol->store_null();
+		DBUG_VOID_RETURN;
+	}
+
+	switch (field.type) {
+  case MYSQL_TYPE_NULL:
+  case MYSQL_TYPE_DECIMAL:
+  case MYSQL_TYPE_ENUM:
+  case MYSQL_TYPE_SET:
+  case MYSQL_TYPE_TINY_BLOB:
+  case MYSQL_TYPE_MEDIUM_BLOB:
+  case MYSQL_TYPE_LONG_BLOB:
+  case MYSQL_TYPE_BLOB:
+  case MYSQL_TYPE_GEOMETRY:
+  case MYSQL_TYPE_STRING:
+  case MYSQL_TYPE_VAR_STRING:
+  case MYSQL_TYPE_VARCHAR:
+  case MYSQL_TYPE_BIT:
+  case MYSQL_TYPE_NEWDECIMAL:
+  case MYSQL_TYPE_JSON:
+  {
+    protocol->store(row, length, get_charset(field.charsetnr, MYF(MY_WME)));
+    break;
+  }
+  case MYSQL_TYPE_TINY:
+  {
+    protocol->store_tiny(atoll(row));
+    break;
+  }
+  case MYSQL_TYPE_SHORT:
+  case MYSQL_TYPE_YEAR:
+  {
+    protocol->store_short(atoll(row));
+    break;
+  }
+  case MYSQL_TYPE_INT24:
+  case MYSQL_TYPE_LONG:
+  {
+    protocol->store_long(atoll(row));
+    break;
+  }
+  case MYSQL_TYPE_LONGLONG:
+  {
+    protocol->store_longlong(atoll(row), (field.flags & MY_I_S_UNSIGNED));
+    break;
+  }
+  case MYSQL_TYPE_FLOAT:
+  {
+    //protocol->store((float)atof(row), field.length%10, buffer);
+    protocol->store(row, length, get_charset(field.charsetnr, MYF(MY_WME)));
+    break;
+  }
+  case MYSQL_TYPE_DOUBLE:
+  {
+    //protocol->store(atof(row), field.length%10, buffer);
+    protocol->store(row, length, get_charset(field.charsetnr, MYF(MY_WME)));
+    break;
+  }
+  case MYSQL_TYPE_DATETIME:
+  case MYSQL_TYPE_DATE:
+  case MYSQL_TYPE_TIMESTAMP:
+  {
+    protocol->store(row, length, get_charset(field.charsetnr, MYF(MY_WME)));
+    break;
+  }
+  case MYSQL_TYPE_TIME:
+  {
+    //protocol->store_time(&tm, decimals);
+    protocol->store(row, length, get_charset(field.charsetnr, MYF(MY_WME)));
+    break;
+  }
+	default:
+		protocol->store(row, get_charset(field.charsetnr, MYF(MY_WME)));
+		break;
+	}
+
+	DBUG_VOID_RETURN;
+}
+
+Item* tc_make_item(MYSQL_FIELD* field)
+{
+  Item* item;
+  switch (field->type)
+  {
+    case MYSQL_TYPE_TINY:
+    case MYSQL_TYPE_LONG:
+    case MYSQL_TYPE_SHORT:
+    case MYSQL_TYPE_LONGLONG:
+    case MYSQL_TYPE_INT24:
+    {
+      item = new Item_return_int(field->name, field->length, field->type);
+      item->unsigned_flag = (field->flags & MY_I_S_UNSIGNED);
+      break;
+    }
+    case MYSQL_TYPE_DATE:
+    case MYSQL_TYPE_TIME:
+    case MYSQL_TYPE_TIMESTAMP:
+    case MYSQL_TYPE_DATETIME:
+    {
+      const Name_string field_name(field->name, field->length);
+      item = new Item_temporal(field->type, field_name, 0, 0);
+
+      if (field->type == MYSQL_TYPE_TIMESTAMP ||
+          field->type == MYSQL_TYPE_DATETIME)
+        item->decimals= field->length;
+      break;
+    }
+    case MYSQL_TYPE_FLOAT:
+    case MYSQL_TYPE_DOUBLE:
+    {
+      const Name_string field_name(field->name, field->length);
+      item = new Item_float(field_name, 0.0, NOT_FIXED_DEC, field->length);
+      break;
+    }
+    case MYSQL_TYPE_DECIMAL:
+    case MYSQL_TYPE_NEWDECIMAL:
+    {
+      item = new Item_decimal(atoll(field->def), false);
+      item->unsigned_flag = (field->flags & MY_I_S_UNSIGNED);
+      item->decimals = field->length%10;
+      item->max_length = (field->length/100)%100;
+      if (item->unsigned_flag == 0)
+        item->max_length+= 1;
+      if (item->decimals > 0)
+        item->max_length+= 1;
+      item->item_name.copy(field->name);
+      break;
+    }
+    case MYSQL_TYPE_TINY_BLOB:
+    case MYSQL_TYPE_MEDIUM_BLOB:
+    case MYSQL_TYPE_LONG_BLOB:
+    case MYSQL_TYPE_BLOB:
+    {
+      item = new Item_blob(field->name, field->length);
+      break;
+    }
+    case MYSQL_TYPE_STRING:
+    default:
+    {
+      item = new Item_empty_string(field->name, field->length, system_charset_info);
+      break;
+    }
+  }
+  return item;
+}
+
+void tc_clean_exec_result(TC_EXEC_RESULT* exec_result)
+{
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_COUNT_EXCLUDE_TDBCTL; i++)
+  {
+    for (map<std::string, tc_exec_info>::iterator iter = exec_result->result_info[i].begin(); iter != exec_result->result_info[i].end(); iter++)
+    {
+      tc_exec_info &exec_info = iter->second;
+      if (exec_info.res)
+      {
+        mysql_free_result(exec_info.res);
+      }
+    }
+  }
+  DBUG_VOID_RETURN;
 }
 
 void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
@@ -2277,6 +2617,7 @@ void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
   }
   exec_info.err_code = 0;
   exec_info.err_msg = "";
+
   // If we dont prepare sql statements for some instances(spider or remote node),
   // we will skip querying to these instances.
   if (query != string()) {
@@ -2284,6 +2625,53 @@ void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
     while (!err) {
       err = tc_mysql_next_result(mysql);
     }
+
+    if (err != -1) {
+      exec_info.err_code = mysql_errno(mysql);
+      exec_info.err_msg = mysql_error(mysql);
+    }
+  }
+  query_mgr->store_exec_info(server_name, exec_info, node_type);
+
+  DBUG_VOID_RETURN;
+}
+
+void tc_get_query_result(Query_exec_manager *query_mgr, const string &server_name,
+                   MYSQL *mysql, enum_node_type node_type) {
+  DBUG_ENTER("tc_get_query_result");
+  DBUG_PRINT("info", ("server_name: %s", server_name.c_str()));
+  int err = 0;
+  string query;
+  tc_exec_info exec_info;
+
+  if ((err = query_mgr->get_real_query(server_name, query, node_type)))
+  {
+    DBUG_ASSERT(0);
+    query = "";
+  }
+  exec_info.err_code = 0;
+  exec_info.err_msg = "";
+  exec_info.prepare_sql = false;
+  exec_info.res = NULL;
+  // If we dont prepare sql statements for some instances(spider or remote node),
+  // we will skip querying to these instances.
+  if (query != string())
+  {
+    err = mysql_real_query(mysql, query.c_str(), query.length());
+    exec_info.prepare_sql = true;
+    exec_info.res = mysql_store_result(mysql);
+
+    // scan all query results from mysql, and store the last query result in to exec_info.res
+    while (!err)
+    {
+      if (exec_info.res)
+      {
+        mysql_free_result(exec_info.res);
+      }
+      exec_info.res = mysql_store_result(mysql);
+      err = tc_mysql_next_result(mysql);
+    }
+
     if (err != -1) {
       exec_info.err_code = mysql_errno(mysql);
       exec_info.err_msg = mysql_error(mysql);
@@ -2303,7 +2691,7 @@ bool tc_exec_query_paral(Query_exec_manager *query_mgr,
   map<string, MYSQL *>::const_iterator it;
 
   for (i = 0, it = conns.begin(); it != conns.end(); ++it, ++i) {
-    thread t(tc_real_query, query_mgr, it->first, it->second, node_type);
+    thread t(tc_get_query_result, query_mgr, it->first, it->second, node_type);
     threads[i] = move(t);
   }
   for (i = 0; i < server_cnt; ++i) {
@@ -2312,24 +2700,38 @@ bool tc_exec_query_paral(Query_exec_manager *query_mgr,
   return query_mgr->get_error();
 }
 
-bool tc_ddl_run(THD *thd, Cluster_conn_manager *conn_mgr,
+bool tc_run_command(THD *thd, Cluster_conn_manager *conn_mgr,
                 Query_exec_manager *query_mgr) {
   bool force = thd->variables.tc_force_execute;
-  LEX *lex = thd->lex;
   int exec_flag = query_mgr->get_exec_flag();
 
+  //tc_exec_query_paral() will skip sending sql to the node if no sql statement was prepared for the node
   if (exec_flag & TC_SPIDER_EXECUTE_FIRST)
   {
-    if (!tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
-                             NODE_TYPE_SPIDER) || force) {
+    if ((!tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
+                              NODE_TYPE_SPIDER) &&
+         !tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_SPIDER_SLAVE),
+                              NODE_TYPE_SPIDER_SLAVE)) ||
+        force)
+    {
       return tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
-                                 NODE_TYPE_REMOTE);
+                                 NODE_TYPE_REMOTE) ||
+             tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_REMOTE_SLAVE),
+                                 NODE_TYPE_REMOTE_SLAVE);
     }
-  } else {
-    if (!tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
-                             NODE_TYPE_REMOTE) || force) {
+  }
+  else
+  {
+    if ((!tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
+                              NODE_TYPE_REMOTE) &&
+         tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_REMOTE_SLAVE),
+                             NODE_TYPE_REMOTE_SLAVE)) ||
+        force)
+    {
       return tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
-                                 NODE_TYPE_SPIDER);
+                                 NODE_TYPE_SPIDER) ||
+             tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_SPIDER_SLAVE),
+                                 NODE_TYPE_SPIDER_SLAVE);
     }
   }
 
@@ -2341,14 +2743,15 @@ set<string> get_spider_ipport_set(
   MEM_ROOT *mem, 
   map<string, string> &spider_user_map, 
   map<string, string> &spider_passwd_map,
-  bool with_slave
+  bool with_slave,
+  string wrapper_name
 )
 {
     set<string> ipport_set;
     FOREIGN_SERVER *server;
     ostringstream  sstr;
     list<FOREIGN_SERVER*> server_list;
-    string wrapper_name = tdbctl_spider_wrapper_prefix;
+    //string wrapper_name = tdbctl_spider_wrapper_prefix;
     spider_user_map.clear();
     spider_passwd_map.clear();
 
@@ -2377,13 +2780,15 @@ set<string> get_spider_ipport_set(
 map<string, string> get_remote_ipport_map(
   MEM_ROOT* mem, 
   map<string, string> &remote_user_map, 
-  map<string, string> &remote_passwd_map
+  map<string, string> &remote_passwd_map,
+  bool with_slave /* = false (default value)*/
 )
 {
     map<string, string> ipport_map;
     FOREIGN_SERVER *server, server_buffer;
     ostringstream  sstr;
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
+    string server_slave_name_pre = tdbctl_mysql_slave_wrapper_prefix;
     ulong records = get_servers_count();
     remote_user_map.clear();
     remote_passwd_map.clear();
@@ -2406,6 +2811,24 @@ map<string, string> get_remote_ipport_map(
             ipport_map.insert(pair<string, string>(server_name, s));
             remote_user_map.insert(pair<string, string>(s, user));
             remote_passwd_map.insert(pair<string, string>(s, passwd));
+        }
+
+        if (with_slave)
+        {
+          string server_slave_name = server_slave_name_pre + hash_value;
+          if ((server = get_server_by_name(mem, server_slave_name.c_str(), &server_buffer)))
+          {
+            string host = server->host;
+            string user = server->username;
+            string passwd = server->password;
+            sstr.str("");
+            sstr << server->port;
+            string ports = sstr.str();
+            string s = host + "#" + ports;
+            ipport_map.insert(pair<string, string>(server_slave_name, s));
+            remote_user_map.insert(pair<string, string>(s, user));
+            remote_passwd_map.insert(pair<string, string>(s, passwd));
+          }
         }
     }
     return ipport_map;
@@ -2442,6 +2865,37 @@ map<string, string> get_server_name_map(
   }
 
   return server_name_map;
+}
+
+/*
+  get server_name with specifc wrapper
+
+  @retval
+  set for result
+*/
+set<string> get_server_name_set(
+	MEM_ROOT *mem,
+  map<string, string> &server_user_map, 
+  map<string, string> &server_passwd_map,
+	const char* wrapper
+)
+{
+  set<string> server_name_set;
+  ostringstream  sstr;
+  list<FOREIGN_SERVER*> server_list;
+
+  get_server_by_wrapper(server_list, mem, wrapper, false);
+  for (auto &server : server_list)
+  {
+    string server_name = server->server_name;
+    string user = server->username;
+    string passwd = server->password;
+    server_name_set.insert(server_name);
+    server_user_map.insert(pair<string, string>(server_name, user));
+    server_passwd_map.insert(pair<string, string>(server_name, passwd));
+  }
+
+  return server_name_set;
 }
 
 /*
@@ -2925,9 +3379,9 @@ bool tc_exec_sql_paral(
   map<string, tc_exec_info>::iterator its2;
   for (its = conn_map.begin(); its != conn_map.end(); its++)
   {
-    string ipport = its->first;
+    string ipport_or_servername = its->first;
     MYSQL* mysql = its->second;
-    thread tmp_t(tc_exec_sql_up, mysql, exec_sql, &result_map[ipport]);
+    thread tmp_t(tc_exec_sql_up, mysql, exec_sql, &result_map[ipport_or_servername]);
     thread_array[i] = move(tmp_t);
     i++;
   }
@@ -2940,7 +3394,7 @@ bool tc_exec_sql_paral(
 
   for (its2 = result_map.begin(); its2 != result_map.end(); its2++)
   {/* */
-    string ipport = its2->first;
+    string ipport_or_servername = its2->first;
     tc_exec_info exec_info = its2->second;
     if (exec_info.err_code > 0)
     {
@@ -2950,14 +3404,14 @@ bool tc_exec_sql_paral(
         while (retry_times-- > 0)
         {/* retry 3 times, 2 seconds interval */
           sleep(2);
-          if (conn_map[ipport])
+          if (conn_map[ipport_or_servername])
           {
-            mysql_close(conn_map[ipport]);
-            conn_map[ipport] = NULL;
+            mysql_close(conn_map[ipport_or_servername]);
+            conn_map[ipport_or_servername] = NULL;
           }
-          if (!tc_reconnect(ipport, conn_map, user_map, passwd_map))
+          if (!tc_reconnect(ipport_or_servername, conn_map, user_map, passwd_map))
           {
-            if (!tc_exec_sql_up(conn_map[ipport], exec_sql, &exec_info))
+            if (!tc_exec_sql_up(conn_map[ipport_or_servername], exec_sql, &exec_info))
               break;
           }
         }
@@ -3098,6 +3552,7 @@ MYSQL_RES* tc_exec_sql_with_result(MYSQL* mysql, string sql)
   MYSQL_RES* result;
   if (mysql_real_query(mysql, sql.c_str(), sql.length()))
   {
+    sql_print_error("failed to query: %s . errno : %d; error msg: %s", sql.c_str(), mysql_errno(mysql), mysql_error(mysql));
     result = NULL;
   }
   else
@@ -3276,7 +3731,7 @@ string tc_get_spider_grant_sql(
   Generate internal tdbctl GRANT sql according to mysql.servers's info.
   All tdbctl should do [GRANT ALL PRIVILEGES] sql for all spiders, which use
   to transfer sql from spider to tdbctl.
-  All spiders should do [GRANT ALL PRIVILEGES] sql for other tdbctl, which use
+  All tdbctl should do [GRANT ALL PRIVILEGES] sql for other tdbctl, which use
   to connect and manager cluster, if not, after failure, new elected primary tdbctl
   may had no privileges to connect other tdbctl
   In replication scenario, only primary/master node need to do this, which ensure to sync privileges
@@ -3476,6 +3931,8 @@ uint tc_get_primary_node(std::string &host, uint *port)
     anytime call this function, should consider deadlock.
     if we call this in mysql_execute_command, MGR's work thread
     may deadlock when do command internal use Sql_service_command_interface
+  
+  @todo: this func need to be assessed in the future
 */
 int tc_is_primary_tdbctl_node()
 {
@@ -3550,7 +4007,7 @@ int tc_is_primary_tdbctl_node()
     return tdbctl_is_primary;
   }
 
-  return ret;
+  return tdbctl_is_primary;
 }
 
 /*
@@ -3839,8 +4296,12 @@ const char *get_wrapper_name_by_node_type(enum_node_type type) {
   switch (type) {
   case NODE_TYPE_SPIDER:
     return SPIDER_WRAPPER;
+  case NODE_TYPE_SPIDER_SLAVE:
+    return SPIDER_SLAVE_WRAPPER;
   case NODE_TYPE_REMOTE:
     return MYSQL_WRAPPER;
+  case NODE_TYPE_REMOTE_SLAVE:
+    return MYSQL_SLAVE_WRAPPER;
   case NODE_TYPE_CTL:
     return TDBCTL_WRAPPER;
   default: /* should be unreachable */
@@ -3879,7 +4340,7 @@ int Query_exec_manager::make_real_query(const std::string &exec_query,
     real_query += "';";
 
     /* 3.(only for Spider) */
-    if (node_type == NODE_TYPE_SPIDER)
+    if (node_type == NODE_TYPE_SPIDER || node_type == NODE_TYPE_SPIDER_SLAVE)
       real_query += "/*!50600 SET ddl_execute_by_ctl=0 */;";
 
     real_query += exec_query;
@@ -3985,11 +4446,19 @@ int Query_exec_manager::get_results(tc_execute_result *res) const {
   std::map<string, tc_exec_info>::const_iterator it;
   for (it = exec_results[NODE_TYPE_SPIDER].begin();
        it != exec_results[NODE_TYPE_SPIDER].end(); ++it) {
-    res->spider_result_info.insert(std::make_pair(it->first, it->second));
+    res->result_info[NODE_TYPE_SPIDER].insert(std::make_pair(it->first, it->second));
+  }
+  for (it = exec_results[NODE_TYPE_SPIDER_SLAVE].begin();
+       it != exec_results[NODE_TYPE_SPIDER_SLAVE].end(); ++it) {
+    res->result_info[NODE_TYPE_SPIDER_SLAVE].insert(std::make_pair(it->first, it->second));
   }
   for (it = exec_results[NODE_TYPE_REMOTE].begin();
        it != exec_results[NODE_TYPE_REMOTE].end(); ++it) {
-    res->remote_result_info.insert(std::make_pair(it->first, it->second));
+    res->result_info[NODE_TYPE_REMOTE].insert(std::make_pair(it->first, it->second));
+  }
+  for (it = exec_results[NODE_TYPE_REMOTE_SLAVE].begin();
+       it != exec_results[NODE_TYPE_REMOTE_SLAVE].end(); ++it) {
+    res->result_info[NODE_TYPE_REMOTE_SLAVE].insert(std::make_pair(it->first, it->second));
   }
   return 0;
 }
@@ -4052,7 +4521,7 @@ bool Cluster_conn_manager::refresh(bool force, bool no_connect) {
     DBUG_ASSERT(wrapper);
     if (unlikely(!wrapper))
       continue;
-    get_server_by_wrapper(server_list, &mem_root, wrapper, true);
+    get_server_by_wrapper(server_list, &mem_root, wrapper, false);
 
     FOREIGN_SERVER *server;
     list<FOREIGN_SERVER *>::iterator it;
@@ -4239,6 +4708,32 @@ int Cluster_conn_manager::ping(MYSQL *mysql) {
 void free_cluster_conn_manager(THD *thd) {
   delete thd->cluster_conn_manager;
 }
+
+bool check_tc_command(bool tc_admin, LEX *lex)
+{
+  bool allowed = true;
+  switch (lex->sql_command)
+  {
+    case TC_SQLCOM_CREATE_NODE:
+    case TC_SQLCOM_ALTER_NODE:
+    case TC_SQLCOM_DROP_NODE:
+    case TC_SQLCOM_FLUSH_ROUTING:
+    case TC_SQLCOM_MONITOR_INIT:
+    case TC_SQLCOM_SHOW_PROCESSLIST:
+    case TC_SQLCOM_SHOW_VARIABLES:
+    case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
+      if(!tc_admin)
+      {
+        allowed = false;
+        my_error(ER_TCADMIN_COMMAND_DISABLED, MYF(0));
+      }
+      break;
+    default:
+      break;
+  }
+  return allowed;
+}
+
 
 enum_sql_command tc_unsupport_types[] = { SQLCOM_SHOW_EVENTS, SQLCOM_SHOW_STATUS, SQLCOM_SHOW_STATUS_PROC, SQLCOM_SHOW_STATUS_FUNC,
   SQLCOM_SHOW_DATABASES, SQLCOM_SHOW_TABLES, SQLCOM_SHOW_TRIGGERS, SQLCOM_SHOW_TABLE_STATUS, SQLCOM_SHOW_OPEN_TABLES, SQLCOM_SHOW_PLUGINS,

@@ -88,7 +88,7 @@ enum enum_servers_table_field
 #define RESULT_FAILED   1
 #define RESULT_ABNORMAL 0
 
-static string dump_servers_to_sql();
+static string dump_servers_to_sql(bool is_slave_routing = false);
 static bool get_server_from_table_to_cache(TABLE *table);
 
 static uchar *servers_cache_get_key(FOREIGN_SERVER *server, size_t *length,
@@ -504,6 +504,7 @@ void Server_options::reset()
   m_server_name.str= NULL;
   m_server_name.length= 0;
   m_port= PORT_NOT_SET;
+  m_num= NUM_NOT_SET;
   m_host.str= NULL;
   m_host.length= 0;
   m_db.str= NULL;
@@ -790,6 +791,7 @@ bool Sql_cmd_create_server::execute(THD *thd)
     tc_is_primary_tdbctl_node need to get THR_LOCK_servers,
     so must maintain tdbctl_is_primary after unlock
     */
+    // todo: I'm not sure if it is necessary to maintain the tdbctl_is_primary here
     tdbctl_is_primary = tc_is_primary_tdbctl_node();
     modify_tdbctl_flag = false;
   }
@@ -975,6 +977,7 @@ bool Sql_cmd_drop_server::execute(THD *thd)
       tc_is_primary_tdbctl_node need to get THR_LOCK_servers,
       so must maintain tdbctl_is_primary after unlock
     */
+    // todo: I'm not sure if it is necessary to maintain the tdbctl_is_primary here
     tdbctl_is_primary = tc_is_primary_tdbctl_node();
     modify_tdbctl_flag = false;
   }
@@ -1190,7 +1193,7 @@ void get_server_by_wrapper(
   generate a new unique server_name by wrapper
   server_name = wrapper_name + increase id
 
-  @wrapper_name TDBCTL|SPIDER_SLAVE|SPIDER|mysql
+  @wrapper_name TDBCTL|SPIDER_SLAVE|SPIDER|mysql|mysql_slave
 
   @retval return an unique server_name which
    not exist in mysql.servers
@@ -1205,12 +1208,13 @@ string get_new_server_name_by_wrapper(
   ulong records = 0;
   ulong max_suffix_num = 0;
   //whether wrapper is spider or spider_slave
-  bool is_spider = false;
+  // bool is_spider = false;
 
   server_name.str("");
   server_name << get_wrapper_prefix_by_wrapper(wrapper_name);
-  if (strcasecmp(server_name.str().c_str(), tdbctl_spider_wrapper_prefix) == 0)
-    is_spider = true;
+  // if (strcasecmp(server_name.str().c_str(), tdbctl_spider_wrapper_prefix) == 0 || 
+  // strcasecmp(server_name.str().c_str(), tdbctl_spider_slave_wrapper_prefix) == 0)
+  //   is_spider = true;
 
   mysql_rwlock_rdlock(&THR_LOCK_servers);
   records = servers_cache.records;
@@ -1220,9 +1224,8 @@ string get_new_server_name_by_wrapper(
     if (auto server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i))
     {
       //for spider, total SPIDER and SPIDER_SLAVE's server_name must be unique
-      if (!strcasecmp(server->scheme, wrapper_name) ||
-          ((is_spider && !strcasecmp(server->scheme, SPIDER_WRAPPER)) ||
-          !strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER)))
+      if (!strcasecmp(server->scheme, wrapper_name) /* ||
+          ((is_spider && !strcasecmp(server->scheme, SPIDER_WRAPPER)|| !strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER))) */)
       {
         ulong suffix_num = 0;
         string prefix = server->server_name;
@@ -1241,20 +1244,80 @@ string get_new_server_name_by_wrapper(
   return server_name.str();
 }
 
+std::string get_new_server_name_by_number(
+    const char* wrapper_name,
+    const long number
+)
+{
+  std::ostringstream server_name;
+  server_name.str("");
+  server_name << get_wrapper_prefix_by_wrapper(wrapper_name);
+  server_name << number;
+  return server_name.str();
+}
+
+int get_node_type_by_wrapper(
+  const char* wrapper_name
+)
+{
+  int node_type;
+  if (strcasecmp(wrapper_name, SPIDER_WRAPPER) == 0)
+    return node_type = NODE_TYPE_SPIDER;
+  else if (strcasecmp(wrapper_name, SPIDER_SLAVE_WRAPPER) == 0)
+    return node_type = NODE_TYPE_SPIDER_SLAVE;
+  else if (strcasecmp(wrapper_name, MYSQL_WRAPPER) == 0)
+    return node_type = NODE_TYPE_REMOTE;
+  else if (strcasecmp(wrapper_name, MYSQL_SLAVE_WRAPPER) == 0)
+    return node_type = NODE_TYPE_REMOTE_SLAVE;
+  else if (strcasecmp(wrapper_name, TDBCTL_WRAPPER) == 0)
+    return node_type = NODE_TYPE_CTL;
+  return -1;
+}
+
 const char *get_wrapper_prefix_by_wrapper(
     const char *wrapper_name
 )
 {
-  if (strcasecmp(wrapper_name, SPIDER_WRAPPER) == 0 ||
-      strcasecmp(wrapper_name, SPIDER_SLAVE_WRAPPER) == 0)
+  if (strcasecmp(wrapper_name, SPIDER_WRAPPER) == 0)
     return tdbctl_spider_wrapper_prefix;
+  else if (strcasecmp(wrapper_name, SPIDER_SLAVE_WRAPPER) == 0)
+    return tdbctl_spider_slave_wrapper_prefix;
   else if (strcasecmp(wrapper_name, TDBCTL_WRAPPER) == 0)
     return tdbctl_control_wrapper_prefix;
-  else if (strcasecmp(wrapper_name, MYSQL_WRAPPER) == 0 ||
-      strcasecmp(wrapper_name, MYSQL_SLAVE_WRAPPER) == 0)
+  else if (strcasecmp(wrapper_name, MYSQL_WRAPPER) == 0)
     return tdbctl_mysql_wrapper_prefix;
+  else if (strcasecmp(wrapper_name, MYSQL_SLAVE_WRAPPER) == 0)
+    return tdbctl_mysql_slave_wrapper_prefix;
   else
     return wrapper_name;
+}
+
+//This is only used for mysql_slave node now
+void trim_server_name_slave_suffix(std::string &server_name)
+{
+  std::string subset = "_SLAVE";
+  size_t pos = server_name.find(subset);
+  if (pos != std::string::npos)
+    server_name.replace(pos, subset.size(), "");
+}
+
+//This is only used for mysql_slave node now
+void trim_wrapper_name_slave_suffix(std::string &wrapper_name)
+{
+  if (strcasecmp(wrapper_name.c_str(), SPIDER_SLAVE_WRAPPER) == 0)
+  {
+    std::string subset = "_SLAVE";
+    size_t pos = wrapper_name.find(subset);
+    if (pos != std::string::npos)
+      wrapper_name.replace(pos, subset.size(), "");
+  }
+  else if (strcasecmp(wrapper_name.c_str(), MYSQL_SLAVE_WRAPPER) == 0)
+  {
+    std::string subset = "_slave";
+    size_t pos = wrapper_name.find(subset);
+    if (pos != std::string::npos)
+      wrapper_name.replace(pos, subset.size(), "");
+  }
 }
 
 /*
@@ -1263,11 +1326,11 @@ const char *get_wrapper_prefix_by_wrapper(
   @Note
   for Tdbctl node, not dump all tdbctl nodes info, we only chose one.
   MGR scenario:
-  Multi-Primary: use first member(store to map, use map's order)
-  Single-Primary: use Primary member
-  None-MGR scenario: always use first member
+  Multi-Primary: use local node
+  Single-Primary: use Primary node
+  None-MGR scenario: use local node
 */
-static string dump_servers_to_sql()
+static string dump_servers_to_sql(bool is_slave_routing)
 {
   ulong records = 0;
   FOREIGN_SERVER* server;
@@ -1304,15 +1367,39 @@ static string dump_servers_to_sql()
     server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i);
     if (server)
     {
-      string replace_sql_cur = "(";
-      string name = quotation + server->server_name + quotation + comma;
+      // flush routing to slave_spider, skip master_spider and master_mysql
+      if (is_slave_routing && (!strcasecmp(server->scheme, SPIDER_WRAPPER) || !strcasecmp(server->scheme, MYSQL_WRAPPER)))
+        continue;
+      // flush routing to master_spider, skip slave_spider and slave_mysql
+      if (!is_slave_routing && (!strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) || !strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER)))
+        continue;
+      //sql_print_information("slave %d, server_name %s", is_slave_routing, server->server_name);
+      std::string replace_sql_cur = "(";
+      std::string server_name;
+      std::string wrapper_name;
+      if (!strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER))
+      {
+        // convert server_name: SPT_SLAVEn -> SPTn
+        // convert wrapper: mysql_slave -> mysql
+        server_name = server->server_name;
+        wrapper_name = server->scheme;
+        trim_server_name_slave_suffix(server_name);
+        trim_wrapper_name_slave_suffix(wrapper_name);
+      }
+      else
+      {
+        server_name = server->server_name;
+        wrapper_name = server->scheme;
+      }
+      
+      string name = quotation + server_name + quotation + comma;
       string host = quotation + server->host + quotation + comma;
       string db = quotation + server->db + quotation + comma;
       string username = quotation + server->username + quotation + comma;
       string password = quotation + server->password + quotation + comma;
       int port = server->port;
       string socket = quotation + server->socket + quotation + comma;
-      string wrapper = quotation + server->scheme + quotation + comma;
+      string wrapper = quotation + wrapper_name + quotation + comma;
       string owner = quotation + server->owner + quotation;
       ss.str("");
       ss << port;
@@ -1532,12 +1619,12 @@ int tc_do_grants_internal(LEX *lex)
   uint port;
 
   init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-  /* not include SPIDER_SLAVE at present */
+  /* get all spider nodes, including spider_slave nodes */
   set<string>  spider_ipport_set = get_spider_ipport_set(
       &mem_root,
       spider_user_map,
       spider_passwd_map,
-      FALSE);
+      TRUE);
   map<string, string> tdbctl_ipport_map = get_tdbctl_ipport_map(
       &mem_root,
       tdbctl_user_map,
@@ -1555,7 +1642,8 @@ int tc_do_grants_internal(LEX *lex)
 	remote_ipport_map = get_remote_ipport_map(
 		&mem_root,
 		remote_user_map,
-		remote_passwd_map);
+		remote_passwd_map,
+    TRUE);
   }
 
   if (spider_ipport_set.empty() ||
@@ -1692,7 +1780,8 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
   map<string, tc_exec_info>& result_map,
   map<string, string> spider_user_map,
   map<string, string> spider_passwd_map,
-  bool is_force)
+  bool is_force,
+  bool is_slave_routing)
 {
   string flush_priv_sql = "flush privileges";
   string flush_table_sql = "flush tables";
@@ -1701,7 +1790,7 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
   string set_interactive_timeout_sql = "set wait_timeout = 180";
   string set_option_sql = set_mdl_timeout_sql + ";" + set_interactive_timeout_sql;
   string unlock_sql = "unlock tables";
-  string replace_sql = dump_servers_to_sql();
+  string replace_sql = dump_servers_to_sql(is_slave_routing);
 
   if (replace_sql.length() == 0)
     //empty replace sql
@@ -1790,24 +1879,29 @@ bool tc_flush_routing(LEX* lex)
   map<string, string> spider_user_map;
   map<string, string> spider_passwd_map;
 
+  map<string, MYSQL*> spider_slave_conn_map;
+  map<string, string> spider_slave_user_map;
+  map<string, string> spider_slave_passwd_map;
+
   set<string>::iterator its;
   map<string, tc_exec_info> result_map;
+  map<string, tc_exec_info> slave_result_map;
   MEM_ROOT mem_root;
   init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
 	/* with_slave muster be false here, SPIDER_SLAVE's flush not support at present */
-  set<string>  all_spider_ipport_set = get_spider_ipport_set(
-                                         &mem_root,
-                                         spider_user_map, 
-                                         spider_passwd_map, 
-                                         FALSE);
+
+  set<string> all_spider_ipport_set = get_spider_ipport_set(&mem_root, spider_user_map, spider_passwd_map, false, SPIDER_WRAPPER);
+  set<string> all_spider_slave_ipport_set = get_spider_ipport_set(&mem_root, spider_slave_user_map, spider_slave_passwd_map, false, SPIDER_SLAVE_WRAPPER);
 
   set<string> to_flush_ipport_set;
+  set<string> to_flush_slave_ipport_set;
 
 
   switch (lex->tc_flush_type)
   {
   case FLUSH_ALL_ROUTING:
     to_flush_ipport_set = all_spider_ipport_set;
+    to_flush_slave_ipport_set = all_spider_slave_ipport_set;
     if (to_flush_ipport_set.empty())
     {
       if (current_thd)
@@ -1819,13 +1913,18 @@ bool tc_flush_routing(LEX* lex)
   case FLUSH_ROUTING_BY_SERVER:
   {
     string ipport = tc_get_ipport_from_server_by_wrapper(&lex->server_options, SPIDER_WRAPPER);
+    string slave_ipport = tc_get_ipport_from_server_by_wrapper(&lex->server_options, SPIDER_SLAVE_WRAPPER);
     /* at present, only SPIDER wrapper server do flush */
-    if (!ipport.length() || !all_spider_ipport_set.count(ipport))
+    if ((!ipport.length() || !all_spider_ipport_set.count(ipport)) &&
+        (!slave_ipport.length() || !all_spider_slave_ipport_set.count(slave_ipport)))
     {
       result = TRUE;
       goto finish;
     }
-    to_flush_ipport_set.insert(ipport);
+    if (ipport.length())
+      to_flush_ipport_set.insert(ipport);
+    if (slave_ipport.length())
+      to_flush_slave_ipport_set.insert(slave_ipport);
     /*TODO check ipport validate */
     break;
   }
@@ -1833,7 +1932,7 @@ bool tc_flush_routing(LEX* lex)
     break;
   }
 
-  for (its = to_flush_ipport_set.begin(); its != to_flush_ipport_set.end(); its++)
+  for (its =  to_flush_ipport_set.begin(); its !=  to_flush_ipport_set.end(); its++)
   {/* init for exec result: result_map */
     string ipport = (*its);
     tc_exec_info exec_info;
@@ -1843,9 +1942,21 @@ bool tc_flush_routing(LEX* lex)
     result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
   }
 
+  for (its =  to_flush_slave_ipport_set.begin(); its != to_flush_slave_ipport_set.end(); its++)
+  {/* init for exec result: result_map */
+    string ipport = (*its);
+    tc_exec_info exec_info;
+    exec_info.err_code = 0;
+    exec_info.row_affect = 0;
+    exec_info.err_msg = "";
+    slave_result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
+  }
+
   while (retry_times-- > 0)
   {
     int exec_ret = 0;
+    int slave_exec_ret = 0;
+    
     spider_conn_map = tc_spider_conn_connect(ret, to_flush_ipport_set, spider_user_map, spider_passwd_map);
     if (ret)
     {
@@ -1853,15 +1964,28 @@ bool tc_flush_routing(LEX* lex)
       goto finish;
     }
 
-    exec_ret = tc_flush_spider_routing(spider_conn_map, result_map, spider_user_map, spider_passwd_map, is_force);
-    if (exec_ret)
+    spider_slave_conn_map = tc_spider_conn_connect(ret, to_flush_slave_ipport_set, spider_slave_user_map, spider_slave_passwd_map);
+    if (ret)
+    {
+      result = TRUE;
+      goto finish;
+    }
+    
+    // send flush routing statements to corresponding mysqlconn
+    if (!spider_conn_map.empty())
+      exec_ret = tc_flush_spider_routing(spider_conn_map, result_map, spider_user_map, spider_passwd_map, is_force, false);
+    if (!spider_slave_conn_map.empty())
+      slave_exec_ret = tc_flush_spider_routing(spider_slave_conn_map, slave_result_map, spider_slave_user_map, spider_slave_passwd_map, is_force, true);
+    if (exec_ret || slave_exec_ret)
     {
       tc_conn_free(spider_conn_map);
       spider_conn_map.clear();
+      tc_conn_free(spider_slave_conn_map);
+      spider_slave_conn_map.clear();
       /* exec_ret == 2 mean "flush table with read" is ok,
       but "replace mysql.servers" or "flush privileges" failed
       so we just retry --force */
-      if (exec_ret == 2)
+      if (exec_ret == 2 || slave_exec_ret == 2)
         is_force = TRUE; /* switch force */
       sleep(2);
     }
@@ -1878,11 +2002,18 @@ bool tc_flush_routing(LEX* lex)
 finish:
   tc_conn_free(spider_conn_map);
   spider_conn_map.clear();
+  tc_conn_free(spider_slave_conn_map);
+  spider_slave_conn_map.clear();
   all_spider_ipport_set.clear();
   to_flush_ipport_set.clear();
   spider_user_map.clear();
   spider_passwd_map.clear();
   result_map.clear();
+  all_spider_slave_ipport_set.clear();
+  to_flush_slave_ipport_set.clear();
+  spider_slave_user_map.clear();
+  spider_slave_passwd_map.clear();
+  slave_result_map.clear();
   free_root(&mem_root, MYF(0));
   return result;
 }

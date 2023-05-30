@@ -58,25 +58,35 @@ enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 #define TC_CONN_CONNECT_TIMEOUT 60
 #define TC_CONN_MAX_RETRIES_ON_FAILS 3
 
-//spider node need execute sql
+//all spider node(inlcuding spider slave node) need execute sql
 #define TC_SPIDER_NEED_EXECUTE 1
-//remote node need execute sql
+//all remote node need execute sql
 #define TC_REMOTE_NEED_EXECUTE 2
-//tdbctl node need execute sql, currently not used
+//all tdbctl node need execute sql
 #define TC_TDBCTL_NEED_EXECUTE 4
-//spider node executed before other nodes.
+//all spider node executed before other nodes.
 #define TC_SPIDER_EXECUTE_FIRST 8
+//only one spider node execute sql
+#define TC_ONLY_ONE_SPIDER_NEED_EXECUTE 16
+//the designated node need execute sql
+#define TC_DESIGNATED_NODE_NEED_EXECUTE 32
+
+#define RETURN_RESULT_SET_FROM_ONE_NODE 1
+#define RETURN_RESULT_SET_FROM_MULTI_NODES 2
 
 enum enum_node_type {
   NODE_TYPE_SPIDER = 0, /* this should ALWAYS be the first */
-  NODE_TYPE_REMOTE = 1,
-  NODE_TYPE_CTL = 2,
-  NODE_TYPE_END = 3, /* this should ALWAYS be the last */
+  NODE_TYPE_SPIDER_SLAVE = 1,
+  NODE_TYPE_REMOTE = 2,
+  NODE_TYPE_REMOTE_SLAVE = 3,
+  NODE_TYPE_CTL = 4, /* this should ALWAYS be the second to last */
+  NODE_TYPE_END = 5, /* this should ALWAYS be the last */
 };
 
 #define ENUM_NODE_TYPE_BEGIN NODE_TYPE_SPIDER
 #define ENUM_NODE_TYPE_END NODE_TYPE_END
 #define ENUM_NODE_TYPE_COUNT int(NODE_TYPE_END)
+#define ENUM_NODE_TYPE_COUNT_EXCLUDE_TDBCTL int(NODE_TYPE_END) - 1
 
 #define TC_STR_MOD " % "
 #define TC_STR_COMMA ", "
@@ -122,6 +132,10 @@ const char* get_stmt_type_str(int type);
 typedef struct tc_exec_info
 {
     uint err_code;
+    // 0 means no sql statment was sent to the node
+    // 1 means some sql statements are ready to be sent to the node
+    bool prepare_sql;
+    MYSQL_RES *res;
     string err_msg;
     ulonglong row_affect;
 } TC_EXEC_INFO;
@@ -129,8 +143,7 @@ typedef struct tc_exec_info
 typedef struct tc_execute_result
 {
     bool result; // TURE, error happened; FALASE, SUCCEED
-    map<string, tc_exec_info> spider_result_info;
-    map<string, tc_exec_info> remote_result_info;
+    map<string, tc_exec_info> result_info[ENUM_NODE_TYPE_COUNT_EXCLUDE_TDBCTL];
 } TC_EXEC_RESULT;
 
 typedef struct tc_parse_result
@@ -145,6 +158,7 @@ typedef struct tc_parse_result
     string spider_sql;
     map<string, string> remote_sql_map;
     int execute_flag;
+    int result_set_flag;
 
     string shard_key;
     int shard_count;
@@ -592,19 +606,28 @@ set<string> get_spider_ipport_set(
   MEM_ROOT *mem, 
   map<string, string> &spider_user_map, 
   map<string, string> &spider_passwd_map, 
-  bool with_slave
+  bool with_slave,
+  string wrapper_name = SPIDER_WRAPPER
 );
 
 map<string, string> get_remote_ipport_map(
   MEM_ROOT *mem, 
   map<string, string> &remote_user_map, 
-  map<string, string> &remote_passwd_map
+  map<string, string> &remote_passwd_map,
+  bool with_slave = false
 );
 
 map<string, string> get_server_name_map(
 	MEM_ROOT *mem,
 	const char *wrapper,
 	bool with_slave
+);
+
+set<string> get_server_name_set(
+	MEM_ROOT *mem,
+  map<string, string> &server_user_map, 
+  map<string, string> &server_passwd_map,
+	const char* wrapper
 );
 
 map<string, string> get_tdbctl_ipport_map(
@@ -745,12 +768,83 @@ get_ip_local_addresses(std::set<std::string>& out,
  */
 bool verify_validity_of_routing_host(MEM_ROOT *mem, const char *server_host);
 
+/**
+ * @brief parse the result from the mysqlconn, and then send 
+newly constructed result set to client.
+ * 
+ * @param thd Thread handler
+ * @param res MYSQL_RES
+ * @param server_name the mysql_result from 
+ * 
+ * @retval 0 on success
+ * @retval 1 on error 
+ */
+int tc_store_mysql_result_into_protocol(THD *thd, MYSQL_RES *res);
+
+/**
+ * @brief build a item according to field_type
+ * 
+ * @param field MYSQL_FIELD
+ * @return Item* 
+ */
+Item* tc_make_item(MYSQL_FIELD *field);
+
+/**
+ * @brief store the row into protocol
+ * 
+ * @param protocol Protocol
+ * @param field  MYSQL_FIELD
+ * @param row 
+ * @param length the length of the row
+ */
+void protocol_store_field(Protocol *protocol, MYSQL_FIELD &field, const char *row, ulong length);
+
+/**
+ * @brief clean MYSQL_RESULT* of exec_result.result_info
+ * 
+ * @param exec_result TC_EXEC_RESULT*
+ */
+void tc_clean_exec_result(TC_EXEC_RESULT* exec_result);
+
+/**
+ * @brief tc_command is disabled when tc_admin == 0
+ * 
+ * @param tc_admin 
+ * @param lex 
+ * @retval true means tc_command is allowed to execute
+ * @retval false means tc_command is not allowed
+ */
+bool check_tc_command(bool tc_admin, LEX *lex);
+
 void tc_real_query(Query_exec_manager *query_mgr, const string &server_name,
                    MYSQL *mysql, enum_node_type node_type);
+
+/**
+ * @brief get query results from mysql connection.
+ *        query_mgr->store_result() only store the last query result from mysql connection.
+ * 
+ * @param query_mgr 
+ * @param server_name 
+ * @param mysql Mysql connection
+ * @param node_type 
+ */
+void tc_get_query_result(Query_exec_manager *query_mgr, const string &server_name,
+                         MYSQL *mysql, enum_node_type node_type);
 bool tc_exec_query_paral(Query_exec_manager *query_mgr,
                       const std::map<std::string, MYSQL *> &conns,
                       enum_node_type node_type);
-bool tc_ddl_run(THD *thd, Cluster_conn_manager *conn_mgr,
+
+/**
+ * @brief execute the prepared sql statements on [SPIDER|SPIDER_SLAVE|REMOTE|REMOTE_SLAVE] nodes,
+ *        according to the exec_flag(query_mgr->get_exec_flag()). 
+ * 
+ * @param thd 
+ * @param conn_mgr 
+ * @param query_mgr 
+ * @retval true  
+ * @retval false 
+ */
+bool tc_run_command(THD *thd, Cluster_conn_manager *conn_mgr,
                 Query_exec_manager *query_mgr);
 const char *get_wrapper_name_by_node_type(enum_node_type type);
 

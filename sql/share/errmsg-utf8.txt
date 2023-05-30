@@ -7831,7 +7831,7 @@ ER_TCADMIN_RENAME_TABLE
   eng "RENAME TABLE FAILED: %s"
 
 ER_TCADMIN_UNSUPPORT_SQL_TYPE
-  eng "UNSUPPORT SQL TYPE: %s WHEN TC_ADMIN=1"
+  eng "UNSUPPORT SQL TYPE: command [%s] is unsupported WHEN enable tdbctl management mode (TC_ADMIN==1)"
 
 ER_TCADMIN_CONNECT_ERROR
   eng "CONNECT FAILED: connect to %s failed"
@@ -7852,10 +7852,10 @@ ER_TCADMIN_NOT_SPIDER
   eng "EXECUTE FAILED: query must be from spider in mysql.servers when tc_admin=1"
 
 ER_TCADMIN_DUMP_NODE_ERROR
-  eng "DUMP FAILED: backup node %s#%d's schema failed"
+  eng "DUMP FAILED: failed to dump %s from node %s#%d"
 
 ER_TCADMIN_RESTORE_NODE_ERROR
-  eng "RESTORE FAILED: restore schema to node %s#%d failed"
+  eng "RESTORE FAILED: failed to restore %s to node %s#%d"
 
 ER_TCADMIN_CREATE_NODE_ERROR
   eng "CREATE NODE FAILED: %s"
@@ -7876,7 +7876,7 @@ ER_TCADMIN_NOT_AVAILABLE
   eng "EXECUTE FAILED: cluster is not available"
 
 ER_TCADMIN_NOT_PRIMARY
-  eng "EXECUTE FAILED: the current tdbctl is not primary node"
+  eng "EXECUTE FAILED: command [%s] is not allowed to execute on non-primary tdbctl node"
 
 ER_TCADMIN_SHARD_COMMENT_ERROR
   eng "Invalid table comment"
@@ -7895,6 +7895,9 @@ ER_TCADMIN_NO_REMOTE_DB_FOUND
 
 ER_TCADMIN_INTERNAL_ERROR
   eng "Internal error: %s"
+
+ER_TCADMIN_COMMAND_DISABLED
+  eng "execute TCADMIN COMMAND without enabling tdbctl management mode (TC_ADMIN==1)"
 
 #
 # End of MyRocks specific messages

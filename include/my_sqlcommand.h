@@ -200,6 +200,7 @@ enum enum_sql_command {
 	TC_SQLCOM_DROP_NODE,
 	TC_SQLCOM_SHOW_PROCESSLIST,
 	TC_SQLCOM_SHOW_VARIABLES,
+  TC_SQLCOM_CONN_NODE_EXECUTE_SQL,
   /* This should be the last !!! */
   SQLCOM_END
 };

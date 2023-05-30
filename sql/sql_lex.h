@@ -3028,6 +3028,7 @@ public:
   sql_exchange *exchange;
   Query_result *result;
   Item *default_value, *on_update_value;
+  LEX_STRING sql_statement;
   LEX_STRING comment, ident;
   LEX_USER *grant_user;
   LEX_ALTER alter_password;

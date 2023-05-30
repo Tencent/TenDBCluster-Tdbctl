@@ -769,6 +769,20 @@ int set_var::check(THD *thd)
   DBUG_RETURN(ret);
 }
 
+/**
+ * @brief  check tdbctl var object
+ * 
+ * @retval 0 means this is not a tdbctl var
+ * @retval 1 means this is a tdbctl var
+ */
+int set_var::check_tdbctl_var()
+{
+  if(var->is_tdbctl())
+  {
+    DBUG_RETURN(1);
+  }
+  DBUG_RETURN(0);
+}
 
 /**
   Check variable, but without assigning value (used by PS).
