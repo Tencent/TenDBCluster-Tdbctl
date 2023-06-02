@@ -441,6 +441,19 @@ ulong tc_check_availability_interval = 10;
 ulong tc_partition_admin_interval = 86400;
 ulong tc_partition_admin_time = 3600;
 ulong tc_partition_init_interval = 300;
+
+int tdbctl_simple_enable_primary(THD *thd);
+int tdbctl_simple_disable_primary(THD *thd);
+int (*tdbctl_enable_primary)(THD *thd) = tdbctl_simple_enable_primary;
+int (*tdbctl_disable_primary)(THD *thd) = tdbctl_simple_disable_primary;
+int (*tdbctl_get_primary)(THD *thd) = NULL;
+int (*tdbctl_startup_enable_primary)() = NULL;
+void reset_tdbctl_primary_functions() {
+  tdbctl_enable_primary = tdbctl_simple_enable_primary;
+  tdbctl_disable_primary = tdbctl_simple_disable_primary;
+  tdbctl_get_primary = NULL;
+  tdbctl_startup_enable_primary = NULL;
+}
 /*
 -1: unknown
 0:  not primary
@@ -448,7 +461,7 @@ ulong tc_partition_init_interval = 300;
 at present: must get tdbctl_is_primary by tc_is_primary_tdbctl_node
 because tdbctl_is_primary it not maintained when network partition
 */
-long tdbctl_is_primary = 0;
+volatile long tdbctl_is_primary = 0;
 char *tc_skip_dump_db_list;
 ulong tc_max_prepared_time = 60;
 ulong opt_binlog_rows_event_max_size;
@@ -969,6 +982,8 @@ static void mysqld_exit(int exit_code) MY_ATTRIBUTE((noreturn));
 static void delete_pid_file(myf flags);
 #endif
 
+void *tdbctl_startup_enable_primary_worker(void *arg);
+static void tdbctl_create_startup_enable_primary_thread();
 
 #ifndef EMBEDDED_LIBRARY
 /****************************************************************************
@@ -4643,6 +4658,7 @@ static int init_tdbctl_components()
   DBUG_ENTER("init_tdbctl_components");
 
   //after server start ok, set tdbctl_is_primary value
+  /* DEPRECATED *
   std::thread t([]() {
     while (server_operational_state != SERVER_OPERATING)
       sleep(2);
@@ -4655,6 +4671,9 @@ static int init_tdbctl_components()
   create_tc_xa_repair_thread();
   create_check_cluster_availability_thread();
   create_partition_admin_thread();
+  */
+
+  tdbctl_create_startup_enable_primary_thread();
 
   DBUG_RETURN(0);
 }
@@ -7259,6 +7278,7 @@ SHOW_VAR status_vars[]= {
   {"Tc_log_max_pages_used",    (char*) &tc_log_max_pages_used,                         SHOW_LONG,              SHOW_SCOPE_GLOBAL},
   {"Tc_log_page_size",         (char*) &tc_log_page_size,                              SHOW_LONG_NOFLUSH,      SHOW_SCOPE_GLOBAL},
   {"Tc_log_page_waits",        (char*) &tc_log_page_waits,                             SHOW_LONG,              SHOW_SCOPE_GLOBAL},
+  {"Tc_is_primary", (char *)&tdbctl_is_primary, SHOW_LONG, SHOW_SCOPE_GLOBAL},
 #ifdef HAVE_POOL_OF_THREADS
   {"Threadpool_idle_threads",  (char *) &show_threadpool_idle_threads,                 SHOW_FUNC,              SHOW_SCOPE_GLOBAL},
   {"Threadpool_threads",       (char *) &tp_stats.num_worker_threads,                  SHOW_INT,               SHOW_SCOPE_GLOBAL},
@@ -9875,4 +9895,60 @@ void init_server_psi_keys(void)
 }
 
 #endif /* HAVE_PSI_INTERFACE */
+
+int tdbctl_simple_enable_primary(THD *thd) {
+  TDBCTL_SET_PRIMARY_MODE_ON;
+  my_ok(thd);
+  return 0;
+}
+
+int tdbctl_simple_disable_primary(THD *thd) {
+  TDBCTL_SET_PRIMARY_MODE_OFF;
+  my_ok(thd);
+  return 0;
+}
+
+void *tdbctl_startup_enable_primary_worker(void *arg) {
+  bool ready = FALSE;
+
+  /*
+    We need to connect to this server itself before attempting to ENABLE
+    PRIMARY, so we wait here before the server is ready for connection.
+  */
+  sql_print_information("Tdbctl: waiting for server's readiness to connect");
+  while (TRUE) {
+    mysql_mutex_lock(&LOCK_socket_listener_active);
+    ready = socket_listener_active;
+    mysql_mutex_unlock(&LOCK_socket_listener_active);
+    if (ready)
+      break;
+    sleep(1);
+  }
+
+  /* Try enabling Primary once, then quit regardless of the result */
+  sql_print_information("Tdbctl: trying to enable Primary Mode at startup");
+  if ((*tdbctl_startup_enable_primary)()) {
+    sql_print_information("Tdbctl: Primary Mode is not enabled");
+  } else {
+    sql_print_information("Tdbctl: Primary Mode is enabled successfully");
+  }
+  return 0;
+}
+
+static void tdbctl_create_startup_enable_primary_thread() {
+  if (!tdbctl_startup_enable_primary) {
+    /* No valid function's registered for startup ENABLE */
+    return;
+  }
+
+  my_thread_handle thr_handle;
+  my_thread_attr_t thr_attr;
+  my_thread_attr_init(&thr_attr);
+  my_thread_attr_setdetachstate(&thr_attr, MY_THREAD_CREATE_DETACHED);
+  if (my_thread_create(&thr_handle, &thr_attr,
+                       tdbctl_startup_enable_primary_worker, NULL)) {
+    sql_print_error(
+        "Tdbctl: failed to create thread for startup ENABLE PRIMARY");
+  }
+}
 

@@ -1075,13 +1075,13 @@ FOREIGN_SERVER *get_server_by_name(MEM_ROOT *mem, const char *server_name,
   DBUG_ENTER("get_server_by_name");
   DBUG_PRINT("info", ("server_name %s", server_name));
 
-  server_name_length= strlen(server_name);
-
   if (! server_name || !strlen(server_name))
   {
     DBUG_PRINT("info", ("server_name not defined!"));
     DBUG_RETURN((FOREIGN_SERVER *)NULL);
   }
+
+  server_name_length = strlen(server_name);
 
   DBUG_PRINT("info", ("locking servers_cache"));
   mysql_rwlock_rdlock(&THR_LOCK_servers);
@@ -1873,7 +1873,7 @@ bool tc_flush_routing(LEX* lex)
 {
   int ret = 0;
   bool result = FALSE;
-	bool is_force = lex->is_tc_flush_force;
+	bool is_force = lex->tc_force;
   int retry_times = 3;
   map<string, MYSQL*> spider_conn_map;
   map<string, string> spider_user_map;

@@ -111,6 +111,16 @@ enum enum_server_operational_state
 };
 enum_server_operational_state get_server_state();
 
+#define TDBCTL_SET_PRIMARY_MODE_ON do { tdbctl_is_primary = 1; } while(0)
+#define TDBCTL_SET_PRIMARY_MODE_OFF do { tdbctl_is_primary = 0; } while(0)
+
+extern volatile long tdbctl_is_primary;
+extern int (*tdbctl_enable_primary)(THD *thd);
+extern int (*tdbctl_disable_primary)(THD *thd);
+extern int (*tdbctl_get_primary)(THD *thd);
+extern int (*tdbctl_startup_enable_primary)();
+void reset_tdbctl_primary_functions();
+
 /**
   Character set of the buildin error messages loaded from errmsg.sys.
 */
@@ -187,7 +197,6 @@ extern ulong tc_partition_admin_interval;
 extern ulong tc_partition_init_interval;
 extern ulong tc_partition_admin_time;
 extern char *tc_skip_dump_db_list;
-extern long tdbctl_is_primary;
 extern ulong tc_max_prepared_time;
 extern my_bool opt_old_style_user_limits, trust_function_creators;
 extern my_bool check_proxy_users, mysql_native_password_proxy_users, sha256_password_proxy_users;

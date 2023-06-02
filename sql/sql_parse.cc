@@ -2986,6 +2986,8 @@ mysql_execute_command(THD *thd, bool first_level)
     goto error;
   }
 
+  tc_parse_result_init(&parse_result);
+
   // When enable tdbctl management mode, the sql_command from 
   // slave_sql_thread should skip tcadmin parsing.
   if (tc_admin == 1 && !thd->rli_slave)
@@ -2999,7 +3001,6 @@ mysql_execute_command(THD *thd, bool first_level)
 
     query_exec_manager.build_server_maps(thd->cluster_conn_manager);
 
-    tc_parse_result_init(&parse_result);
     parse_result.shard_count = thd->cluster_conn_manager->get_shard_count();
 
     if (!tc_command_convert(thd, lex, &parse_result))
@@ -3922,6 +3923,27 @@ mysql_execute_command(THD *thd, bool first_level)
       break;
     case TC_SQLCOM_SHOW_VARIABLES:
       res = tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
+      break;
+    case TC_SQLCOM_ENABLE_PRIMARY:
+      if (check_global_access(thd, SUPER_ACL))
+        goto error;
+      if (!(res = tdbctl_enable_primary(thd))) {
+        sql_print_information("Tdbctl Primary Mode is enabled");
+      }
+      break;
+    case TC_SQLCOM_DISABLE_PRIMARY:
+      if (check_global_access(thd, SUPER_ACL))
+        goto error;
+      if (!(res = tdbctl_disable_primary(thd))) {
+        sql_print_information("Tdbctl Primary Mode is disabled");
+      }
+      break;
+    case TC_SQLCOM_GET_PRIMARY:
+      if (!tdbctl_get_primary) {
+        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "unsupported command");
+        goto error;
+      }
+      res = tdbctl_get_primary(thd);
       break;
     case SQLCOM_SHOW_PRIVILEGES:
       res = mysqld_show_privileges(thd);
@@ -5455,7 +5477,7 @@ mysql_execute_command(THD *thd, bool first_level)
 
         if (server && (strcasecmp(server->scheme, MYSQL_WRAPPER) == 0 || strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER) == 0))
         {
-          if (lex->is_tc_flush_force != TRUE)
+          if (lex->tc_force != TRUE)
           {
             my_error(ER_TCADMIN_DROP_NODE_ERROR, MYF(0), "drop mysql wrapper node or mysql_slave wrapper node must be used with FORCE option");
             goto error;

@@ -372,6 +372,19 @@ public:
    * */
   void clear();
 
+  /**
+   * @brief Identify this server among all TDBCTL nodes in mysql.servers
+   *
+   * We do this by comparing @@server_uuid
+   *
+   * @retval FALSE on success, TRUE on failure to identify
+   * */
+  bool identify_self();
+
+  inline const std::string &get_my_server_name() const {
+    return my_server_name;
+  }
+
   inline const std::map<std::string, AUTH_INFO> &get_auth_map(enum_node_type type) {
     return server_auths[type];
   }
@@ -407,6 +420,8 @@ private:
   uint shard_count;
 
   ulong server_version;
+
+  std::string my_server_name;
 
   /**
    * For each map we have:
