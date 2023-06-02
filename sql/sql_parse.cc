@@ -5661,6 +5661,14 @@ mysql_execute_command(THD *thd, bool first_level)
       my_ok(thd);
       break;
     }
+    case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
+    {
+      if(check_all_global_access(thd, GLOBAL_ACLS))
+      {
+        goto error;
+      }
+      break;
+    }
 #endif
     default:
 #ifndef EMBEDDED_LIBRARY
