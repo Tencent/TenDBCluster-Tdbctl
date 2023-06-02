@@ -2986,6 +2986,8 @@ mysql_execute_command(THD *thd, bool first_level)
     goto error;
   }
 
+  tc_parse_result_init(&parse_result);
+
   // When enable tdbctl management mode, the sql_command from 
   // slave_sql_thread should skip tcadmin parsing.
   if (tc_admin == 1 && !thd->rli_slave)
@@ -2999,7 +3001,6 @@ mysql_execute_command(THD *thd, bool first_level)
 
     query_exec_manager.build_server_maps(thd->cluster_conn_manager);
 
-    tc_parse_result_init(&parse_result);
     parse_result.shard_count = thd->cluster_conn_manager->get_shard_count();
 
     if (!tc_command_convert(thd, lex, &parse_result))

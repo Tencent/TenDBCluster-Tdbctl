@@ -1075,13 +1075,13 @@ FOREIGN_SERVER *get_server_by_name(MEM_ROOT *mem, const char *server_name,
   DBUG_ENTER("get_server_by_name");
   DBUG_PRINT("info", ("server_name %s", server_name));
 
-  server_name_length= strlen(server_name);
-
   if (! server_name || !strlen(server_name))
   {
     DBUG_PRINT("info", ("server_name not defined!"));
     DBUG_RETURN((FOREIGN_SERVER *)NULL);
   }
+
+  server_name_length = strlen(server_name);
 
   DBUG_PRINT("info", ("locking servers_cache"));
   mysql_rwlock_rdlock(&THR_LOCK_servers);
