@@ -404,6 +404,28 @@ const char* get_stmt_type_str(int type)
       return "TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY";
     case TC_SQLCOM_ALTER_TABLE_UNSUPPORT: 
       return "TC_SQLCOM_ALTER_TABLE_UNSUPPORT";
+    case TC_SQLCOM_CREATE_NODE:
+      return "TC_SQLCOM_CREATE_NODE";
+    case TC_SQLCOM_ALTER_NODE:
+      return "TC_SQLCOM_ALTER_NODE";
+    case TC_SQLCOM_DROP_NODE:
+      return "TC_SQLCOM_DROP_NODE";
+    case TC_SQLCOM_FLUSH_ROUTING:
+      return "TC_SQLCOM_FLUSH_ROUTING";
+    case TC_SQLCOM_MONITOR_INIT:
+      return "TC_SQLCOM_MONITOR_INIT";
+    case TC_SQLCOM_SHOW_PROCESSLIST:
+      return "TC_SQLCOM_SHOW_PROCESSLIST";
+    case TC_SQLCOM_SHOW_VARIABLES:
+      return "TC_SQLCOM_SHOW_VARIABLES";
+    case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
+      return "TC_SQLCOM_CONN_NODE_EXECUTE_SQL";
+    case TC_SQLCOM_ENABLE_PRIMARY:
+      return "TC_SQLCOM_ENABLE_PRIMARY";
+    case TC_SQLCOM_DISABLE_PRIMARY:
+      return "TC_SQLCOM_DISABLE_PRIMARY";
+    case TC_SQLCOM_GET_PRIMARY:
+      return "TC_SQLCOM_GET_PRIMARY";
     default:
         return "unkonw type";
     }
@@ -1931,6 +1953,8 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_SHOW_SLAVE_STAT:
     case SQLCOM_SLAVE_START:
     case SQLCOM_SLAVE_STOP:
+    case SQLCOM_INSTALL_PLUGIN:
+    case SQLCOM_UNINSTALL_PLUGIN:
       tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     // These commands are not supported in tcadmin primary or secondary mode.
@@ -1951,8 +1975,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_XA_ROLLBACK:
     case SQLCOM_XA_RECOVER:
     case SQLCOM_ALTER_TABLESPACE:
-    case SQLCOM_INSTALL_PLUGIN:
-    case SQLCOM_UNINSTALL_PLUGIN:
     case SQLCOM_ANALYZE:
     case SQLCOM_CHECK:
     case SQLCOM_OPTIMIZE:
@@ -2393,7 +2415,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       secondary_node_allowed = false;
       if (!tdbctl_is_primary)
         break;
-      tc_parse_result_t->execute_flag |= TC_DESIGNATED_NODE_NEED_EXECUTE;
+      tc_parse_result_t->execute_flag |= TC_DESIGNATED_NODE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       tc_parse_result_t->result_set_flag |= RETURN_RESULT_SET_FROM_ONE_NODE;
       break;
     default:

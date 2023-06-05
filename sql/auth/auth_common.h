@@ -758,6 +758,8 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
 
 bool check_global_access(THD *thd, ulong want_access);
 
+bool check_all_global_access(THD *thd, ulong want_access);
+
 #ifdef NO_EMBEDDED_ACCESS_CHECKS
 #define check_grant(A,B,C,D,E,F) 0
 #define check_grant_db(A,B) 0

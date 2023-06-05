@@ -4356,6 +4356,20 @@ bool check_global_access(THD *thd, ulong want_access)
 #endif /*NO_EMBEDDED_ACCESS_CHECKS */
 }
 
+bool check_all_global_access(THD *thd, ulong want_access)
+{
+  DBUG_ENTER("check_all_global_access");
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  if (thd->security_context()->check_access(want_access, false))
+    DBUG_RETURN(0);
+  thd->diff_access_denied_errors++;
+  my_error(ER_ACCESS_DENIED_ALL_PRIV, MYF(0));
+  DBUG_RETURN(1);
+#else
+  DBUG_RETURN(0);
+#endif /*NO_EMBEDDED_ACCESS_CHECKS */
+}
+
 
 /**
   Checks foreign key's parent table access.
