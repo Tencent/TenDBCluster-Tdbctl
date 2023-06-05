@@ -5369,7 +5369,6 @@ mysql_execute_command(THD *thd, bool first_level)
     case TC_SQLCOM_CREATE_NODE:
     case TC_SQLCOM_ALTER_NODE:
     case TC_SQLCOM_DROP_NODE:
-    case TC_SQLCOM_FLUSH_ROUTING:
     {
       /*
         NB: use server_uuid as lock string here
@@ -5487,11 +5486,6 @@ mysql_execute_command(THD *thd, bool first_level)
         }
         break;
       }
-      case TC_SQLCOM_FLUSH_ROUTING:
-      {
-        lex->tc_do_grants = false;
-        goto flush;
-      }
       default:
         my_ok(thd);
         goto finish;
@@ -5511,7 +5505,6 @@ mysql_execute_command(THD *thd, bool first_level)
       if (thd->get_stmt_da()->is_ok())
         thd->get_stmt_da()->reset_diagnostics_area();
 
-    flush:
       if (lex->tc_do_grants &&
           tc_enable_internal_grant &&
           tc_do_grants_internal(lex))
@@ -5521,17 +5514,6 @@ mysql_execute_command(THD *thd, bool first_level)
           Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
           drop_node->execute(thd);
         }
-        goto error;
-      }
-
-      if (tc_flush_routing(lex))
-      {
-        if (lex->sql_command == TC_SQLCOM_CREATE_NODE)
-        {
-          Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
-          drop_node->execute(thd);
-        }
-        my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
         goto error;
       }
 
@@ -5645,6 +5627,34 @@ mysql_execute_command(THD *thd, bool first_level)
                    grant_path, lex->server_options.get_host(), lex->server_options.get_port());
           goto error;
         }*/
+      }
+
+      my_ok(thd);
+      break;
+    }
+    case TC_SQLCOM_FLUSH_ROUTING:
+    {
+      /*
+        NB: use server_uuid as lock string here
+        we add x lock to block any DDL or flush command
+      */
+      if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE)))
+      {
+        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "lock wait timeout");
+        goto error;
+      }
+
+      /* always do reload first */
+      if (servers_reload(thd))
+      {
+        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "reload server failed");
+        goto error;
+      }
+
+      if (tc_flush_routing(lex))
+      {
+        my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+        goto error;
       }
 
       my_ok(thd);
