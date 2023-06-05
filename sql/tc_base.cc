@@ -2363,6 +2363,8 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case TC_SQLCOM_CREATE_NODE:
     case TC_SQLCOM_ALTER_NODE:
     case TC_SQLCOM_DROP_NODE:
+      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
+      break;
     case TC_SQLCOM_FLUSH_ROUTING:
     case TC_SQLCOM_CREATE_SERVER:
     case TC_SQLCOM_DROP_SERVER:
