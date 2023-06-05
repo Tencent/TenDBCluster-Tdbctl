@@ -168,7 +168,7 @@ int tc_restore_to_node(
     my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), file, host, port);
     return 1;
   }
-  std::string sql = "set @old_ddl_execute_by_ctl = @@ddl_execute_by_ctl";
+  std::string sql = "/*!50600 set @old_ddl_execute_by_ctl = @@ddl_execute_by_ctl */";
   tc_exec_sql_with_result(conn, sql);
   sql = "/*!50600 set global ddl_execute_by_ctl=0 */";
   tc_exec_sql_with_result(conn, sql);
@@ -191,7 +191,7 @@ int tc_restore_to_node(
     return 1;
   }
 
-  sql = "set global ddl_execute_by_ctl = @old_ddl_execute_by_ctl";
+  sql = "/*!50600 set global ddl_execute_by_ctl = @old_ddl_execute_by_ctl */";
   tc_exec_sql_with_result(conn, sql);
 
   sql_print_information("success restore %s to node %s#%d", file, host, port);
