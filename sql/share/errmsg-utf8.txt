@@ -7907,6 +7907,10 @@ ER_TCADMIN_GET_PRIMARY
 
 ER_ACCESS_DENIED_ALL_PRIV
   eng "Access denied; you need all privileges for this operation"
+
+ER_SERVERS_LOAD
+  eng "Failed to load server information from mysql.servers"
+
 #
 # End of MyRocks specific messages
 #

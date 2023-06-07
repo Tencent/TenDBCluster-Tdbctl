@@ -334,6 +334,12 @@ int i_s_tdbctl_nodes_fill(THD *thd, TABLE_LIST *tables, Item *cond) {
   map<string, MYSQL *> conns;
   map<string, MYSQL *>::const_iterator conn_it;
 
+  /* To make sure the view is real-time, reload servers first. */
+  if (servers_reload(thd)) {
+    my_error(ER_SERVERS_LOAD, MYF(0));
+    return 1;
+  }
+
   if (!thd->cluster_conn_manager) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }

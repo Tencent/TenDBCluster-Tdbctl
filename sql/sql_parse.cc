@@ -3925,25 +3925,14 @@ mysql_execute_command(THD *thd, bool first_level)
       res = tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
       break;
     case TC_SQLCOM_ENABLE_PRIMARY:
-      if (check_global_access(thd, SUPER_ACL))
-        goto error;
-      if (!(res = tdbctl_enable_primary(thd))) {
-        sql_print_information("Tdbctl Primary Mode is enabled");
-      }
-      break;
+      /* Fall through */
     case TC_SQLCOM_DISABLE_PRIMARY:
+      /* SUPER access is required to enable/disable Primary Mode */
       if (check_global_access(thd, SUPER_ACL))
         goto error;
-      if (!(res = tdbctl_disable_primary(thd))) {
-        sql_print_information("Tdbctl Primary Mode is disabled");
-      }
-      break;
+      /* Fall through */
     case TC_SQLCOM_GET_PRIMARY:
-      if (!tdbctl_get_primary) {
-        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "unsupported command");
-        goto error;
-      }
-      res = tdbctl_get_primary(thd);
+      res = tdbctl_handle_primary_cmd(thd, lex);
       break;
     case SQLCOM_SHOW_PRIVILEGES:
       res = mysqld_show_privileges(thd);
@@ -5383,7 +5372,7 @@ mysql_execute_command(THD *thd, bool first_level)
       /* always do reload first */
       if (servers_reload(thd))
       {
-        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "reload server failed");
+        my_error(ER_SERVERS_LOAD, MYF(0));
         goto error;
       }
 
@@ -5647,7 +5636,7 @@ mysql_execute_command(THD *thd, bool first_level)
       /* always do reload first */
       if (servers_reload(thd))
       {
-        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "reload server failed");
+        my_error(ER_SERVERS_LOAD, MYF(0));
         goto error;
       }
 

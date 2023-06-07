@@ -4845,7 +4845,37 @@ enum_sql_command tc_distribute_spider_remote_types[] = { SQLCOM_CREATE_EVENT, SQ
   SQLCOM_CREATE_INDEX, SQLCOM_DROP_INDEX
 };
 
+int tdbctl_handle_primary_cmd(THD *thd, LEX *lex) {
+  int res;
+  enum_sql_command cmd = lex->sql_command;
 
+  if (cmd == TC_SQLCOM_GET_PRIMARY) {
+    /* Could be NULL without a proper plugin */
+    if (!tdbctl_get_primary) {
+      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "unsupported command");
+      return TRUE;
+    }
+  }
+
+  if (servers_reload(thd)) {
+    my_error(ER_SERVERS_LOAD, MYF(0));
+    return TRUE;
+  }
+
+  if (cmd == TC_SQLCOM_ENABLE_PRIMARY) {
+    if (!(res = tdbctl_enable_primary(thd))) {
+      sql_print_information("Tdbctl Primary Mode is enabled");
+    }
+  } else if (cmd == TC_SQLCOM_DISABLE_PRIMARY) {
+    if (!(res = tdbctl_disable_primary(thd))) {
+      sql_print_information("Tdbctl Primary Mode is disabled");
+    }
+  } else { /* TC_SQLCOM_GET_PRIMARY */
+    res = tdbctl_get_primary(thd);
+  }
+
+  return res;
+}
 
 //currently only consider tc_amind=1
 bool tc_unsupport_sql_type(int sql_type) {
