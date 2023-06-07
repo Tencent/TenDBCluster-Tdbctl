@@ -863,4 +863,17 @@ bool tc_run_command(THD *thd, Cluster_conn_manager *conn_mgr,
                 Query_exec_manager *query_mgr);
 const char *get_wrapper_name_by_node_type(enum_node_type type);
 
+/**
+ * @brief Handle commands regarding Tdbctl Primary Mode, including:
+ *    - TDBCTL ENABLE PRIMARY [FORCE]
+ *    - TDBCTL DISABLE PRIMARY
+ *    - TDBCTL GET PRIMARY
+ *
+ * @param thd
+ * @param lex
+ *
+ * @retval TRUE on error, FALSE on success
+ * */
+int tdbctl_handle_primary_cmd(THD *thd, LEX *lex);
+
 #endif /* TC_BASE_INCLUDED */
