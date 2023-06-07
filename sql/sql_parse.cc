@@ -2996,7 +2996,7 @@ mysql_execute_command(THD *thd, bool first_level)
       thd->cluster_conn_manager = new Cluster_conn_manager();
     }
 
-    if (thd->cluster_conn_manager->refresh(FALSE, FALSE))
+    if (thd->cluster_conn_manager->refresh(FALSE, TRUE))
       goto error;
 
     query_exec_manager.build_server_maps(thd->cluster_conn_manager);
@@ -5708,6 +5708,9 @@ mysql_execute_command(THD *thd, bool first_level)
     query_exec_manager.set_exec_flag(parse_result.execute_flag);
     if (parse_result.execute_flag & TC_SPIDER_NEED_EXECUTE)
     {
+      if (thd->cluster_conn_manager->connect(NODE_TYPE_SPIDER, false) ||
+          thd->cluster_conn_manager->connect(NODE_TYPE_SPIDER_SLAVE, false))
+        goto error;
       query_exec_manager.store_exec_query(parse_result.spider_sql, NODE_TYPE_SPIDER);
       query_exec_manager.store_exec_query(parse_result.spider_sql, NODE_TYPE_SPIDER_SLAVE);
     }
@@ -5717,11 +5720,18 @@ mysql_execute_command(THD *thd, bool first_level)
       get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
       if (!server_list.empty())
       {
-        query_exec_manager.store_exec_query(server_list.front()->server_name, parse_result.spider_sql, NODE_TYPE_SPIDER);
+        std::string srv_name = std::string(server_list.front()->server_name, server_list.front()->server_name_length);
+        if(thd->cluster_conn_manager->connect(srv_name, NODE_TYPE_SPIDER, false))
+          goto error;
+        query_exec_manager.store_exec_query(srv_name, parse_result.spider_sql, NODE_TYPE_SPIDER);
       }
     }
     if (parse_result.execute_flag & TC_REMOTE_NEED_EXECUTE)
+    {
+      if(thd->cluster_conn_manager->connect(NODE_TYPE_REMOTE, false))
+        goto error;
       query_exec_manager.store_exec_query(parse_result.remote_sql_map, NODE_TYPE_REMOTE);
+    }
     if (parse_result.execute_flag & TC_DESIGNATED_NODE_NEED_EXECUTE)
     {
       FOREIGN_SERVER *server =
@@ -5738,7 +5748,11 @@ mysql_execute_command(THD *thd, bool first_level)
                  "The node type is unsupported.");
         goto error;
       }
-      query_exec_manager.store_exec_query(server->server_name, lex->sql_statement.str, (enum_node_type)node_type);
+      std::string srv_name = std::string(server->server_name, server->server_name_length);
+      std::string sql_statement = std::string(lex->sql_statement.str, lex->sql_statement.length);
+      if(thd->cluster_conn_manager->connect(srv_name, (enum_node_type)node_type, false))
+        goto error;
+      query_exec_manager.store_exec_query(srv_name, sql_statement, (enum_node_type)node_type);
     }
 
     if (thd->cluster_conn_manager->check_query_manager_validity(

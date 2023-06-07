@@ -427,7 +427,7 @@ const char* get_stmt_type_str(int type)
     case TC_SQLCOM_GET_PRIMARY:
       return "TC_SQLCOM_GET_PRIMARY";
     default:
-        return "unkonw type";
+        return "unknown type";
     }
     return "";
 }
