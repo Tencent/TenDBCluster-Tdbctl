@@ -5500,115 +5500,29 @@ mysql_execute_command(THD *thd, bool first_level)
       }
 
       /*
-       For create spider node logic blow.
-       After add spider node, we need dump schema from any other spider node.
-       At present, only create spider node support and need to this.
+       For create spider/spider_slave/tdbctl node logic blow.
+       After add spider/spider_slave/tdbctl node, we need dump schema from any other spider/tdbctl node.
+       At present, only create spider/spider_slave/tdbctl node support and need to this.
      */
       if (lex->sql_command == TC_SQLCOM_CREATE_NODE && lex->tc_with_schema)
       {
-        // sql_yacc.yy had filter wrapper name according to tc_with_schema option
-        DBUG_ASSERT(((strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
-                     (strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)));
-
-        // disable internal dump/restore
-        if (!tc_enable_internal_dump)
-        {
-          my_ok(thd);
-          goto finish;
-        }
-
-        //string server_name, add_address;
-        list<FOREIGN_SERVER *> server_list;
-        char schema_path[FN_REFLEN + 1];
-        //char grant_path[FN_REFLEN + 1];
-        char *p1 = my_stpnmov(schema_path, mysql_tmpdir, sizeof(schema_path));
-        //char *p2 = my_stpnmov(grant_path, mysql_tmpdir, sizeof(grant_path));
-
-        my_snprintf(p1, sizeof(schema_path) - (p1 - schema_path), "/%s_%lu%lx_%lx_schema.sql",
-                    tmp_file_prefix, current_thd->query_start(), current_pid,
-                    thd->thread_id());
-        /*my_snprintf(p2, sizeof(grant_path) - (p2 - grant_path), "/%s_%lu%lx_%lx_grant.sql",
-                    tmp_file_prefix, current_thd->query_start(), current_pid,
-                    thd->thread_id());*/
-
-        /*
-          get spider_list from mysql.servers, exclude slave spiders
-          avoid to user slave spider's schema, maybe not consistent with master ?
-        */
-        get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
-        // spider node had add to mysql.servers, must not be empty.
-        DBUG_ASSERT(server_list.empty() != true);
-        if (server_list.size() == 1)
-        {
-          // first spider node, no need to dump/restore schema/grant, only add to mysql.servers
-          push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
-                              "first spider node created, skip dump/restore schema/grant");
-          my_ok(thd);
-          goto finish;
-        }
-
-        /*
-          dump spider's schema and grant from first spider node.
-          must exclude itself
-        */
-        DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
-                    server_list.front()->port != lex->server_options.get_port());
-
-        if (tc_dump_node_schema(
-                server_list.front()->host,
-                server_list.front()->port,
-                server_list.front()->username,
-                server_list.front()->password,
-                schema_path))
+        /* always do reload first */
+        if (servers_reload(thd) || thd->cluster_conn_manager->refresh(FALSE, FALSE))
         {
           Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
           drop_node->execute(thd);
-          my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
-                   schema_path, server_list.front()->host, server_list.front()->port);
+          my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "reload server failed");
           goto error;
         }
-
-        /*
-        if (tc_dump_node_grant(
-                server_list.front()->host,
-                server_list.front()->port,
-                server_list.front()->username,
-                server_list.front()->password,
-                grant_path))
+        if (tc_flush_routing(lex, thd->cluster_conn_manager))
         {
           Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
           drop_node->execute(thd);
-          my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
-                   grant_path, server_list.front()->host, server_list.front()->port);
-          goto error;
-        }*/
-
-        if (tc_restore_to_node(lex->server_options.get_host(),
-                               lex->server_options.get_port(),
-                               lex->server_options.get_username(),
-                               lex->server_options.get_password(),
-                               schema_path))
-        {
-          Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
-          drop_node->execute(thd);
-          my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
-                   schema_path, lex->server_options.get_host(), lex->server_options.get_port());
+          my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
           goto error;
         }
-
-        /*
-        if (tc_restore_to_node(lex->server_options.get_host(),
-                               lex->server_options.get_port(),
-                               lex->server_options.get_username(),
-                               lex->server_options.get_password(),
-                               grant_path))
-        {
-          Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
-          drop_node->execute(thd);
-          my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
-                   grant_path, lex->server_options.get_host(), lex->server_options.get_port());
+        if(tc_load_schema_to_new_node(thd, lex))
           goto error;
-        }*/
       }
 
       my_ok(thd);
@@ -5633,7 +5547,7 @@ mysql_execute_command(THD *thd, bool first_level)
         goto error;
       }
 
-      if (tc_flush_routing(lex))
+      if (tc_flush_routing(lex, thd->cluster_conn_manager))
       {
         my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
         goto error;

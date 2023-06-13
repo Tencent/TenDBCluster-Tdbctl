@@ -2302,9 +2302,10 @@ tdbctl:
 
           if (Lex->tc_with_schema &&
                 (my_strcasecmp(system_charset_info, $5.str, SPIDER_WRAPPER) != 0 &&
-                my_strcasecmp(system_charset_info, $5.str, SPIDER_SLAVE_WRAPPER) != 0))
+                my_strcasecmp(system_charset_info, $5.str, SPIDER_SLAVE_WRAPPER) != 0 &&
+                my_strcasecmp(system_charset_info, $5.str, TDBCTL_WRAPPER) != 0))
           {
-            my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "WITH SCHMEA only support SPIDER, SPIDER_SLAVE wrapper");
+            my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "WITH SCHMEA only support SPIDER, SPIDER_SLAVE, TDBCTL wrapper");
             MYSQL_YYABORT;
           }
 

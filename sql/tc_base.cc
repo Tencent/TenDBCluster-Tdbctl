@@ -2959,32 +2959,26 @@ map<string, string> get_server_name_map(
 /*
   get server_name with specifc wrapper
 
-  @retval
-  set for result
 */
-set<string> get_server_name_set(
+void get_server_name_set(
 	MEM_ROOT *mem,
-  map<string, string> &server_user_map, 
-  map<string, string> &server_passwd_map,
+  std::set<std::string> &server_set,
 	const char* wrapper
 )
 {
-  set<string> server_name_set;
-  ostringstream  sstr;
   list<FOREIGN_SERVER*> server_list;
-
+  std::string tmp;
   get_server_by_wrapper(server_list, mem, wrapper, false);
   for (auto &server : server_list)
   {
     string server_name = server->server_name;
     string user = server->username;
     string passwd = server->password;
-    server_name_set.insert(server_name);
-    server_user_map.insert(pair<string, string>(server_name, user));
-    server_passwd_map.insert(pair<string, string>(server_name, passwd));
+    server_set.insert(server_name);
+    tmp += server_name + " ";
   }
 
-  return server_name_set;
+  DBUG_VOID_RETURN;
 }
 
 /*
@@ -3449,6 +3443,46 @@ bool tc_conn_free(map<string, MYSQL*> &conn_map)
   return FALSE;
 }
 
+bool tc_exec_sql_paral(
+    string exec_sql,
+    map<string, MYSQL*>& conn_map,
+    map<string, tc_exec_info>& result_map)
+{
+  int i = 0;
+  bool result = FALSE;
+  int count = conn_map.size();
+  thread* thread_array = new thread[count];
+
+  map<string, MYSQL*>::iterator its;
+  map<string, tc_exec_info>::iterator its2;
+  for (its = conn_map.begin(); its != conn_map.end(); its++)
+  {
+    string servername = its->first;
+    MYSQL* mysql = its->second;
+    thread tmp_t(tc_exec_sql_up, mysql, exec_sql, &result_map[servername]);
+    thread_array[i] = move(tmp_t);
+    i++;
+  }
+
+  for (int i = 0; i < count; i++)
+  {
+    if (thread_array[i].joinable())
+      thread_array[i].join();
+  }
+
+  for (its2 = result_map.begin(); its2 != result_map.end(); its2++)
+  {/* */
+    string ipport_or_servername = its2->first;
+    tc_exec_info exec_info = its2->second;
+    if (exec_info.err_code > 0)
+    {
+      result = TRUE;
+    }
+  }
+
+  delete[] thread_array;
+  return result;
+}
 
 /* execute sql parallel without result, main for command or replace/delete/update */
 bool tc_exec_sql_paral(
