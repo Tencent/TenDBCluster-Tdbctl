@@ -5376,6 +5376,9 @@ mysql_execute_command(THD *thd, bool first_level)
         goto error;
       }
 
+      // used for tdbctl alter node
+      Server_options old_server_options;
+
       switch (lex->sql_command)
       {
       case TC_SQLCOM_CREATE_NODE:
@@ -5429,10 +5432,6 @@ mysql_execute_command(THD *thd, bool first_level)
           goto error;
         }
 
-        // Only flush mysql.servers to this new added spider or spider_slave
-        if (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0 || strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0)
-          lex->tc_flush_type = FLUSH_ROUTING_BY_SERVER;
-
         break;
       }
       case TC_SQLCOM_ALTER_NODE:
@@ -5446,6 +5445,7 @@ mysql_execute_command(THD *thd, bool first_level)
           my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), "server not exist");
           goto error;
         }
+        fill_lex_to_alter_node(lex, server);
         /* At present, only support alter MYSQL wrapper node */
         if (!(strcasecmp(server->scheme, MYSQL_WRAPPER) == 0 ||
             strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER) == 0))
@@ -5454,25 +5454,13 @@ mysql_execute_command(THD *thd, bool first_level)
           goto error;
         }
 
+        old_server_options = foreign_server_to_server_options(server);
         break;
       }
       case TC_SQLCOM_DROP_NODE:
       {
         DBUG_ASSERT(lex->m_sql_cmd != NULL);
 
-        FOREIGN_SERVER *server =
-            get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
-
-        if (server && (strcasecmp(server->scheme, MYSQL_WRAPPER) == 0 || strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER) == 0))
-        {
-          if (lex->tc_force != TRUE)
-          {
-            my_error(ER_TCADMIN_DROP_NODE_ERROR, MYF(0), "drop mysql wrapper node or mysql_slave wrapper node must be used with FORCE option");
-            goto error;
-          }
-          // if drop mysql wrapper node or mysql_slave wrapper node, need do flush all routing.
-          lex->tc_flush_type = FLUSH_ALL_ROUTING;
-        }
         break;
       }
       default:
@@ -5502,6 +5490,11 @@ mysql_execute_command(THD *thd, bool first_level)
         {
           Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
           drop_node->execute(thd);
+        }
+        else if (lex->sql_command == TC_SQLCOM_ALTER_NODE)
+        {
+          Sql_cmd_alter_server *resume_node = new Sql_cmd_alter_server(&old_server_options);
+          resume_node->execute(thd);
         }
         goto error;
       }
