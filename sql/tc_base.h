@@ -615,7 +615,15 @@ MYSQL *tc_tdbctl_conn_primary(
 );
 
 int tc_do_grants_internal(LEX *lex);
-
+/**
+ * @brief fill the options of alter node. These options
+ *        include host,port,user,password
+ * 
+ * @param lex 
+ * @param server 
+ */
+void fill_lex_to_alter_node(LEX* lex, FOREIGN_SERVER *server);
+Server_options foreign_server_to_server_options(FOREIGN_SERVER *fs);
 
 set<string> get_spider_ipport_set(
   MEM_ROOT *mem, 

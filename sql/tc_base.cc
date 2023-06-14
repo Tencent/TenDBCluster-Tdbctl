@@ -2773,6 +2773,60 @@ bool tc_run_command(THD *thd, Cluster_conn_manager *conn_mgr,
   return FALSE;
 }
 
+void fill_lex_to_alter_node(LEX* lex, FOREIGN_SERVER *server)
+{
+  if (!lex->server_options.get_host())
+  {
+    LEX_STRING s_host = {server->host, strlen(server->host)};
+    lex->server_options.set_host(s_host);
+  }
+  if (lex->server_options.get_port() == Server_options::PORT_NOT_SET)
+  {
+    lex->server_options.set_port(server->port);
+  }
+  if (!lex->server_options.get_username())
+  {
+    LEX_STRING s_user = {server->username, strlen(server->username)};
+    lex->server_options.set_username(s_user);
+  }
+  if (!lex->server_options.get_password())
+  {
+    LEX_STRING s_passwd = {server->password, strlen(server->password)};
+    lex->server_options.set_password(s_passwd);
+  }
+  DBUG_VOID_RETURN;
+}
+
+Server_options foreign_server_to_server_options(FOREIGN_SERVER *fs)
+{
+  Server_options so;
+  so.m_server_name = {fs->server_name, fs->server_name_length};
+
+  so.set_port(fs->port);
+  if (fs->host) {
+    so.set_host({fs->host, strlen(fs->host)});
+  }
+  if (fs->db) {
+    so.set_db({fs->db, strlen(fs->db)});
+  }
+  if (fs->username) {
+    so.set_username({fs->username, strlen(fs->username)});
+  }
+  if (fs->password) {
+    so.set_password({fs->password, strlen(fs->password)});
+  }
+  if (fs->scheme) {
+    so.set_scheme({fs->scheme, strlen(fs->scheme)});
+  }
+  if (fs->socket) {
+    so.set_socket({fs->socket, strlen(fs->socket)});
+  }
+  if (fs->owner) {
+    so.set_owner({fs->owner, strlen(fs->owner)});
+  }
+
+  return so;
+}
 
 set<string> get_spider_ipport_set(
   MEM_ROOT *mem, 
