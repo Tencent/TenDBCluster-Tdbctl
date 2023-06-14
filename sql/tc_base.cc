@@ -2593,7 +2593,7 @@ Item* tc_make_item(MYSQL_FIELD* field)
     case MYSQL_TYPE_DECIMAL:
     case MYSQL_TYPE_NEWDECIMAL:
     {
-      item = new Item_decimal(atoll(field->def), false);
+      item = new Item_decimal((longlong)0, false);
       item->unsigned_flag = (field->flags & MY_I_S_UNSIGNED);
       item->decimals = field->length%10;
       item->max_length = (field->length/100)%100;

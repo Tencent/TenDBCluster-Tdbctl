@@ -5446,6 +5446,25 @@ mysql_execute_command(THD *thd, bool first_level)
           my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), "server not exist");
           goto error;
         }
+        if (!lex->server_options.get_host())
+        {
+          LEX_STRING s_host = {server->host, strlen(server->host)};
+          lex->server_options.set_host(s_host);
+        }
+        if (lex->server_options.get_port() == Server_options::PORT_NOT_SET)
+        {
+          lex->server_options.set_port(server->port);
+        }
+        if (!lex->server_options.get_username())
+        {
+          LEX_STRING s_user = {server->username, strlen(server->username)};
+          lex->server_options.set_username(s_user);
+        }
+        if (!lex->server_options.get_password())
+        {
+          LEX_STRING s_passwd = {server->password, strlen(server->password)};
+          lex->server_options.set_password(s_passwd);
+        }
         /* At present, only support alter MYSQL wrapper node */
         if (!(strcasecmp(server->scheme, MYSQL_WRAPPER) == 0 ||
             strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER) == 0))
@@ -5460,6 +5479,7 @@ mysql_execute_command(THD *thd, bool first_level)
       {
         DBUG_ASSERT(lex->m_sql_cmd != NULL);
 
+        /*
         FOREIGN_SERVER *server =
             get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);
 
@@ -5473,6 +5493,7 @@ mysql_execute_command(THD *thd, bool first_level)
           // if drop mysql wrapper node or mysql_slave wrapper node, need do flush all routing.
           lex->tc_flush_type = FLUSH_ALL_ROUTING;
         }
+        */
         break;
       }
       default:
