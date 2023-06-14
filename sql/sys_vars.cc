@@ -6467,3 +6467,9 @@ static Sys_var_mybool Sys_tc_restrict_query_from_spider(
   "when tc_admin=1 , the query must be from spider node",
   TDBCTL GLOBAL_VAR(tc_restrict_query_from_spider), CMD_LINE(OPT_ARG),
   DEFAULT(TRUE));
+
+static Sys_var_mybool Sys_tc_auto_fix_connections(
+    "tc_auto_fix_connections",
+    "Whether to automatically re-create a connection without raising an error "
+    "when an existing connection is found lost.",
+    TDBCTL SESSION_VAR(tc_auto_fix_conns), CMD_LINE(OPT_ARG), DEFAULT(TRUE));

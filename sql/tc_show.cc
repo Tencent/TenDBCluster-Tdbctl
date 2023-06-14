@@ -86,7 +86,8 @@ int tc_show_processlist(THD *thd, bool verbose, LEX_CSTRING from_server) {
   if (!thd->cluster_conn_manager) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
-  if (thd->cluster_conn_manager->refresh(FALSE, no_connect))
+  /* Force the refresh to build all connections (when no_connect is FALSE) */
+  if (thd->cluster_conn_manager->refresh(TRUE, no_connect))
     DBUG_RETURN(1);
   if (no_connect && thd->cluster_conn_manager->connect(target_server, FALSE))
     DBUG_RETURN(1);
@@ -204,7 +205,8 @@ int tc_show_variables(THD *thd, enum_var_type type, String *wild,
   if (!thd->cluster_conn_manager) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
-  if (thd->cluster_conn_manager->refresh(FALSE, no_connect))
+  /* Force the refresh to build all connections (when no_connect is FALSE) */
+  if (thd->cluster_conn_manager->refresh(TRUE, no_connect))
     DBUG_RETURN(1);
   if (no_connect && thd->cluster_conn_manager->connect(target_server, FALSE))
     DBUG_RETURN(1);
@@ -315,7 +317,9 @@ int fill_schema_spider_autoinc(THD *thd, TABLE_LIST *tables, Item *cond) {
   if (!thd->cluster_conn_manager) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
-  if (thd->cluster_conn_manager->refresh(FALSE, FALSE))
+  /* Only Spider connections are needed */
+  if (thd->cluster_conn_manager->refresh(FALSE, TRUE) ||
+      thd->cluster_conn_manager->connect(NODE_TYPE_SPIDER, FALSE))
     DBUG_RETURN(1);
   conn_mgr = thd->cluster_conn_manager;
 
@@ -398,7 +402,8 @@ int fill_schema_cluster_processlist(THD *thd, TABLE_LIST *tables, Item *cond) {
   if (!thd->cluster_conn_manager) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
-  if (thd->cluster_conn_manager->refresh(FALSE, FALSE))
+  /* Force the refresh to build all connections */
+  if (thd->cluster_conn_manager->refresh(TRUE, FALSE))
     DBUG_RETURN(1);
   conn_mgr = thd->cluster_conn_manager;
 

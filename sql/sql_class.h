@@ -627,6 +627,7 @@ typedef struct system_variables
   my_bool expand_fast_index_creation;
   my_bool tc_admin;
   my_bool tc_force_execute;
+  my_bool tc_auto_fix_conns;
 
   uint  threadpool_high_prio_tickets;
   ulong threadpool_high_prio_mode;
