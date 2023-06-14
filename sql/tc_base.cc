@@ -4614,7 +4614,7 @@ bool Cluster_conn_manager::refresh(bool force, bool no_connect) {
 bool Cluster_conn_manager::connect(const std::string &server_name,
                                    enum_node_type type, bool passive) {
   int err;
-  char errmsg[128];
+  char errmsg[256];
   DBUG_ENTER("Cluster_conn_manager::connect");
   DBUG_PRINT("info", ("connecting to server: %s", server_name.c_str()));
 
@@ -4638,17 +4638,20 @@ bool Cluster_conn_manager::connect(const std::string &server_name,
     else {
       mysql_close(mysql);
       server_conns[type][server_name] = mysql = NULL;
+      THD *thd = current_thd;
+      if (thd) {
+        /* Reset the error we got from pinging */
+        thd->get_stmt_da()->reset_diagnostics_area();
+        if (!thd->variables.tc_auto_fix_conns) {
+          /* Auto-fix is disabled, raise an error about the lost connection */
+          snprintf(errmsg, sizeof(errmsg),
+                   "remote server '%s' (%s:%u) has gone away",
+                   server_name.c_str(), auth.host.c_str(), auth.port);
+          my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
+          DBUG_RETURN(TRUE);
+        }
+      }
     }
-  }
-  if (err) {
-    /*
-      Most likely an error occurred when pinging, maybe because the old
-      connection was killed. The old connection does not matter to us, so we
-      reset the error status and try creating a new connection.
-    */
-    THD *thd = current_thd;
-    if (thd)
-      thd->get_stmt_da()->reset_diagnostics_area();
   }
 
   if ((mysql = tc_conn_connect(auth.host, auth.port, auth.user, auth.passwd))) {
