@@ -3934,6 +3934,14 @@ mysql_execute_command(THD *thd, bool first_level)
     case TC_SQLCOM_GET_PRIMARY:
       res = tdbctl_handle_primary_cmd(thd, lex);
       break;
+    case TC_SQLCOM_CHECK_TABLE:
+      DBUG_ASSERT(first_table == all_tables && first_table != 0);
+      /* Lock against possible DDL actions */
+      if (lock_dbtb_name(thd, first_table->db, first_table->table_name,
+                         MDL_SHARED))
+        goto error;
+      res = tdbctl_check_table(thd, first_table);
+      break;
     case SQLCOM_SHOW_PRIVILEGES:
       res = mysqld_show_privileges(thd);
       break;
@@ -5603,7 +5611,8 @@ mysql_execute_command(THD *thd, bool first_level)
      */
     if (lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED))
       goto error;
-    if (xlock_dbtb_name(thd, parse_result.db_name.c_str(), parse_result.table_name.c_str()))
+    if (lock_dbtb_name(thd, parse_result.db_name.c_str(),
+                       parse_result.table_name.c_str(), MDL_EXCLUSIVE))
       goto error;
 
     query_exec_manager.reset_error();
@@ -8130,8 +8139,8 @@ merge_charset_and_collation(const CHARSET_INFO *cs, const CHARSET_INFO *cl)
   return cs;
 }
 
-bool xlock_dbtb_name(THD* thd, const char* db_name, const char* tb_name)
-{
+bool lock_dbtb_name(THD *thd, const char *db_name, const char *tb_name,
+                    enum_mdl_type mdl_type) {
   MDL_request_list mdl_requests;
   MDL_request global_request;
   MDL_request ull_request;
@@ -8145,7 +8154,7 @@ bool xlock_dbtb_name(THD* thd, const char* db_name, const char* tb_name)
 
 
   MDL_REQUEST_INIT(&ull_request, MDL_key::USER_LEVEL_LOCK, "",
-    dbtb.c_str(), MDL_EXCLUSIVE, MDL_STATEMENT);
+    dbtb.c_str(), mdl_type, MDL_STATEMENT);
   mdl_requests.push_front(&ull_request);
   if (thd->mdl_context.acquire_locks(&mdl_requests,
     thd->variables.lock_wait_timeout))

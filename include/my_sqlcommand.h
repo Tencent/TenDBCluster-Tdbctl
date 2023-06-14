@@ -204,6 +204,7 @@ enum enum_sql_command {
   TC_SQLCOM_ENABLE_PRIMARY,
   TC_SQLCOM_DISABLE_PRIMARY,
   TC_SQLCOM_GET_PRIMARY,
+  TC_SQLCOM_CHECK_TABLE,
   /* This should be the last !!! */
   SQLCOM_END
 };

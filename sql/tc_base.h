@@ -920,4 +920,6 @@ const char *get_wrapper_name_by_node_type(enum_node_type type);
  * */
 int tdbctl_handle_primary_cmd(THD *thd, LEX *lex);
 
+bool tdbctl_check_table(THD *thd, TABLE_LIST *tables);
+
 #endif /* TC_BASE_INCLUDED */

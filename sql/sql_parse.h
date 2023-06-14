@@ -70,7 +70,8 @@ bool check_string_char_length(const LEX_CSTRING &str, const char *err_msg,
 const CHARSET_INFO* merge_charset_and_collation(const CHARSET_INFO *cs,
                                                 const CHARSET_INFO *cl);
 bool lock_statement_by_name(THD* thd, const char* lock_name, enum_mdl_type lock_type);
-bool xlock_dbtb_name(THD* thd, const char* db_name, const char* tb_name);
+bool lock_dbtb_name(THD *thd, const char *db_name, const char *tb_name,
+                    enum_mdl_type mdl_type);
 bool check_host_name(const LEX_CSTRING &str);
 bool mysql_test_parse_for_slave(THD *thd);
 bool is_update_query(enum enum_sql_command command);
