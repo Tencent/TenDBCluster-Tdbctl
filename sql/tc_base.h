@@ -646,10 +646,9 @@ map<string, string> get_server_name_map(
 	bool with_slave
 );
 
-set<string> get_server_name_set(
+void get_server_name_set(
 	MEM_ROOT *mem,
-  map<string, string> &server_user_map, 
-  map<string, string> &server_passwd_map,
+  std::set<std::string> &server_set, 
 	const char* wrapper
 );
 
@@ -662,6 +661,21 @@ map<string, string> get_tdbctl_ipport_map(
 
 bool tc_conn_free( map<string, MYSQL*> &conn_map);
 int tc_mysql_next_result(MYSQL* mysql);
+
+/**
+ * @brief send sql statement to multiple nodes and execute the sql parallelly.
+ *        each execution without error_retry
+ * 
+ * @param exec_sql 
+ * @param conn_map 
+ * @param result_map 
+ * @return true means failure
+ * @return false means success
+ */
+bool tc_exec_sql_paral(
+    string exec_sql,
+    map<string, MYSQL *> &conn_map,
+    map<string, tc_exec_info> &result_map);
 
 bool tc_exec_sql_paral(string exec_sql, map<string, MYSQL*>& conn_map,
   map<string, tc_exec_info>& result_map,

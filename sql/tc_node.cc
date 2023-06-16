@@ -24,7 +24,8 @@ int tc_dump_node_schema(
         uint port,
         const char *user,
         const char *password,
-        const char *file)
+        const char *file,
+        const char *wrapper)
 {
   string space = " ";
   string dump_cmd, dump_bin, dump_options;
@@ -37,8 +38,13 @@ int tc_dump_node_schema(
 #endif
   dump_options = "--single-transaction --no-autocommit=FALSE  --skip-opt --create-options --routines "
                 "--quick --no-data --all-databases";
-  dump_options += space + "-r" + file + space + "--log-error=" + file;
+  dump_options += space + "-r" + file + space + "--log-error=" + file + ".err";
 	dump_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port) + space+ "-h" + host;
+  // tdbctl enable gtid mode, therefore we need to get gtid info
+  if (strcasecmp(wrapper, TDBCTL_WRAPPER) == 0)
+  {
+    dump_options += space + "--set-gtid-purged=auto";
+  }
   if (tc_skip_dump_db_list)
   {
     size_t pos = 0;
@@ -50,6 +56,7 @@ int tc_dump_node_schema(
       dump_options += space + "--ignore-database=" + token;
       dbs.erase(0, pos + delimiter.length());
     }
+    token = dbs;
     dump_options += space + "--ignore-database=" + token;
   }
 
@@ -158,7 +165,8 @@ int tc_restore_to_node(
         uint port,
         const char *user,
         const char *password,
-        const char *file)
+        const char *file,
+        const char *wrapper)
 {
   MYSQL *conn = tc_conn_connect(host, port, user, password);
   MYSQL_GUARD(conn);
@@ -168,10 +176,27 @@ int tc_restore_to_node(
     my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), file, host, port);
     return 1;
   }
-  std::string sql = "/*!50600 set @old_ddl_execute_by_ctl = @@ddl_execute_by_ctl */";
-  tc_exec_sql_with_result(conn, sql);
-  sql = "/*!50600 set global ddl_execute_by_ctl=0 */";
-  tc_exec_sql_with_result(conn, sql);
+  std::string sql;
+  tc_exec_info exec_info;
+  exec_info.err_code = 0;
+  exec_info.err_msg = "";
+  
+  // for spider node, we need to disable ddl_execute_by_ctl feature of the spider
+  if (strcasecmp(wrapper, SPIDER_WRAPPER) == 0)
+  {
+    sql = "/*!50600 set @old_ddl_execute_by_ctl = @@ddl_execute_by_ctl*/";
+    if(tc_exec_sql_without_result(conn, sql, &exec_info))
+    {
+      my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
+      return 1;
+    }
+    sql = "/*!set global ddl_execute_by_ctl=0*/";
+    if(tc_exec_sql_without_result(conn, sql, &exec_info))
+    {
+      my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
+      return 1;
+    }
+  }
 
   string space = " ";
   string restore_cmd, restore_bin, restore_options;
@@ -191,9 +216,134 @@ int tc_restore_to_node(
     return 1;
   }
 
-  sql = "/*!50600 set global ddl_execute_by_ctl = @old_ddl_execute_by_ctl */";
-  tc_exec_sql_with_result(conn, sql);
+  if (strcasecmp(wrapper, SPIDER_WRAPPER) == 0)
+  {
+    sql = "/*!50600 set global ddl_execute_by_ctl = @old_ddl_execute_by_ctl */";
+    if(tc_exec_sql_without_result(conn, sql, &exec_info))
+    {
+      my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
+      return 1;
+    }
+  }
 
   sql_print_information("success restore %s to node %s#%d", file, host, port);
   return 0;
+}
+
+bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
+{
+  // sql_yacc.yy had filter wrapper name according to tc_with_schema option
+  DBUG_ASSERT((strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
+               (strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0) ||
+               (strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0));
+
+  // disable internal dump/restore
+  if (!tc_enable_internal_dump)
+  {
+    return false;
+  }
+
+  // string server_name, add_address;
+  list<FOREIGN_SERVER *> server_list;
+  char schema_path[FN_REFLEN + 1];
+  // char grant_path[FN_REFLEN + 1];
+  char *p1 = my_stpnmov(schema_path, mysql_tmpdir, sizeof(schema_path));
+  // char *p2 = my_stpnmov(grant_path, mysql_tmpdir, sizeof(grant_path));
+
+  my_snprintf(p1, sizeof(schema_path) - (p1 - schema_path), "/%s_%lu%lx_%lx_schema.sql",
+              tmp_file_prefix, current_thd->query_start(), current_pid,
+              thd->thread_id());
+  /*my_snprintf(p2, sizeof(grant_path) - (p2 - grant_path), "/%s_%lu%lx_%lx_grant.sql",
+              tmp_file_prefix, current_thd->query_start(), current_pid,
+              thd->thread_id());*/
+
+  /*
+    get spider_list or tdbctl_list from mysql.servers, exclude slave spiders.
+    For slave_spider nodes, we use spider nodes's schema.
+    (use spider_slave's schema for spider_slave node, maybe not consistent with master?)
+  */
+  if ((strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
+      (strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0))
+    get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
+  else
+    get_server_by_wrapper(server_list, thd->mem_root, lex->server_options.get_scheme(), FALSE);
+  // the nodes of the specified type should not empty.
+  DBUG_ASSERT(server_list.empty() != true);
+  if (server_list.empty() ||
+      (server_list.size() == 1 && (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0||
+                                   strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0)))
+  {
+    // the first node of the specified type, no need to dump/restore schema/grant, only add to mysql.servers
+    push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
+                        "the created node is the first %s node, skip dump/restore schema/grant",
+                        lex->server_options.get_scheme());
+    return false;
+  }
+
+  /*
+    dump node's schema from first spider/tdbctl node.
+    we can't dump schema from the newly created node
+    *Note*: dump tdbctl schema will dump schema from local node generally.
+  */
+  DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
+              server_list.front()->port != lex->server_options.get_port());
+
+  if (tc_dump_node_schema(
+          server_list.front()->host,
+          server_list.front()->port,
+          server_list.front()->username,
+          server_list.front()->password,
+          schema_path,
+          server_list.front()->scheme))
+  {
+    Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
+    drop_node->execute(thd);
+    my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+             schema_path, server_list.front()->host, server_list.front()->port);
+    return true;
+  }
+
+  /*
+  if (tc_dump_node_grant(
+          server_list.front()->host,
+          server_list.front()->port,
+          server_list.front()->username,
+          server_list.front()->password,
+          grant_path))
+  {
+    Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
+    drop_node->execute(thd);
+    my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
+             grant_path, server_list.front()->host, server_list.front()->port);
+    goto error;
+  }*/
+
+  if (tc_restore_to_node(lex->server_options.get_host(),
+                         lex->server_options.get_port(),
+                         lex->server_options.get_username(),
+                         lex->server_options.get_password(),
+                         schema_path,
+                         lex->server_options.get_scheme()))
+  {
+    Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
+    drop_node->execute(thd);
+    my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
+             schema_path, lex->server_options.get_host(), lex->server_options.get_port());
+    return true;
+  }
+
+  /*
+  if (tc_restore_to_node(lex->server_options.get_host(),
+                         lex->server_options.get_port(),
+                         lex->server_options.get_username(),
+                         lex->server_options.get_password(),
+                         grant_path))
+  {
+    Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
+    drop_node->execute(thd);
+    my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
+             grant_path, lex->server_options.get_host(), lex->server_options.get_port());
+    goto error;
+  }*/
+  return false;
 }

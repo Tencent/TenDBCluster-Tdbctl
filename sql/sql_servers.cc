@@ -50,7 +50,6 @@
 #include <string>
 #include <list>
 #include <mutex>
-#include "sql_servers.h"
 /*
   We only use 1 mutex to guard the data structures - THR_LOCK_servers.
   Read locked when only reading data and write-locked for all other access.
@@ -88,7 +87,8 @@ enum enum_servers_table_field
 #define RESULT_FAILED   1
 #define RESULT_ABNORMAL 0
 
-static string dump_servers_to_sql(bool is_slave_routing = false);
+static std::string generate_routing_sql_for_spider(bool is_slave_routing = false);
+static std::string generate_routing_sql_for_tdbctl();
 static bool get_server_from_table_to_cache(TABLE *table);
 
 static uchar *servers_cache_get_key(FOREIGN_SERVER *server, size_t *length,
@@ -1321,16 +1321,90 @@ void trim_wrapper_name_slave_suffix(std::string &wrapper_name)
 }
 
 /*
+  get server info from mysql.servers and generate SQL statement for 
+  flushing routing sql to the mysql.servers of other tdbctl nodes.
+  Do not encapsulate replace tdbctl routing sql with begin...commit, because the slave_sql_thread 
+  will commit implicitly and produe gtid.
+
+  tdbctl routing info: all spider,spider_slave,remote,remote_slave and tdbctl nodes
+*/
+static std::string generate_routing_sql_for_tdbctl()
+{
+  ulong records = 0;
+  FOREIGN_SERVER* server;
+  mysql_rwlock_rdlock(&THR_LOCK_servers);
+  records = servers_cache.records;
+  std::string replace_sql_all = "replace into mysql.servers"
+    "(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values";
+  std::stringstream ss;
+  std::string comma = ",";
+
+  if (records == 0)
+  {
+    sql_print_warning("no records found in mysql.servers, null sql returned");
+    mysql_rwlock_unlock(&THR_LOCK_servers);
+    return "";
+  }
+
+  /*
+    flush the mysql.server info to other tdbctl nodes
+  */
+  ss.str("");
+  ss << "delete from mysql.servers where Wrapper='";
+  ss << TDBCTL_WRAPPER;
+  ss << "';";
+  replace_sql_all.insert(0, ss.str());
+
+  for (ulong i = 0; i < records; i++)
+  {
+    server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i);
+    if (server)
+    {
+      std::string replace_sql_cur = "(";
+      std::string server_name = server->server_name;
+      std::string wrapper_name = server->scheme;
+      
+      std::string name = TC_STR_DOUBLE_QUOTED(server_name) + comma;
+      std::string host = TC_STR_DOUBLE_QUOTED(std::string(server->host)) + comma;
+      std::string db = TC_STR_DOUBLE_QUOTED(std::string(server->db)) + comma;
+      std::string username = TC_STR_DOUBLE_QUOTED(std::string(server->username)) + comma;
+      std::string password = TC_STR_DOUBLE_QUOTED(std::string(server->password)) + comma;
+      int port = server->port;
+      std::string socket = TC_STR_DOUBLE_QUOTED(std::string(server->socket)) + comma;
+      std::string wrapper = TC_STR_DOUBLE_QUOTED(std::string(wrapper_name)) + comma;
+      std::string owner = TC_STR_DOUBLE_QUOTED(std::string(server->owner));
+      ss.str("");
+      ss << port;
+      std::string port_s = ss.str() + comma;
+      replace_sql_cur = replace_sql_cur + name + host + db + username
+        + password + port_s + socket + wrapper + owner;
+      replace_sql_cur += "),";
+      replace_sql_all += replace_sql_cur;
+    }
+  }
+
+  replace_sql_all.erase(replace_sql_all.end() - 1);
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+  return replace_sql_all;
+}
+
+/*
   get server info from mysql.servers and generate SQL statement
+  for flushing routing sql to spider/spider_slave.
+  If is_slave_routing is false, we will generate routing sql for spider.
+  Otherwise, we will generate routing sql for spider_slave;
 
   @Note
-  for Tdbctl node, not dump all tdbctl nodes info, we only chose one.
+  spider routing info: all spider nodes, all remote nodes, tdbctl_primary
+  spider_slave routing info : all spider_slave nodes, all remote_slave nodes, tdbctl_primary 
+
+  How to choose the tdbctl_primary:
   MGR scenario:
   Multi-Primary: use local node
   Single-Primary: use Primary node
   None-MGR scenario: use local node
 */
-static string dump_servers_to_sql(bool is_slave_routing)
+static string generate_routing_sql_for_spider(bool is_slave_routing)
 {
   ulong records = 0;
   FOREIGN_SERVER* server;
@@ -1340,12 +1414,11 @@ static string dump_servers_to_sql(bool is_slave_routing)
   string replace_sql_all = "replace into mysql.servers"
     "(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values";
   stringstream ss;
-  string quotation = "\"";
   string comma = ",";
 
   if (records == 0)
   {
-    sql_print_warning("no recored found in mysql.servers, null sql returned");
+    sql_print_warning("no records found in mysql.servers, null sql returned");
     mysql_rwlock_unlock(&THR_LOCK_servers);
     return "";
   }
@@ -1357,7 +1430,7 @@ static string dump_servers_to_sql(bool is_slave_routing)
     which may leader to spider work abnormal.
   */
   ss.str("");
-  ss << "delete from mysql.servers where Wrapper='";
+  ss << "begin;delete from mysql.servers where Wrapper='";
   ss << TDBCTL_WRAPPER;
   ss << "';";
   replace_sql_all.insert(0, ss.str());
@@ -1392,15 +1465,15 @@ static string dump_servers_to_sql(bool is_slave_routing)
         wrapper_name = server->scheme;
       }
       
-      string name = quotation + server_name + quotation + comma;
-      string host = quotation + server->host + quotation + comma;
-      string db = quotation + server->db + quotation + comma;
-      string username = quotation + server->username + quotation + comma;
-      string password = quotation + server->password + quotation + comma;
+      std::string name = TC_STR_DOUBLE_QUOTED(server_name) + comma;
+      std::string host = TC_STR_DOUBLE_QUOTED(std::string(server->host)) + comma;
+      std::string db = TC_STR_DOUBLE_QUOTED(std::string(server->db)) + comma;
+      std::string username = TC_STR_DOUBLE_QUOTED(std::string(server->username)) + comma;
+      std::string password = TC_STR_DOUBLE_QUOTED(std::string(server->password)) + comma;
       int port = server->port;
-      string socket = quotation + server->socket + quotation + comma;
-      string wrapper = quotation + wrapper_name + quotation + comma;
-      string owner = quotation + server->owner + quotation;
+      std::string socket = TC_STR_DOUBLE_QUOTED(std::string(server->socket)) + comma;
+      std::string wrapper = TC_STR_DOUBLE_QUOTED(std::string(wrapper_name)) + comma;
+      std::string owner = TC_STR_DOUBLE_QUOTED(std::string(server->owner));
       ss.str("");
       ss << port;
       string port_s = ss.str() + comma;
@@ -1449,6 +1522,7 @@ static string dump_servers_to_sql(bool is_slave_routing)
   }
 
   replace_sql_all.erase(replace_sql_all.end() - 1);
+  replace_sql_all += ";commit";
   mysql_rwlock_unlock(&THR_LOCK_servers);
   return replace_sql_all;
 }
@@ -1776,21 +1850,37 @@ exit:
   return error;
 }
 
-int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
-  map<string, tc_exec_info>& result_map,
-  map<string, string> spider_user_map,
-  map<string, string> spider_passwd_map,
-  bool is_force,
-  bool is_slave_routing)
+// Generate routing sql by wrapper name
+// And then send these sql to spider/spider_slave/tdbctl nodes
+int tc_flush_routing_by_wrapper(map<string, tc_exec_info> &result_map, map<string, MYSQL*>conn_map, bool is_force,
+                                const char* wrapper)
 {
-  string flush_priv_sql = "flush privileges";
-  string flush_table_sql = "flush tables";
-  string flush_rdlock_sql = "flush table with read lock";
-  string set_mdl_timeout_sql = "/*!50600 set lock_wait_timeout = 60 */";
-  string set_interactive_timeout_sql = "set wait_timeout = 180";
-  string set_option_sql = set_mdl_timeout_sql + ";" + set_interactive_timeout_sql;
-  string unlock_sql = "unlock tables";
-  string replace_sql = dump_servers_to_sql(is_slave_routing);
+  std::string flush_priv_sql = "flush privileges";
+  std::string flush_table_sql = "flush tables";
+  std::string flush_rdlock_sql = "flush table with read lock";
+  std::string set_mdl_timeout_sql = "/*!50600 set lock_wait_timeout = 60 */";
+  std::string set_interactive_timeout_sql = "set wait_timeout = 180";
+  std::string set_option_sql = set_mdl_timeout_sql + ";" + set_interactive_timeout_sql;
+  if (!strcasecmp(wrapper, TDBCTL_WRAPPER))
+  {
+    // set sql_log_bin = off is to avoid producing gtid
+    std::string set_sql_log_bin_sql = "set tc_admin=0;set sql_log_bin = off;";
+    set_option_sql = set_sql_log_bin_sql + set_option_sql;
+    is_force = true;
+  }
+  std::string unlock_sql = "unlock tables";
+  std::string replace_sql;
+  if (!strcasecmp(wrapper, SPIDER_WRAPPER))
+    replace_sql = generate_routing_sql_for_spider(false);
+  else if (!strcasecmp(wrapper, SPIDER_SLAVE_WRAPPER))
+    replace_sql = generate_routing_sql_for_spider(true);
+  else if (!strcasecmp(wrapper, TDBCTL_WRAPPER))
+    replace_sql = generate_routing_sql_for_tdbctl();
+  else
+  {
+    my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
+    return 1;
+  }
 
   if (replace_sql.length() == 0)
     //empty replace sql
@@ -1801,41 +1891,38 @@ int tc_flush_spider_routing(map<string, MYSQL*>& spider_conn_map,
     return 0;
   }
 
-  if (tc_exec_sql_paral(set_option_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
-  {/* return, close conn, reconnect + retry all */
+  if (tc_exec_sql_paral(set_option_sql, conn_map, result_map))
+  {
     return 1;
   }
 
   if (!is_force)
   {
-    if (tc_exec_sql_paral(flush_table_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE) ||
-      tc_exec_sql_paral(flush_rdlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE))
-    {/* unlock tables;
-        return, close con, reconnect + retry all, */
-      tc_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+    if (tc_exec_sql_paral(flush_table_sql, conn_map, result_map) ||
+      tc_exec_sql_paral(flush_rdlock_sql, conn_map, result_map))
+    {/* unlock tables;*/
+      tc_exec_sql_paral(unlock_sql, conn_map, result_map);
       return 1;
     }
   }
-  if (tc_exec_sql_paral(replace_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, TRUE))
-  {/* unlock tables; retry (--force) */
-    tc_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+  if (tc_exec_sql_paral(replace_sql, conn_map, result_map))
+  {/* unlock tables;*/
+    tc_exec_sql_paral(unlock_sql, conn_map, result_map);
     /* if failed to replace mysql.servers; set changed data node read only */
     tc_set_changed_remote_read_only();
     return 2;
   }
-  if (tc_exec_sql_paral(flush_priv_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, TRUE))
-  {/* unlock tables; retry (--force) retry to flush privileges */
-    tc_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+  if (tc_exec_sql_paral(flush_priv_sql, conn_map, result_map))
+  {/* unlock tables;*/
+    tc_exec_sql_paral(unlock_sql, conn_map, result_map);
     return 2;
   }
   if (!is_force)
   {
-    tc_exec_sql_paral(unlock_sql, spider_conn_map, result_map, spider_user_map, spider_passwd_map, FALSE);
+    tc_exec_sql_paral(unlock_sql, conn_map, result_map);
   }
   return 0;
 }
-
-
 
 string tc_get_ipport_from_server_by_wrapper(Server_options* server_options, const char* wrapper_name)
 {
@@ -1868,124 +1955,115 @@ bool tc_check_ipport_valid()
 
 }
 
-/* at present, CREATE/ALTER(mysql wrapper) NODE also do tc_flush_routing */
-bool tc_flush_routing(LEX* lex)
+bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
 {
-  int ret = 0;
+  std::set<std::string> spider_nodes;
+  std::set<std::string> spider_slave_nodes;
+  std::set<std::string> tdbctl_nodes;
   bool result = FALSE;
-	bool is_force = lex->tc_force;
-  int retry_times = 3;
-  map<string, MYSQL*> spider_conn_map;
-  map<string, string> spider_user_map;
-  map<string, string> spider_passwd_map;
-
-  map<string, MYSQL*> spider_slave_conn_map;
-  map<string, string> spider_slave_user_map;
-  map<string, string> spider_slave_passwd_map;
-
-  set<string>::iterator its;
-  map<string, tc_exec_info> result_map;
-  map<string, tc_exec_info> slave_result_map;
   MEM_ROOT mem_root;
   init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-	/* with_slave muster be false here, SPIDER_SLAVE's flush not support at present */
-
-  set<string> all_spider_ipport_set = get_spider_ipport_set(&mem_root, spider_user_map, spider_passwd_map, false, SPIDER_WRAPPER);
-  set<string> all_spider_slave_ipport_set = get_spider_ipport_set(&mem_root, spider_slave_user_map, spider_slave_passwd_map, false, SPIDER_SLAVE_WRAPPER);
-
-  set<string> to_flush_ipport_set;
-  set<string> to_flush_slave_ipport_set;
-
-
+  int ret = 0;
+  std::string tdbctl_server_name;
   switch (lex->tc_flush_type)
   {
   case FLUSH_ALL_ROUTING:
-    to_flush_ipport_set = all_spider_ipport_set;
-    to_flush_slave_ipport_set = all_spider_slave_ipport_set;
-    if (to_flush_ipport_set.empty())
-    {
-      if (current_thd)
-        push_warning(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_FLUSH_ROUTING_ERROR,
-          "no spider nodes exists, skip flush");
-      goto finish;
-    }
-    break;
-  case FLUSH_ROUTING_BY_SERVER:
   {
-    string ipport = tc_get_ipport_from_server_by_wrapper(&lex->server_options, SPIDER_WRAPPER);
-    string slave_ipport = tc_get_ipport_from_server_by_wrapper(&lex->server_options, SPIDER_SLAVE_WRAPPER);
-    /* at present, only SPIDER wrapper server do flush */
-    if ((!ipport.length() || !all_spider_ipport_set.count(ipport)) &&
-        (!slave_ipport.length() || !all_spider_slave_ipport_set.count(slave_ipport)))
+    get_server_name_set(&mem_root, spider_nodes, SPIDER_WRAPPER);
+    get_server_name_set(&mem_root, spider_slave_nodes, SPIDER_SLAVE_WRAPPER);
+    get_server_name_set(&mem_root, tdbctl_nodes, TDBCTL_WRAPPER);
+    tdbctl_server_name = tc_get_server_name(ret, &mem_root, TDBCTL_WRAPPER, true);
+    if (ret)
     {
       result = TRUE;
-      goto finish;
+      break;
     }
-    if (ipport.length())
-      to_flush_ipport_set.insert(ipport);
-    if (slave_ipport.length())
-      to_flush_slave_ipport_set.insert(slave_ipport);
-    /*TODO check ipport validate */
+    // remove the tdbctl_server_name of local node
+    tdbctl_nodes.erase(tdbctl_server_name);
+
+    if (tc_flush_routing_to_nodes(lex, spider_nodes, conn_mgr, SPIDER_WRAPPER) ||
+        tc_flush_routing_to_nodes(lex, spider_slave_nodes, conn_mgr, SPIDER_SLAVE_WRAPPER) ||
+        tc_flush_routing_to_nodes(lex, tdbctl_nodes, conn_mgr, TDBCTL_WRAPPER))
+    {
+      result = TRUE;
+      break;
+    }
+
+    break;
+  }
+  case FLUSH_ROUTING_BY_SERVER:
+  {
+    std::string server_name = std::string(lex->server_options.m_server_name.str,
+                                     lex->server_options.m_server_name.length);
+    std::set<std::string> nodes;
+    nodes.insert(server_name);
+    FOREIGN_SERVER *server =
+            get_server_by_name(&mem_root, lex->server_options.m_server_name.str, NULL);
+    if(tc_flush_routing_to_nodes(lex, nodes, conn_mgr, server->scheme))
+    {
+      result = TRUE;
+      break;
+    }
     break;
   }
   default:
     break;
   }
+  free_root(&mem_root, MYF(0));
 
-  for (its =  to_flush_ipport_set.begin(); its !=  to_flush_ipport_set.end(); its++)
+  return result;
+}
+
+bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flushed, Cluster_conn_manager* conn_mgr, const char* wrapper)
+{
+  bool result = FALSE;
+  bool is_force = lex->tc_force;
+  int retry_times = 3;
+  std::set<std::string>::iterator its;
+  map<std::string, tc_exec_info> result_map;
+
+  for (its = nodes_to_be_flushed.begin(); its !=  nodes_to_be_flushed.end(); its++)
   {/* init for exec result: result_map */
-    string ipport = (*its);
+    string server_name = (*its);
     tc_exec_info exec_info;
     exec_info.err_code = 0;
     exec_info.row_affect = 0;
     exec_info.err_msg = "";
-    result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
+    result_map.insert(pair<string, tc_exec_info>(server_name, exec_info));
   }
 
-  for (its =  to_flush_slave_ipport_set.begin(); its != to_flush_slave_ipport_set.end(); its++)
-  {/* init for exec result: result_map */
-    string ipport = (*its);
-    tc_exec_info exec_info;
-    exec_info.err_code = 0;
-    exec_info.row_affect = 0;
-    exec_info.err_msg = "";
-    slave_result_map.insert(pair<string, tc_exec_info>(ipport, exec_info));
-  }
-
+  std::map<std::string, MYSQL*> conn_map;
+  std::map<std::string, MYSQL*> needed_conn_map;
+  std::map<std::string, MYSQL*>::iterator conn_its;
+  int node_type = get_node_type_by_wrapper(wrapper);
   while (retry_times-- > 0)
   {
     int exec_ret = 0;
-    int slave_exec_ret = 0;
-    
-    spider_conn_map = tc_spider_conn_connect(ret, to_flush_ipport_set, spider_user_map, spider_passwd_map);
-    if (ret)
+    if (conn_mgr->connect((enum_node_type)node_type, false))
     {
       result = TRUE;
       goto finish;
     }
 
-    spider_slave_conn_map = tc_spider_conn_connect(ret, to_flush_slave_ipport_set, spider_slave_user_map, spider_slave_passwd_map);
-    if (ret)
+    // build the needed conn_map
+    conn_map = conn_mgr->get_conn_map((enum_node_type)node_type);
+    for (its = nodes_to_be_flushed.begin(); its != nodes_to_be_flushed.end(); its++)
     {
-      result = TRUE;
-      goto finish;
+      if((conn_its = conn_map.find(*its)) != conn_map.end())
+      {
+        needed_conn_map.insert(std::make_pair(conn_its->first, conn_its->second));
+      }
     }
-    
-    // send flush routing statements to corresponding mysqlconn
-    if (!spider_conn_map.empty())
-      exec_ret = tc_flush_spider_routing(spider_conn_map, result_map, spider_user_map, spider_passwd_map, is_force, false);
-    if (!spider_slave_conn_map.empty())
-      slave_exec_ret = tc_flush_spider_routing(spider_slave_conn_map, slave_result_map, spider_slave_user_map, spider_slave_passwd_map, is_force, true);
-    if (exec_ret || slave_exec_ret)
+    if (!nodes_to_be_flushed.empty()){
+      exec_ret = tc_flush_routing_by_wrapper(result_map, needed_conn_map, is_force, wrapper);
+    }
+
+    if (exec_ret)
     {
-      tc_conn_free(spider_conn_map);
-      spider_conn_map.clear();
-      tc_conn_free(spider_slave_conn_map);
-      spider_slave_conn_map.clear();
       /* exec_ret == 2 mean "flush table with read" is ok,
       but "replace mysql.servers" or "flush privileges" failed
       so we just retry --force */
-      if (exec_ret == 2 || slave_exec_ret == 2)
+      if (exec_ret == 2)
         is_force = TRUE; /* switch force */
       sleep(2);
     }
@@ -1998,27 +2076,11 @@ bool tc_flush_routing(LEX* lex)
   if (retry_times == -1)
     result = TRUE;
 
-
 finish:
-  tc_conn_free(spider_conn_map);
-  spider_conn_map.clear();
-  tc_conn_free(spider_slave_conn_map);
-  spider_slave_conn_map.clear();
-  all_spider_ipport_set.clear();
-  to_flush_ipport_set.clear();
-  spider_user_map.clear();
-  spider_passwd_map.clear();
+  nodes_to_be_flushed.clear();
   result_map.clear();
-  all_spider_slave_ipport_set.clear();
-  to_flush_slave_ipport_set.clear();
-  spider_slave_user_map.clear();
-  spider_slave_passwd_map.clear();
-  slave_result_map.clear();
-  free_root(&mem_root, MYF(0));
   return result;
 }
-
-
 
 bool compare_server_list(list<FOREIGN_SERVER*>& first, list<FOREIGN_SERVER*>& second)
 {
@@ -2318,7 +2380,7 @@ int tc_check_and_repair_routing()
     result = 1;
     goto finish;
   }
-  replace_sql = dump_servers_to_sql();
+  replace_sql = generate_routing_sql_for_spider();
   repair_sql_all = replace_sql + ";" + flush_priv_sql;
   thd->variables.lock_wait_timeout = tc_check_repair_routing_interval;
   

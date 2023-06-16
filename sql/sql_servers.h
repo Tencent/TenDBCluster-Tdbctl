@@ -22,11 +22,13 @@
 #include "sql_alloc.h"
 #include <list>
 #include <string>
+#include <set>
 
 class THD;
 struct LEX;
 struct TABLE;
 typedef struct st_mem_root MEM_ROOT;
+class Cluster_conn_manager; 
 
 class FOREIGN_SERVER : public Sql_alloc
 {
@@ -100,7 +102,28 @@ void get_server_by_wrapper(
 ulong get_servers_count_by_wrapper(
 	const char* wrapper_name, 
 	bool with_slave);
-bool tc_flush_routing(LEX *lex);
+
+/**
+ * @brief flush routing to the mysql.servers of other nodes with conn_mgr
+ * 
+ * @param lex 
+ * @param conn_mgr 
+ * @return true means failure
+ * @return false means success
+ */
+bool tc_flush_routing(LEX *lex, Cluster_conn_manager* conn_mgr);
+
+/**
+ * @brief flush routing to the specific nodes according to wrapper name
+ * 
+ * @param lex 
+ * @param nodes_to_be_flushed 
+ * @param conn_mgr 
+ * @param wrapper 
+ * @return true means failure
+ * @return false means success
+ */
+bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flushed, Cluster_conn_manager* conn_mgr, const char* wrapper);
 int tc_check_and_repair_routing();
 void create_check_and_repaire_routing_thread();
 

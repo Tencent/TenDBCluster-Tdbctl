@@ -7905,6 +7905,9 @@ ER_TCADMIN_ENABLE_PRIMARY
 ER_TCADMIN_GET_PRIMARY
   eng "Failed to get Primary: %s"
 
+ER_TCADMIN_SEND_SQL_ERR
+  eng "Failed to send sql to cluster node, mysql->err_msg: %s"
+
 ER_ACCESS_DENIED_ALL_PRIV
   eng "Access denied; you need all privileges for this operation"
 
