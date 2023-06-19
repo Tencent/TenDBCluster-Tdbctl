@@ -3107,6 +3107,10 @@ int init_common_variables()
   if (get_options(&remaining_argc, &remaining_argv))
     return 1;
 
+  //if tc_admin = 1, mysqld initialize would failed for ERROR 12040 
+  if (unlikely(opt_initialize))
+    global_system_variables.tc_admin = 0;
+
   update_parser_max_mem_size();
 
   if (log_syslog_init())
