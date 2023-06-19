@@ -2438,6 +2438,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 
 int tc_store_mysql_result_into_protocol(THD *thd, MYSQL_RES *res)
 {
+  DBUG_ENTER("tc_store_mysql_result_into_protocol");
   List<Item> field_list;
   Protocol *protocol= thd->get_protocol();
   MYSQL_ROW row;
@@ -2624,6 +2625,7 @@ Item* tc_make_item(MYSQL_FIELD* field)
 
 void tc_clean_exec_result(TC_EXEC_RESULT* exec_result)
 {
+  DBUG_ENTER("tc_clean_exec_result");
   for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_COUNT_EXCLUDE_TDBCTL; i++)
   {
     for (map<std::string, tc_exec_info>::iterator iter = exec_result->result_info[i].begin(); iter != exec_result->result_info[i].end(); iter++)
@@ -2775,10 +2777,10 @@ bool tc_run_command(THD *thd, Cluster_conn_manager *conn_mgr,
 
 void fill_lex_to_alter_node(LEX* lex, FOREIGN_SERVER *server)
 {
+  DBUG_ENTER("fill_lex_to_alter_node");
   if (!lex->server_options.get_host())
   {
-    LEX_STRING s_host = {server->host, strlen(server->host)};
-    lex->server_options.set_host(s_host);
+    lex->server_options.set_host({ server->host, strlen(server->host) });
   }
   if (lex->server_options.get_port() == Server_options::PORT_NOT_SET)
   {
@@ -2786,13 +2788,11 @@ void fill_lex_to_alter_node(LEX* lex, FOREIGN_SERVER *server)
   }
   if (!lex->server_options.get_username())
   {
-    LEX_STRING s_user = {server->username, strlen(server->username)};
-    lex->server_options.set_username(s_user);
+    lex->server_options.set_username({server->username, strlen(server->username)});
   }
   if (!lex->server_options.get_password())
   {
-    LEX_STRING s_passwd = {server->password, strlen(server->password)};
-    lex->server_options.set_password(s_passwd);
+    lex->server_options.set_password({server->password, strlen(server->password)});
   }
   DBUG_VOID_RETURN;
 }
@@ -2966,6 +2966,7 @@ void get_server_name_set(
 	const char* wrapper
 )
 {
+  DBUG_ENTER("get_server_name_set");
   list<FOREIGN_SERVER*> server_list;
   std::string tmp;
   get_server_by_wrapper(server_list, mem, wrapper, false);
@@ -4825,7 +4826,7 @@ bool Cluster_conn_manager::identify_self() {
     DBUG_ASSERT(mysql_num_rows(res) == 1);
     row = mysql_fetch_row(res);
     /* Check if it is the same as this server's */
-    if ((found = !strncasecmp(row[0], server_uuid_ptr, UUID_LENGTH))) {
+    if ((found = !native_strncasecmp(row[0], server_uuid_ptr, UUID_LENGTH))) {
       my_server_name = server_name;
       break;
     }
