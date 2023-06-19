@@ -107,3 +107,6 @@ then
 fi
 
 cd ..
+
+##windows
+##cmake .. -DWITH_BOOST=${boost_dir}/boost_1_59_0 -DWITH_EMBEDDED_SERVER=OFF -DWITH_QUERY_RESPONSE_TIME=on

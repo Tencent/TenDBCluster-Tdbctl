@@ -777,6 +777,7 @@ int set_var::check(THD *thd)
  */
 int set_var::check_tdbctl_var()
 {
+  DBUG_ENTER("check_tdbctl_var");
   if(var->is_tdbctl())
   {
     DBUG_RETURN(1);
