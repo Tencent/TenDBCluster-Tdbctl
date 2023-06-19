@@ -2821,8 +2821,10 @@ INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (639,692);
 INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (640,692);
 INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (641,692);
 INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (642,692);
-INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (643,692);
 INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (644,692);
+INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (645,692);
+INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (646,692);
+INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (647,692);
 
 
 COMMIT;
