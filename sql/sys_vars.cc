@@ -6460,7 +6460,7 @@ static Sys_var_charptr Sys_tc_skip_dump_db(
   "the list of database's schema will ignore sync to new add spider node",
   TDBCTL READ_ONLY GLOBAL_VAR(tc_skip_dump_db_list),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET,
-  DEFAULT("performance_schema,information_schema,mysql,test,cluster_admin"));
+  DEFAULT("performance_schema,information_schema,mysql,test"));
 
 static Sys_var_mybool Sys_tc_restrict_query_from_spider(
   "tc_restrict_query_from_spider",
