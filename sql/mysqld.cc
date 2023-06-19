@@ -9909,13 +9909,14 @@ int tdbctl_simple_disable_primary(THD *thd) {
 }
 
 void *tdbctl_startup_enable_primary_worker(void *arg) {
-  bool ready = FALSE;
-
   /*
     We need to connect to this server itself before attempting to ENABLE
     PRIMARY, so we wait here before the server is ready for connection.
   */
   sql_print_information("Tdbctl: waiting for server's readiness to connect");
+
+#if !defined(EMBEDDED_LIBRARY) && !defined(_WIN32)
+  bool ready = FALSE;
   while (TRUE) {
     mysql_mutex_lock(&LOCK_socket_listener_active);
     ready = socket_listener_active;
@@ -9924,6 +9925,9 @@ void *tdbctl_startup_enable_primary_worker(void *arg) {
       break;
     sleep(1);
   }
+#else
+  sleep(5);
+#endif
 
   /* Try enabling Primary once, then quit regardless of the result */
   sql_print_information("Tdbctl: trying to enable Primary Mode at startup");
