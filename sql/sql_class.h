@@ -4616,7 +4616,8 @@ public:
   void set_processed_query(const char *query_arg, size_t query_length_arg)
   {
     mysql_mutex_lock(&LOCK_thd_query);
-    m_processed_query_string = { query_arg, query_length_arg };
+    m_processed_query_string.str = query_arg;
+    m_processed_query_string.length = query_length_arg;
     mysql_mutex_unlock(&LOCK_thd_query);
   }
   void set_query(const LEX_CSTRING& query_arg);
