@@ -2084,6 +2084,12 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_UNLOCK_TABLES:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
+      tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
+      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
+      break;
     case SQLCOM_LOCK_TABLES:
     case SQLCOM_CREATE_EVENT:
     case SQLCOM_ALTER_EVENT:
@@ -2103,7 +2109,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (thd->db().str)
         tc_parse_result_t->db_name = thd->db().str;
       else
-        tc_parse_result_t->db_name = lex->sphead->m_db.str;
+        tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + std::string(thd->query().str, thd->query().length);
       tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;

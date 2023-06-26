@@ -40,6 +40,9 @@ int tc_dump_node_schema(
                 "--quick --no-data --all-databases";
   dump_options += space + "-r" + file + space + "--log-error=" + file + ".err";
 	dump_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port) + space+ "-h" + host;
+  std::string err_file;
+  err_file = std::string(file) + ".err"; 
+  
   // tdbctl enable gtid mode, therefore we need to get gtid info
   if (strcasecmp(wrapper, TDBCTL_WRAPPER) == 0)
   {
@@ -63,7 +66,8 @@ int tc_dump_node_schema(
   MYSQL *conn = tc_conn_connect(host, port, user, password);
   if (conn == NULL)
   {
-    my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0), file, host, port);
+    std::string ipport = std::string(host) + "#" + std::to_string(port);
+    my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
     return 1;
   }
   MYSQL_GUARD(conn);
@@ -73,8 +77,7 @@ int tc_dump_node_schema(
   dump_cmd = dump_bin + space + dump_options;
   if (system(dump_cmd.c_str()) != 0)
   {
-    sql_print_warning(ER(ER_TCADMIN_DUMP_NODE_ERROR), file, host, port);
-    sql_print_warning("detail information in file %s.", file);
+    my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0), file, host, port, err_file.c_str());
     return 1;
   }
 
@@ -103,7 +106,8 @@ int tc_dump_node_grant(
   MYSQL *conn = tc_conn_connect(host, port, user, password);
   if (!conn) 
   {
-    my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0), file, host, port);
+    std::string ipport = std::string(host) + "#" + std::to_string(port);
+    my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
     return 1;
   }
   MYSQL_GUARD(conn);
@@ -172,8 +176,8 @@ int tc_restore_to_node(
   MYSQL_GUARD(conn);
   if (!conn) 
   {
-    sql_print_error("can't connect to the node that to be restored");
-    my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), file, host, port);
+    std::string ipport = std::string(host) + "#" + std::to_string(port);
+    my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
     return 1;
   }
   std::string sql;
@@ -197,6 +201,15 @@ int tc_restore_to_node(
       return 1;
     }
   }
+  else if (strcasecmp(wrapper, TDBCTL_WRAPPER) == 0)
+  {
+    sql = "set @old_tc_admin = @@tc_admin;set global tc_admin = 0";
+    if(tc_exec_sql_without_result(conn, sql, &exec_info))
+    {
+      my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
+      return 1;
+    }
+  }
 
   string space = " ";
   string restore_cmd, restore_bin, restore_options;
@@ -208,17 +221,27 @@ int tc_restore_to_node(
 #endif
   restore_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port) + space + "-h" + host + "<" + file;
   restore_cmd = restore_bin + restore_options + space + ">&" + file + ".err";
-
+  std::string err_file;
+  err_file = std::string(file) + ".err"; 
+  
   if (system(restore_cmd.c_str()) != 0)
   {
-    sql_print_warning(ER(ER_TCADMIN_RESTORE_NODE_ERROR), file, host, port);
-    sql_print_warning("detail information in file %s.err", file);
+    my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), file, host, port, err_file.c_str());
     return 1;
   }
 
   if (strcasecmp(wrapper, SPIDER_WRAPPER) == 0)
   {
     sql = "/*!50600 set global ddl_execute_by_ctl = @old_ddl_execute_by_ctl */";
+    if(tc_exec_sql_without_result(conn, sql, &exec_info))
+    {
+      my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
+      return 1;
+    }
+  }
+  else if(strcasecmp(wrapper, TDBCTL_WRAPPER) == 0)
+  {
+    sql = "set global tc_admin=@old_tc_admin";
     if(tc_exec_sql_without_result(conn, sql, &exec_info))
     {
       my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
@@ -285,8 +308,8 @@ bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
     we can't dump schema from the newly created node
     *Note*: dump tdbctl schema will dump schema from local node generally.
   */
-  DBUG_ASSERT(strcasecmp(server_list.front()->host, lex->server_options.get_host()) != 0 &&
-              server_list.front()->port != lex->server_options.get_port());
+  DBUG_ASSERT(!(strcasecmp(server_list.front()->host, lex->server_options.get_host()) == 0 &&
+              server_list.front()->port == lex->server_options.get_port()));
 
   if (tc_dump_node_schema(
           server_list.front()->host,
@@ -298,8 +321,6 @@ bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
   {
     Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
     drop_node->execute(thd);
-    my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
-             schema_path, server_list.front()->host, server_list.front()->port);
     return true;
   }
 
@@ -313,8 +334,6 @@ bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
   {
     Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
     drop_node->execute(thd);
-    my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0),
-             grant_path, server_list.front()->host, server_list.front()->port);
     goto error;
   }*/
 
@@ -327,8 +346,6 @@ bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
   {
     Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
     drop_node->execute(thd);
-    my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
-             schema_path, lex->server_options.get_host(), lex->server_options.get_port());
     return true;
   }
 
@@ -341,8 +358,6 @@ bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
   {
     Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
     drop_node->execute(thd);
-    my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0),
-             grant_path, lex->server_options.get_host(), lex->server_options.get_port());
     goto error;
   }*/
   return false;
