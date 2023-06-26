@@ -6457,8 +6457,8 @@ static Sys_var_ulong Sys_tc_partition_admin_time(
 
 static Sys_var_charptr Sys_tc_skip_dump_db(
   "tc_skip_dump_db_list",
-  "the list of database's schema will ignore sync to new add spider node",
-  TDBCTL READ_ONLY GLOBAL_VAR(tc_skip_dump_db_list),
+  "the list of database's schema will ignore sync to newly added spider/spider_slave/tdbctl node",
+  TDBCTL GLOBAL_VAR(tc_skip_dump_db_list),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET,
   DEFAULT("performance_schema,information_schema,mysql,test"));
 
