@@ -424,7 +424,7 @@ int dbm_get_primary(THD *thd) {
   Cluster_conn_manager *conn_mgr;
   map<string, AUTH_INFO> auths;
   map<string, MYSQL *> conns;
-  map<string, MYSQL *>::const_iterator conn_it;
+  map<string, MYSQL *>::const_iterator conn_it, found_primary;
   string this_server;
   string repl_master_name, cluster_role, status, message;
 
@@ -453,33 +453,43 @@ int dbm_get_primary(THD *thd) {
 
   auths = conn_mgr->get_auth_map(NODE_TYPE_CTL);
   conns = conn_mgr->get_conn_map(NODE_TYPE_CTL);
-  for (conn_it = conns.begin(); conn_it != conns.end(); ++conn_it) {
+  for (conn_it = conns.begin(), found_primary = conns.end();
+       conn_it != conns.end(); ++conn_it) {
     const string &server_name = conn_it->first;
     MYSQL *mysql = conn_it->second;
-    const AUTH_INFO &auth = auths[server_name];
 
     examine_tdbctl_node(thd, conn_mgr, server_name, mysql, repl_master_name,
                         cluster_role, status, message);
 
     if (cluster_role == CLUSTER_ROLE_PRIMARY_STR &&
         status == NODE_STATUS_ONLINE_STR) { /* Found a valid Primary */
-      protocol->start_row();
-      /* SERVER_NAME */
-      protocol->store(server_name.c_str(), server_name.length(),
-                      system_charset_info);
-      /* HOST */
-      protocol->store(auth.host.c_str(), auth.host.length(),
-                      system_charset_info);
-      /* PORT */
-      protocol->store(auth.port);
-      /* IS_THIS_SERVER */
-      protocol->store(static_cast<int>(
-          !strcasecmp(server_name.c_str(), this_server.c_str())));
-
-      protocol->end_row();
-      my_eof(thd);
-      return 0;
+      if (found_primary != conns.end()) {
+        /* Error: found a second primary */
+        my_error(ER_TCADMIN_GET_PRIMARY, MYF(0), "found more than one Primary");
+        return 1;
+      }
+      found_primary = conn_it;
     }
+  }
+
+  if (found_primary != conns.end()) { /* Found one and only valid Primary */
+    const string &server_name = found_primary->first;
+    const AUTH_INFO &auth = auths[server_name];
+    protocol->start_row();
+    /* SERVER_NAME */
+    protocol->store(server_name.c_str(), server_name.length(),
+                    system_charset_info);
+    /* HOST */
+    protocol->store(auth.host.c_str(), auth.host.length(), system_charset_info);
+    /* PORT */
+    protocol->store(auth.port);
+    /* IS_THIS_SERVER */
+    protocol->store(static_cast<int>(
+        !strcasecmp(server_name.c_str(), this_server.c_str())));
+
+    protocol->end_row();
+    my_eof(thd);
+    return 0;
   }
 
   my_error(ER_TCADMIN_GET_PRIMARY, MYF(0), ERR_CANNOT_FIND_PRIMARY_STR);
