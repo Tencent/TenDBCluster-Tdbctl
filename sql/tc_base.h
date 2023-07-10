@@ -94,6 +94,7 @@ enum enum_node_type {
 
 #define TC_STR_IDENTIFIER(a) std::string("`" + (a) + "`")
 #define TC_STR_DOUBLE_QUOTED(a) std::string("\"" + (a) + "\"")
+#define TC_STR_SINGLE_QUOTED(a) std::string("'" + (a) + "'")
 
 //mysql guard to free mysql connection
 #define MYSQL_GUARD(p) std::shared_ptr<MYSQL> p##p(p, \
@@ -173,6 +174,15 @@ struct AUTH_INFO {
   std::string user;
   std::string passwd;
 };
+
+inline void fill_auth_info(AUTH_INFO *info, const std::string &host, uint port,
+                           const std::string &user, const std::string &passwd) {
+  info->host = host;
+  info->port = port;
+  info->user = user;
+  info->passwd = passwd;
+  info->ipport_str = host + "#" + std::to_string(port);
+}
 
 class Query_exec_manager {
 public:
@@ -315,6 +325,11 @@ private:
 class Cluster_conn_manager {
 public:
   friend class Query_exec_manager;
+  friend void tc_generate_grants(Cluster_conn_manager *conn_mgr,
+                                 const AUTH_INFO *auth, bool all_priv,
+                                 enum_node_type node_type,
+                                 std::string &create_user_sql,
+                                 std::string &grant_sql);
 
   Cluster_conn_manager();
 
@@ -450,6 +465,10 @@ private:
   int ping(MYSQL *mysql);
 };
 
+void tc_generate_grants(Cluster_conn_manager *conn_mgr, const AUTH_INFO *auth,
+                        bool all_priv, enum_node_type node_type,
+                        std::string &create_user_sql, std::string &grant_sql);
+
 void tc_parse_result_init(TC_PARSE_RESULT *parse_result_t);
 bool is_add_or_drop_unique_key(THD *thd, LEX *lex);
 
@@ -577,6 +596,8 @@ MYSQL* tc_conn_connect(
   string passwd
 );
 
+MYSQL *tc_conn_connect(const AUTH_INFO &auth);
+
 MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
                        const string &passwd);
 
@@ -615,6 +636,7 @@ MYSQL *tc_tdbctl_conn_primary(
 );
 
 int tc_do_grants_internal(LEX *lex);
+int tc_do_grants_internal(THD *thd, LEX *lex);
 /**
  * @brief fill the options of alter node. These options
  *        include host,port,user,password

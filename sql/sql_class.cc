@@ -1349,6 +1349,7 @@ THD::THD(bool enable_plugins)
                                               MYF(MY_WME));
   }
   cluster_conn_manager = NULL;
+  no_send = FALSE;
 }
 
 

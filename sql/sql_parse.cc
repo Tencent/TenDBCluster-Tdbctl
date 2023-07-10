@@ -5484,8 +5484,13 @@ mysql_execute_command(THD *thd, bool first_level)
 
       if (lex->tc_do_grants &&
           tc_enable_internal_grant &&
-          tc_do_grants_internal(lex))
+          tc_do_grants_internal(thd, lex))
       {
+        /*
+          We use this flag to tell the rollback action not to call my_ok().
+          Otherwise, the raised error would be suppressed.
+        */
+        thd->no_send = TRUE;
         if (lex->sql_command == TC_SQLCOM_CREATE_NODE)
         {
           Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
@@ -5496,6 +5501,7 @@ mysql_execute_command(THD *thd, bool first_level)
           Sql_cmd_alter_server *resume_node = new Sql_cmd_alter_server(&old_server_options);
           resume_node->execute(thd);
         }
+        thd->no_send = FALSE;
         goto error;
       }
 
@@ -6088,6 +6094,7 @@ void THD::reset_for_next_command()
 
   thd->reset_skip_readonly_check();
   thd->spider_run_first = FALSE;
+  thd->no_send = false;
 
   DBUG_PRINT("debug",
              ("is_current_stmt_binlog_format_row(): %d",

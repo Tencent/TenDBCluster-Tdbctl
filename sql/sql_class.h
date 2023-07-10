@@ -1690,6 +1690,9 @@ public:
   ulong server_version;
   /* DEPRECATED */
 
+  /* Whether to send my_ok() at the end of certain commands */
+  bool no_send;
+
   Cluster_conn_manager *cluster_conn_manager;
 
   /**

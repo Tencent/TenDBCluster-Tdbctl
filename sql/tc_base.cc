@@ -37,6 +37,10 @@ using namespace std;
 
 #define SQL_SELECT_SERVER_UUID_STR "SELECT @@server_uuid"
 
+/* For append_grant_privileges() */
+extern const char *command_array[];
+extern uint command_lengths[];
+
 static PSI_memory_key key_memory_bases;
 
 mutex remote_exec_mtx;
@@ -3166,6 +3170,10 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
   return mysql;
 }
 
+MYSQL *tc_conn_connect(const AUTH_INFO &auth) {
+  return tc_conn_connect(auth.host, auth.port, auth.user, auth.passwd);
+}
+
 MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
                        const string &passwd) {
   int read_timeout = TC_CONN_READ_TIMEOUT;
@@ -4661,11 +4669,8 @@ bool Cluster_conn_manager::refresh(bool force, bool no_connect) {
 
       server = *it;
       server_name.assign(server->server_name, server->server_name_length);
-      auth.port = server->port;
-      auth.host = string(server->host);
-      auth.user = string(server->username);
-      auth.passwd = string(server->password);
-      auth.ipport_str = auth.host + "#" + std::to_string(auth.port);
+      fill_auth_info(&auth, server->host, server->port, server->username,
+                     server->password);
       server_auths[i][server_name] = auth;
     }
   }
@@ -4684,7 +4689,7 @@ bool Cluster_conn_manager::refresh(bool force, bool no_connect) {
         continue;
       }
       if ((mysql =
-               tc_conn_connect(auth.host, auth.port, auth.user, auth.passwd))) {
+               tc_conn_connect(auth))) {
         conn_map[server_name] = mysql;
       } else {
         my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), auth.ipport_str.c_str());
@@ -4749,7 +4754,7 @@ bool Cluster_conn_manager::connect(const std::string &server_name,
     }
   }
 
-  if ((mysql = tc_conn_connect(auth.host, auth.port, auth.user, auth.passwd))) {
+  if ((mysql = tc_conn_connect(auth))) {
     server_conns[type][server_name] = mysql;
   } else if (passive) {
     server_conns[type][server_name] = NULL;
@@ -4973,6 +4978,77 @@ int tdbctl_handle_primary_cmd(THD *thd, LEX *lex) {
   }
 
   return res;
+}
+
+
+static void append_create_user(const AUTH_INFO &auth, std::string &sql) {
+  sql += "CREATE USER ";
+  sql += "/*!50706 IF NOT EXISTS*/ ";
+  sql += TC_STR_SINGLE_QUOTED(auth.user);
+  sql += "@";
+  sql += TC_STR_SINGLE_QUOTED(auth.host);
+  sql += " IDENTIFIED BY ";
+  sql += TC_STR_SINGLE_QUOTED(auth.passwd);
+  sql += TC_STR_DELIMITER;
+}
+
+static void append_grant_privileges(const AUTH_INFO &auth, uint grant,
+                                    std::string &sql) {
+  uint has_access = grant & ~GRANT_ACL;
+  sql += "GRANT ";
+  if (test_all_bits(grant, (GLOBAL_ACLS & ~GRANT_ACL))) {
+    sql += "ALL PRIVILEGES";
+  } else if (!has_access) {
+    sql += "USAGE";
+  } else {
+    for (int i = 0, j = SELECT_ACL, found = 0; j <= GLOBAL_ACLS; ++i, j <<= 1) {
+      if (has_access & j) {
+        if (found) sql += TC_STR_COMMA;
+        found = 1;
+        sql.append(command_array[i], command_lengths[i]);
+      }
+    }
+  }
+  sql += " ON *.* TO "; /* generate global access by default */
+  sql += TC_STR_SINGLE_QUOTED(auth.user);
+  sql += "@";
+  sql += TC_STR_SINGLE_QUOTED(auth.host);
+  if (grant & GRANT_ACL)
+    sql += " WITH GRANT OPTION";
+  sql += TC_STR_DELIMITER;
+}
+
+void tc_generate_grants(Cluster_conn_manager *conn_mgr, const AUTH_INFO *auth,
+                        bool all_priv, enum_node_type node_type,
+                        std::string &create_user_sql, std::string &grant_sql) {
+  uint grant = 0;
+  std::set<std::pair<string, string>> user_set;
+  create_user_sql.clear();
+  grant_sql.clear();
+
+  if (all_priv) {
+    grant = GLOBAL_ACLS;
+  }
+
+  if (auth) {
+    /* Generate for a single node only */
+    append_create_user(*auth, create_user_sql);
+    append_grant_privileges(*auth, grant, grant_sql);
+  } else {
+    /* Iterate through all nodes of <node_type> */
+    map<string, AUTH_INFO>::const_iterator it;
+    for (it = conn_mgr->server_auths[node_type].begin();
+         it != conn_mgr->server_auths[node_type].end(); ++it) {
+      const AUTH_INFO &tmp_auth = it->second;
+      if (user_set.count(std::make_pair(tmp_auth.user, tmp_auth.host))) {
+        /* Duplicates can occur when more than one node is on the same host */
+        continue;
+      }
+      user_set.insert(std::make_pair(tmp_auth.user, tmp_auth.host));
+      append_create_user(tmp_auth, create_user_sql);
+      append_grant_privileges(tmp_auth, grant, grant_sql);
+    }
+  }
 }
 
 //currently only consider tc_amind=1
