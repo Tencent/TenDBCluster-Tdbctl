@@ -1959,6 +1959,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_SLAVE_STOP:
     case SQLCOM_INSTALL_PLUGIN:
     case SQLCOM_UNINSTALL_PLUGIN:
+    case SQLCOM_RESET:
       tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     // These commands are not supported in tcadmin primary or secondary mode.
@@ -2060,7 +2061,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
       break;
     case SQLCOM_SET_OPTION:
-    case SQLCOM_RESET:
       // if the sys_var is tdbctl var, we only execute it on tdbctl itself
       while ((var = var_it++))
       {
