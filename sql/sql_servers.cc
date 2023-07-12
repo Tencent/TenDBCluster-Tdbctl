@@ -1915,6 +1915,9 @@ static int tc_grant_helper(THD *thd, MYSQL *mysql, const string &query,
   char errmsg[512];
   DBUG_ENTER("tc_grant_helper");
 
+  if (query.empty()) /* nothing to run */
+    DBUG_RETURN(FALSE);
+
   if (mysql) {
     /* Execute a grant query on the new node */
     DBUG_ASSERT(node_type == NODE_TYPE_END);
@@ -1938,7 +1941,9 @@ static int tc_grant_helper(THD *thd, MYSQL *mysql, const string &query,
     DBUG_ASSERT(node_type != NODE_TYPE_END);
 
     Cluster_conn_manager *conn_mgr = thd->cluster_conn_manager;
-    Query_exec_manager query_mgr(thd);
+
+    /* Pass thd=NULL to keep the query original */
+    Query_exec_manager query_mgr(NULL);
     query_mgr.build_server_maps(conn_mgr);
     query_mgr.store_exec_query(query, node_type);
     query_mgr.reset_error();
@@ -2045,6 +2050,11 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
       DBUG_RETURN(TRUE);
   } else if (!strcasecmp(scheme, TDBCTL_WRAPPER)) {
     /* Target Node Type: TDBCTL */
+    /* Disable admin mode before CREATE USER and GRANT operations */
+    string setup_query = "SET SESSION tc_admin=0; SET SESSION sql_log_bin=0;";
+    if (tc_grant_helper(thd, mysql, setup_query, "Disabling @@tc_admin"))
+      DBUG_RETURN(TRUE);
+
     /* 1. New Tdbctl ==grant==> All Tdbctls */
     tc_generate_grants(conn_mgr, NULL, TRUE, NODE_TYPE_CTL, create_user_sql,
                        grant_sql);
