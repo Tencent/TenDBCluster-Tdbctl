@@ -652,6 +652,8 @@ static int dump_tablespaces(char* ts_where);
 static void print_comment(FILE *sql_file, my_bool is_error, const char *format,
                           ...);
 static const char* fix_identifier_with_newline(char*);
+static my_bool has_session_variables_like(MYSQL *mysql_con, const char *var_name);
+static void set_session_tc_admin();
 
 
 /*
@@ -745,6 +747,7 @@ static void short_usage(void)
 
 static void write_header(FILE *sql_file, char *db_name)
 {
+  set_session_tc_admin();
   if (opt_xml)
   {
     fputs("<?xml version=\"1.0\"?>\n", sql_file);
@@ -6607,6 +6610,20 @@ static void set_session_binlog(my_bool flag)
   }
 }
 
+/**
+   This function sets the session tc_admin=0 to disable tdbctl tc-admin mode, and 
+   record 'set tc_admin=0' into the dump file.
+ */
+static void set_session_tc_admin()
+{
+  if (has_session_variables_like(mysql, "tc_admin"))
+  {
+    mysql_query_with_error_report(mysql, 0,
+                                      "SET SESSION tc_admin=0");
+    fprintf(md_result_file,
+            "/*!50720 SET tc_admin=0 */;\n");
+  }
+}
 
 /**
   This function gets the GTID_EXECUTED sets from the
