@@ -201,15 +201,6 @@ int tc_restore_to_node(
       return 1;
     }
   }
-  else if (strcasecmp(wrapper, TDBCTL_WRAPPER) == 0)
-  {
-    sql = "set @old_tc_admin = @@tc_admin;set global tc_admin = 0";
-    if(tc_exec_sql_without_result(conn, sql, &exec_info))
-    {
-      my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
-      return 1;
-    }
-  }
 
   string space = " ";
   string restore_cmd, restore_bin, restore_options;
@@ -233,15 +224,6 @@ int tc_restore_to_node(
   if (strcasecmp(wrapper, SPIDER_WRAPPER) == 0)
   {
     sql = "/*!50600 set global ddl_execute_by_ctl = @old_ddl_execute_by_ctl */";
-    if(tc_exec_sql_without_result(conn, sql, &exec_info))
-    {
-      my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
-      return 1;
-    }
-  }
-  else if(strcasecmp(wrapper, TDBCTL_WRAPPER) == 0)
-  {
-    sql = "set global tc_admin=@old_tc_admin";
     if(tc_exec_sql_without_result(conn, sql, &exec_info))
     {
       my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());

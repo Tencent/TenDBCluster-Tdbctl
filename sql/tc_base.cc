@@ -2042,7 +2042,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       secondary_node_allowed = false;
       if (!tdbctl_is_primary)
         break;
-       if (thd->db().str)
+      if (thd->db().str)
         tc_parse_result_t->db_name = thd->db().str;
       else
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
