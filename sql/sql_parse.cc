@@ -5417,18 +5417,27 @@ mysql_execute_command(THD *thd, bool first_level)
           If create spider/tdbctl node, host#port must be unique.
           At present, only consider SPIDER/TDBCTL wrapper.
          */
+        std::string err_msg;
         if (std::find_if(server_list.begin(), server_list.end(),
                          [&](FOREIGN_SERVER *server) -> bool
                          {
                            string current_address = string(server->host) + "#" + to_string(server->port);
-                           if (strcasecmp(lex->server_options.m_server_name.str, server->server_name) == 0)
+                           if (strcasecmp(lex->server_options.m_server_name.str, server->server_name) == 0) {
+                             err_msg = "the server_name " + 
+                                       std::string(lex->server_options.m_server_name.str) + 
+                                       " already exists in the mysql.servers";
                              return true;
+                           }
                            if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 || strcasecmp(lex->server_options.get_scheme(), MYSQL_SLAVE_WRAPPER) == 0)
                              return false;
-                           return add_address.compare(current_address) == 0;
+                           if (add_address.compare(current_address) == 0) {
+                             err_msg = "the ip#port " + add_address + " already exists in the mysql.servers";
+                             return true;
+                           }
+                           return false;
                          }) != server_list.end())
         {
-          my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "node already exists");
+          my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), err_msg.c_str());
           goto error;
         }
 
