@@ -993,7 +993,7 @@ bool Sql_cmd_drop_server::execute(THD *thd)
   close_mysql_tables(thd);
 
   /* after delete server, should transfer to spider also */
-  error = delete_redundant_routings();
+//  error = delete_redundant_routings();
   if (close_cached_connection_tables(thd, m_server_name.str,
                                      m_server_name.length))
   {
@@ -2235,9 +2235,14 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
     std::string server_name = std::string(lex->server_options.m_server_name.str,
                                      lex->server_options.m_server_name.length);
     std::set<std::string> nodes;
-    nodes.insert(server_name);
     FOREIGN_SERVER *server =
             get_server_by_name(&mem_root, lex->server_options.m_server_name.str, NULL);
+    if (!server) {
+      my_error(ER_FOREIGN_SERVER_DOESNT_EXIST, MYF(0), server_name.c_str());
+      result = TRUE;
+      break;
+    }
+    nodes.insert(string(server->server_name, server->server_name_length));
     if(tc_flush_routing_to_nodes(lex, nodes, conn_mgr, server->scheme))
     {
       result = TRUE;
