@@ -144,7 +144,7 @@ typedef struct tc_exec_info
 typedef struct tc_execute_result
 {
     bool result; // TURE, error happened; FALASE, SUCCEED
-    map<string, tc_exec_info> result_info[ENUM_NODE_TYPE_COUNT_EXCLUDE_TDBCTL];
+    map<string, tc_exec_info> result_info[ENUM_NODE_TYPE_COUNT];
 } TC_EXEC_RESULT;
 
 typedef struct tc_parse_result
@@ -173,15 +173,18 @@ struct AUTH_INFO {
   std::string ipport_str;
   std::string user;
   std::string passwd;
+  std::string wrapper;
 };
 
 inline void fill_auth_info(AUTH_INFO *info, const std::string &host, uint port,
-                           const std::string &user, const std::string &passwd) {
+                           const std::string &user, const std::string &passwd,
+                           const std::string &wrapper) {
   info->host = host;
   info->port = port;
   info->user = user;
   info->passwd = passwd;
   info->ipport_str = host + "#" + std::to_string(port);
+  info->wrapper = wrapper;
 }
 
 class Query_exec_manager {
@@ -599,7 +602,7 @@ MYSQL* tc_conn_connect(
 MYSQL *tc_conn_connect(const AUTH_INFO &auth);
 
 MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
-                       const string &passwd);
+                       const string &passwd, const string &wrapper);
 
 map<string, MYSQL*> tc_remote_conn_connect(
   int &ret, 
