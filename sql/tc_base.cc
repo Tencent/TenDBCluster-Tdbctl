@@ -2764,7 +2764,9 @@ bool tc_run_command(THD *thd, Cluster_conn_manager *conn_mgr,
       return tc_exec_query_paral(query_mgr, conn_mgr->get_remote_conn_map(),
                                  NODE_TYPE_REMOTE) ||
              tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_REMOTE_SLAVE),
-                                 NODE_TYPE_REMOTE_SLAVE);
+                                 NODE_TYPE_REMOTE_SLAVE) ||
+             tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_CTL),
+                                  NODE_TYPE_CTL);
     }
   }
   else
@@ -2778,7 +2780,9 @@ bool tc_run_command(THD *thd, Cluster_conn_manager *conn_mgr,
       return tc_exec_query_paral(query_mgr, conn_mgr->get_spider_conn_map(),
                                  NODE_TYPE_SPIDER) ||
              tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_SPIDER_SLAVE),
-                                 NODE_TYPE_SPIDER_SLAVE);
+                                 NODE_TYPE_SPIDER_SLAVE) ||
+              tc_exec_query_paral(query_mgr, conn_mgr->get_conn_map(NODE_TYPE_CTL),
+                                  NODE_TYPE_CTL);
     }
   }
 
@@ -3171,17 +3175,18 @@ MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 }
 
 MYSQL *tc_conn_connect(const AUTH_INFO &auth) {
-  return tc_conn_connect(auth.host, auth.port, auth.user, auth.passwd);
+  return tc_conn_connect(auth.host, auth.port, auth.user, auth.passwd, auth.wrapper);
 }
 
 MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
-                       const string &passwd) {
+                       const string &passwd, const string &wrapper) {
   int read_timeout = TC_CONN_READ_TIMEOUT;
   int write_timeout = TC_CONN_WRITE_TIMEOUT;
   int connect_timeout = TC_CONN_CONNECT_TIMEOUT;
   uint connect_retry_count = TC_CONN_MAX_RETRIES_ON_FAILS;
   uint real_connect_option = 0;
   uint ssl_mode = SSL_MODE_DISABLED;
+  string init_cmd = "SET TC_ADMIN=0";
   MYSQL *mysql;
 
   if (user.length() == 0 && passwd.length() == 0) {
@@ -3206,6 +3211,11 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
         return NULL;
     } else
       break;
+  }
+
+  // we need to disable tc_admin mode when connecting to tdbctl node
+  if (strcasecmp(wrapper.c_str(), TDBCTL_WRAPPER)==0) {
+    mysql_real_query(mysql, init_cmd.c_str(), init_cmd.length());
   }
 
   return mysql;
@@ -4582,21 +4592,10 @@ void Query_exec_manager::store_exec_query(
 int Query_exec_manager::get_results(tc_execute_result *res) const {
   res->result = error;
   std::map<string, tc_exec_info>::const_iterator it;
-  for (it = exec_results[NODE_TYPE_SPIDER].begin();
-       it != exec_results[NODE_TYPE_SPIDER].end(); ++it) {
-    res->result_info[NODE_TYPE_SPIDER].insert(std::make_pair(it->first, it->second));
-  }
-  for (it = exec_results[NODE_TYPE_SPIDER_SLAVE].begin();
-       it != exec_results[NODE_TYPE_SPIDER_SLAVE].end(); ++it) {
-    res->result_info[NODE_TYPE_SPIDER_SLAVE].insert(std::make_pair(it->first, it->second));
-  }
-  for (it = exec_results[NODE_TYPE_REMOTE].begin();
-       it != exec_results[NODE_TYPE_REMOTE].end(); ++it) {
-    res->result_info[NODE_TYPE_REMOTE].insert(std::make_pair(it->first, it->second));
-  }
-  for (it = exec_results[NODE_TYPE_REMOTE_SLAVE].begin();
-       it != exec_results[NODE_TYPE_REMOTE_SLAVE].end(); ++it) {
-    res->result_info[NODE_TYPE_REMOTE_SLAVE].insert(std::make_pair(it->first, it->second));
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_COUNT; i++) {
+    for (it = exec_results[i].begin(); it != exec_results[i].end(); ++it) {
+      res->result_info[i].insert(std::make_pair(it->first, it->second));
+    }
   }
   return 0;
 }
@@ -4670,7 +4669,7 @@ bool Cluster_conn_manager::refresh(bool force, bool no_connect) {
       server = *it;
       server_name.assign(server->server_name, server->server_name_length);
       fill_auth_info(&auth, server->host, server->port, server->username,
-                     server->password);
+                     server->password, server->scheme);
       server_auths[i][server_name] = auth;
     }
   }

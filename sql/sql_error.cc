@@ -1176,7 +1176,7 @@ bool tc_return_one_valid_result(THD* thd, TC_EXEC_RESULT* exec_result)
 {
   bool result = false;
   // scan spider_result_info
-  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_COUNT_EXCLUDE_TDBCTL; i++)
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_COUNT; i++)
   {
     if (result)
       break;

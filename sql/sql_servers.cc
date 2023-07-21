@@ -2001,7 +2001,7 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
     scheme = svr_options.get_scheme();
   }
   fill_auth_info(&auth_info, svr_options.get_host(), svr_options.get_port(),
-                 svr_options.get_username(), svr_options.get_password());
+                 svr_options.get_username(), svr_options.get_password(), svr_options.get_scheme());
   if (!(mysql = tc_conn_connect(auth_info))) {
     my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), auth_info.ipport_str.c_str());
     DBUG_RETURN(TRUE);

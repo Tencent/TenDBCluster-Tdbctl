@@ -63,7 +63,7 @@ int tc_dump_node_schema(
     dump_options += space + "--ignore-database=" + token;
   }
 
-  MYSQL *conn = tc_conn_connect(host, port, user, password);
+  MYSQL *conn = tc_conn_connect(host, port, user, password, wrapper);
   if (conn == NULL)
   {
     std::string ipport = std::string(host) + "#" + std::to_string(port);
@@ -98,12 +98,13 @@ int tc_dump_node_grant(
     uint port,
     const char *user,
     const char *password,
-    const char *file)
+    const char *file,
+    const char *wrapper)
 {
   MYSQL_RES *res, *user_res, *grant_res;
   ofstream outfile;
   outfile.open(file);
-  MYSQL *conn = tc_conn_connect(host, port, user, password);
+  MYSQL *conn = tc_conn_connect(host, port, user, password, wrapper);
   if (!conn) 
   {
     std::string ipport = std::string(host) + "#" + std::to_string(port);
@@ -120,11 +121,11 @@ int tc_dump_node_grant(
     MYSQL_ROW row = NULL;
     while ((row = mysql_fetch_row(res)))
     {
-      std::string user, host;
+      std::string user_str, host_str;
       MYSQL_ROW create_user_row = NULL, show_grant_row = NULL;
-      host = row[1];
-      user = row[0];
-      sql = "show create user `" + user + "`@`" + host + "`";
+      host_str = row[1];
+      user_str = row[0];
+      sql = "show create user_str `" + user_str + "`@`" + host_str + "`";
       user_res = tc_exec_sql_with_result(conn, sql);
       if (user_res && (create_user_row = mysql_fetch_row(user_res)))
       {
@@ -141,7 +142,7 @@ int tc_dump_node_grant(
       }
       MYSQL_RES_GUARD(user_res);
 
-      sql = "show grants for `" + user + "`@`" + host + "`";
+      sql = "show grants for `" + user_str + "`@`" + host_str + "`";
       grant_res = tc_exec_sql_with_result(conn, sql);
       if(grant_res && (show_grant_row = mysql_fetch_row(grant_res)))
       {
@@ -172,7 +173,7 @@ int tc_restore_to_node(
         const char *file,
         const char *wrapper)
 {
-  MYSQL *conn = tc_conn_connect(host, port, user, password);
+  MYSQL *conn = tc_conn_connect(host, port, user, password, wrapper);
   MYSQL_GUARD(conn);
   if (!conn) 
   {
