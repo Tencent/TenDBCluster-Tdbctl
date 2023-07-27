@@ -88,9 +88,6 @@ enum enum_servers_table_field
 #define RESULT_ABNORMAL 0
 
 static int check_all_privileges(MYSQL *mysql, const AUTH_INFO &auth);
-static int tc_grant_helper(THD *thd, MYSQL *mysql, const string &query,
-                           const char *stage,
-                           enum_node_type node_type);
 
 static std::string generate_routing_sql_for_spider(bool is_slave_routing = false);
 static std::string generate_routing_sql_for_tdbctl();
@@ -1897,80 +1894,6 @@ static int check_all_privileges(MYSQL *mysql, const AUTH_INFO &auth) {
   return FALSE;
 }
 
-/**
- * @brief Helper function to run CREATE USER/GRANT queries
- *
- * @param thd Where we get cluster_conn_manager.
- * @param query Query to run, could be multiple queries in one string.
- * @param mysql Target node to run queries on. If NULL, run queries on all nodes
- * specified by node_type.
- * @param stage Stage info
- * @param node_type Optional argument; only used when mysql is NULL.
- *
- * @retval FALSE on success, TRUE on failure.
- * */
-static int tc_grant_helper(THD *thd, MYSQL *mysql, const string &query,
-                           const char *stage,
-                           enum_node_type node_type = NODE_TYPE_END) {
-  char errmsg[512];
-  DBUG_ENTER("tc_grant_helper");
-
-  if (query.empty()) /* nothing to run */
-    DBUG_RETURN(FALSE);
-
-  if (mysql) {
-    /* Execute a grant query on the new node */
-    DBUG_ASSERT(node_type == NODE_TYPE_END);
-
-    int err = mysql_real_query(mysql, query.c_str(), query.length());
-    while (!err) {
-      err = tc_mysql_next_result(mysql);
-    }
-    if (err != -1) {
-      if (mysql_errno(mysql) == ER_CANNOT_USER) {
-        /* Most likely the user already exists, skip this error */
-        DBUG_RETURN(FALSE);
-      }
-      snprintf(errmsg, sizeof(errmsg), "%s: ERROR %u: %s", stage,
-               mysql_errno(mysql), mysql_error(mysql));
-      my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
-      DBUG_RETURN(TRUE);
-    }
-  } else {
-    /* Execute a grant query on existing nodes specified by node_type */
-    DBUG_ASSERT(node_type != NODE_TYPE_END);
-
-    Cluster_conn_manager *conn_mgr = thd->cluster_conn_manager;
-
-    /* Pass thd=NULL to keep the query original */
-    Query_exec_manager query_mgr(NULL);
-    query_mgr.build_server_maps(conn_mgr);
-    query_mgr.store_exec_query(query, node_type);
-    query_mgr.reset_error();
-
-    const map<string, MYSQL *> &conns = conn_mgr->get_conn_map(node_type);
-    map<string, MYSQL *>::const_iterator conn_it;
-    for (conn_it = conns.begin(); conn_it != conns.end(); ++conn_it) {
-      tc_real_query(&query_mgr, conn_it->first, conn_it->second, node_type);
-      if (query_mgr.get_error()) {
-        tc_exec_info exec_info;
-        query_mgr.get_exec_info(conn_it->first, exec_info, node_type);
-        if (exec_info.err_code == ER_CANNOT_USER) {
-          /* Most likely the user already exists, skip this error */
-          continue;
-        }
-        snprintf(errmsg, sizeof(errmsg), "%s: From %s: ERROR %u: %s", stage,
-                 conn_it->first.c_str(), exec_info.err_code,
-                 exec_info.err_msg.c_str());
-        my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
-        DBUG_RETURN(TRUE);
-      }
-    }
-  }
-
-  DBUG_RETURN(FALSE);
-}
-
 int tc_do_grants_internal(THD *thd, LEX *lex) {
   Cluster_conn_manager *conn_mgr;
   AUTH_INFO auth_info;
@@ -2001,7 +1924,8 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
     scheme = svr_options.get_scheme();
   }
   fill_auth_info(&auth_info, svr_options.get_host(), svr_options.get_port(),
-                 svr_options.get_username(), svr_options.get_password(), svr_options.get_scheme());
+                 svr_options.get_username(), svr_options.get_password(),
+                 scheme);
   if (!(mysql = tc_conn_connect(auth_info))) {
     my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), auth_info.ipport_str.c_str());
     DBUG_RETURN(TRUE);
@@ -2015,71 +1939,80 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
   if (!strcasecmp(scheme, MYSQL_WRAPPER) ||
       !strcasecmp(scheme, MYSQL_SLAVE_WRAPPER)) {
     /* Target Node Type: REMOTE */
-    /* 1. New Remote ==grant==> All Spiders */
-    tc_generate_grants(conn_mgr, NULL, TRUE, NODE_TYPE_SPIDER, create_user_sql,
-                       grant_sql);
-    if (tc_grant_helper(thd, mysql, create_user_sql, "Creating Spider users") ||
-        tc_grant_helper(thd, mysql, grant_sql, "Granting Spider users"))
+    /*
+      1. New Remote ==grant==> All Spiders
+      This allows all Spiders to access data on the new remote node.
+    */
+    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER))
       DBUG_RETURN(TRUE);
 
-    /* 2. New Remote ==grant==> All Tdbctls */
-    tc_generate_grants(conn_mgr, NULL, TRUE, NODE_TYPE_CTL, create_user_sql,
-                       grant_sql);
-    if (tc_grant_helper(thd, mysql, create_user_sql, "Creating Tdbctl users") ||
-        tc_grant_helper(thd, mysql, grant_sql, "Granting Tdbctl users"))
+    /*
+      2. New Remote ==grant==> All Tdbctls
+      This allows all Tdbctl nodes to operate on the new remote node.
+    */
+    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_CTL))
       DBUG_RETURN(TRUE);
   } else if (!strcasecmp(scheme, SPIDER_WRAPPER) ||
              !strcasecmp(scheme, SPIDER_SLAVE_WRAPPER)) {
     /* Target Node Type: SPIDER */
-    /* 1. New Spider ==grant==> All Tdbctls */
-    tc_generate_grants(conn_mgr, NULL, TRUE, NODE_TYPE_CTL, create_user_sql,
-                       grant_sql);
-    if (tc_grant_helper(thd, mysql, create_user_sql, "Creating Tdbctl users") ||
-        tc_grant_helper(thd, mysql, grant_sql, "Granting Tdbctl users"))
+    /*
+      1. New Spider ==grant==> All Tdbctls
+      This allows all Tdbctl nodes to operate on the new Spider node.
+    */
+    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_CTL))
       DBUG_RETURN(TRUE);
 
-    /* 2. All Remotes ==grant==> New Spider */
-    tc_generate_grants(conn_mgr, &auth_info, TRUE, NODE_TYPE_SPIDER,
-                       create_user_sql, grant_sql);
-    if (conn_mgr->connect(NODE_TYPE_REMOTE, FALSE))
+    /*
+      2. All Remotes ==grant==> New Spider
+      This allows the new Spider to access data on remote nodes.
+    */
+    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE))
       DBUG_RETURN(TRUE);
-    if (tc_grant_helper(thd, NULL, create_user_sql, "Creating new Spider user",
-                        NODE_TYPE_REMOTE) ||
-        tc_grant_helper(thd, NULL, grant_sql, "Granting new Spider user",
-                        NODE_TYPE_REMOTE))
+
+    /*
+      3. All Tdbctls ==grant==> New Spider
+      This allows the new Spider to run DDLs on a cluster level (with
+      @@ddl_execute_by_ctl=ON).
+    */
+    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_CTL))
       DBUG_RETURN(TRUE);
   } else if (!strcasecmp(scheme, TDBCTL_WRAPPER)) {
     /* Target Node Type: TDBCTL */
-    /* Disable admin mode before CREATE USER and GRANT operations */
-    string setup_query = "SET SESSION tc_admin=0; SET SESSION sql_log_bin=0;";
-    if (tc_grant_helper(thd, mysql, setup_query, "Disabling @@tc_admin"))
+    /*
+      1. New Tdbctl ==grant==> All Tdbctls
+      This allows existing Tdbctl nodes to operate on the new Tdbctl node.
+    */
+    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_CTL))
       DBUG_RETURN(TRUE);
 
-    /* 1. New Tdbctl ==grant==> All Tdbctls */
-    tc_generate_grants(conn_mgr, NULL, TRUE, NODE_TYPE_CTL, create_user_sql,
-                       grant_sql);
-    if (tc_grant_helper(thd, mysql, create_user_sql, "Creating Tdbctl users") ||
-        tc_grant_helper(thd, mysql, grant_sql, "Granting Tdbctl users"))
+    /*
+      2. All Tdbctls ==grant==> New Tdbctl
+      This allows the new Tdbctl to operate on all existing Tdbctl nodes.
+    */
+    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_CTL))
       DBUG_RETURN(TRUE);
 
-    /* 2. All Spiders ==grant==> New Tdbctl */
-    tc_generate_grants(conn_mgr, &auth_info, TRUE, NODE_TYPE_CTL,
-                       create_user_sql, grant_sql);
-    if (conn_mgr->connect(NODE_TYPE_SPIDER, FALSE))
-      DBUG_RETURN(TRUE);
-    if (tc_grant_helper(thd, NULL, create_user_sql,
-                        "Creating new Tdbctl user on Spider nodes",
-                        NODE_TYPE_SPIDER) ||
-        tc_grant_helper(thd, NULL, grant_sql,
-                        "Granting new Tdbctl user on Spider nodes",
-                        NODE_TYPE_SPIDER))
+    /*
+      3. All Spiders ==grant==> New Tdbctl
+      This allows the new Tdbctl to operate on all Spiders (usually when its
+      Primary Mode is enabled)
+    */
+    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_SPIDER))
       DBUG_RETURN(TRUE);
 
-    /* 3. New Tdbctl ==grant==> All Spiders */
-    tc_generate_grants(conn_mgr, NULL, TRUE, NODE_TYPE_SPIDER, create_user_sql,
-                       grant_sql);
-    if (tc_grant_helper(thd, mysql, create_user_sql, "Creating Spider users") ||
-        tc_grant_helper(thd, mysql, grant_sql, "Granting Spider users"))
+    /*
+      4. New Tdbctl ==grant==> All Spiders
+      This allows all Spiders to run DDLs on the new Tdbctl on a cluster level
+      (with @@ddl_execute_by_ctl=ON).
+    */
+    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER))
+      DBUG_RETURN(TRUE);
+
+    /*
+      5. All Remotes ==grant==> New Tdbctl
+      This allows the new Tdbctl to operate on the remote nodes.
+    */
+    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE))
       DBUG_RETURN(TRUE);
   } else {
     /* unreachable */

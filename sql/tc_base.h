@@ -328,11 +328,6 @@ private:
 class Cluster_conn_manager {
 public:
   friend class Query_exec_manager;
-  friend void tc_generate_grants(Cluster_conn_manager *conn_mgr,
-                                 const AUTH_INFO *auth, bool all_priv,
-                                 enum_node_type node_type,
-                                 std::string &create_user_sql,
-                                 std::string &grant_sql);
 
   Cluster_conn_manager();
 
@@ -468,9 +463,12 @@ private:
   int ping(MYSQL *mysql);
 };
 
-void tc_generate_grants(Cluster_conn_manager *conn_mgr, const AUTH_INFO *auth,
-                        bool all_priv, enum_node_type node_type,
-                        std::string &create_user_sql, std::string &grant_sql);
+int tc_grant_single_node(THD *thd, MYSQL *mysql, const AUTH_INFO &auth);
+int tc_grant_single_to_multi(THD *thd, MYSQL *mysql,
+                             const AUTH_INFO &target_auth,
+                             enum_node_type node_type);
+int tc_grant_multi_to_single(THD *thd, const AUTH_INFO &target_auth,
+                             enum_node_type node_type);
 
 void tc_parse_result_init(TC_PARSE_RESULT *parse_result_t);
 bool is_add_or_drop_unique_key(THD *thd, LEX *lex);
