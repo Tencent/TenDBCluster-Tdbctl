@@ -3186,7 +3186,6 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
   uint connect_retry_count = TC_CONN_MAX_RETRIES_ON_FAILS;
   uint real_connect_option = 0;
   uint ssl_mode = SSL_MODE_DISABLED;
-  string init_cmd = "SET TC_ADMIN=0";
   MYSQL *mysql;
 
   if (user.length() == 0 && passwd.length() == 0) {
@@ -3213,12 +3212,34 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
       break;
   }
 
-  // we need to disable tc_admin mode when connecting to tdbctl node
-  if (strcasecmp(wrapper.c_str(), TDBCTL_WRAPPER)==0) {
-    mysql_real_query(mysql, init_cmd.c_str(), init_cmd.length());
+  /* Extra connection initialization work for some types of nodes */
+  if (strcasecmp(wrapper.c_str(), TDBCTL_WRAPPER) == 0) {
+    if (mysql_real_query(mysql, C_STRING_WITH_LEN("SET SESSION tc_admin=0")))
+      goto init_cmd_fail;
+    if (mysql_real_query(mysql, C_STRING_WITH_LEN("SET SESSION sql_log_bin=0")))
+      goto init_cmd_fail;
+  } else if (!strcasecmp(wrapper.c_str(), SPIDER_WRAPPER) ||
+             !strcasecmp(wrapper.c_str(), SPIDER_SLAVE_WRAPPER)) {
+    /* Disable @@ddl_execute_by_ctl for Spider connections */
+    if (mysql_real_query(
+            mysql, C_STRING_WITH_LEN("SET SESSION ddl_execute_by_ctl=0"))) {
+      /*
+        ER_UNKNOWN_SYSTEM_VARIABLE can occur when dealing with lower versions
+        of Spider.
+      */
+      if (mysql_errno(mysql) != ER_UNKNOWN_SYSTEM_VARIABLE)
+        goto init_cmd_fail;
+    }
   }
 
   return mysql;
+
+init_cmd_fail:
+  sql_print_error("tc connect fail: an error occurred when running init "
+                  "command on %s#%u; Code: %u; Msg: %s",
+                  host.c_str(), port, mysql_errno(mysql), mysql_error(mysql));
+  mysql_close(mysql);
+  return NULL;
 }
 
 /*
@@ -5017,37 +5038,91 @@ static void append_grant_privileges(const AUTH_INFO &auth, uint grant,
   sql += TC_STR_DELIMITER;
 }
 
-void tc_generate_grants(Cluster_conn_manager *conn_mgr, const AUTH_INFO *auth,
-                        bool all_priv, enum_node_type node_type,
-                        std::string &create_user_sql, std::string &grant_sql) {
-  uint grant = 0;
-  std::set<std::pair<string, string>> user_set;
-  create_user_sql.clear();
-  grant_sql.clear();
+int tc_grant_single_node(THD *thd, MYSQL *mysql, const AUTH_INFO &auth) {
+  int err;
+  char errmsg[512];
+  string create_user_sql, grant_sql;
 
-  if (all_priv) {
-    grant = GLOBAL_ACLS;
+  DBUG_ENTER("tc_grant_single_node");
+
+  append_create_user(auth, create_user_sql);
+  append_grant_privileges(auth, GLOBAL_ACLS, grant_sql);
+
+  if ((err = mysql_real_query(mysql, create_user_sql.c_str(),
+                              create_user_sql.length()))) {
+    /* We get ER_CANNOT_USER most likely when the user exists, ignore it */
+    if (mysql_errno(mysql) != ER_CANNOT_USER)
+      goto error;
   }
 
-  if (auth) {
-    /* Generate for a single node only */
-    append_create_user(*auth, create_user_sql);
-    append_grant_privileges(*auth, grant, grant_sql);
-  } else {
-    /* Iterate through all nodes of <node_type> */
-    map<string, AUTH_INFO>::const_iterator it;
-    for (it = conn_mgr->server_auths[node_type].begin();
-         it != conn_mgr->server_auths[node_type].end(); ++it) {
-      const AUTH_INFO &tmp_auth = it->second;
-      if (user_set.count(std::make_pair(tmp_auth.user, tmp_auth.host))) {
-        /* Duplicates can occur when more than one node is on the same host */
-        continue;
-      }
-      user_set.insert(std::make_pair(tmp_auth.user, tmp_auth.host));
-      append_create_user(tmp_auth, create_user_sql);
-      append_grant_privileges(tmp_auth, grant, grant_sql);
-    }
+  if ((err = mysql_real_query(mysql, grant_sql.c_str(), grant_sql.length()))) {
+    goto error;
   }
+
+  DBUG_RETURN(FALSE);
+
+error:
+  snprintf(errmsg, sizeof(errmsg), "(from %s#%u) ERROR %u: %s", mysql->host,
+           mysql->port, mysql_errno(mysql), mysql_error(mysql));
+  my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
+  DBUG_RETURN(TRUE);
+}
+
+/* Target node ==grant==> All nodes of <node_type> */
+int tc_grant_single_to_multi(THD *thd, MYSQL *mysql,
+                             const AUTH_INFO &target_auth,
+                             enum_node_type node_type) {
+  Cluster_conn_manager *conn_mgr = thd->cluster_conn_manager;
+  DBUG_ENTER("tc_grant_single_to_multi");
+
+  const map<string, AUTH_INFO> &server_auths =
+      conn_mgr->get_auth_map(node_type);
+  map<string, AUTH_INFO>::const_iterator it;
+  for (it = server_auths.begin(); it != server_auths.end(); ++it) {
+    /*
+      Keep <host,port> and replace <user,passwd> with what's defined in
+      mysql.servers for this server.
+    */
+    AUTH_INFO grant_to_who = it->second;
+    grant_to_who.user = target_auth.user;
+    grant_to_who.passwd = target_auth.passwd;
+
+    if (tc_grant_single_node(thd, mysql, grant_to_who))
+      DBUG_RETURN(TRUE);
+  }
+
+  DBUG_RETURN(FALSE);
+}
+
+/* All nodes of <node_type> ==grant==> Target node */
+int tc_grant_multi_to_single(THD *thd, const AUTH_INFO &target_auth,
+                             enum_node_type node_type) {
+  Cluster_conn_manager *conn_mgr = thd->cluster_conn_manager;
+  DBUG_ENTER("tc_grant_multi_to_single");
+
+  if (conn_mgr->connect(node_type, FALSE))
+    DBUG_RETURN(TRUE);
+
+  map<string, MYSQL *> conns = conn_mgr->get_conn_map(node_type);
+  const map<string, AUTH_INFO> &server_auths =
+      conn_mgr->get_auth_map(node_type);
+  map<string, AUTH_INFO>::const_iterator it;
+  for (it = server_auths.begin(); it != server_auths.end(); ++it) {
+    const string &server_name = it->first;
+
+    /*
+      Keep <host,port> and replace <user,passwd> with what's defined in
+      mysql.servers for this server.
+    */
+    AUTH_INFO grant_to_who = target_auth;
+    grant_to_who.user = it->second.user;
+    grant_to_who.passwd = it->second.passwd;
+
+    if (tc_grant_single_node(thd, conns[server_name], grant_to_who))
+      DBUG_RETURN(TRUE);
+  }
+
+  DBUG_RETURN(FALSE);
 }
 
 //currently only consider tc_amind=1
