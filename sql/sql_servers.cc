@@ -1355,9 +1355,10 @@ static std::string generate_routing_sql_for_tdbctl()
     flush the mysql.server info to other tdbctl nodes
   */
   ss.str("");
-  ss << "delete from mysql.servers where Wrapper='";
-  ss << TDBCTL_WRAPPER;
-  ss << "';";
+  //ss << "delete from mysql.servers where Wrapper='";
+  //ss << TDBCTL_WRAPPER;
+  //ss << "';";
+  ss << "delete from mysql.servers;";
   replace_sql_all.insert(0, ss.str());
 
   for (ulong i = 0; i < records; i++)
