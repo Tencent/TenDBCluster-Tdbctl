@@ -5533,7 +5533,6 @@ mysql_execute_command(THD *thd, bool first_level)
         {
           Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
           drop_node->execute(thd);
-          my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
           goto error;
         }
         if(tc_load_schema_to_new_node(thd, lex))
@@ -5563,10 +5562,7 @@ mysql_execute_command(THD *thd, bool first_level)
       }
 
       if (tc_flush_routing(lex, thd->cluster_conn_manager))
-      {
-        my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
         goto error;
-      }
 
       my_ok(thd);
       break;

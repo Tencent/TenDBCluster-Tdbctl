@@ -2051,7 +2051,6 @@ int tc_flush_routing_by_wrapper(map<string, tc_exec_info> &result_map, map<strin
     replace_sql = generate_routing_sql_for_tdbctl();
   else
   {
-    my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0));
     return 1;
   }
 
@@ -2243,7 +2242,7 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
       so we just retry --force */
       if (exec_ret == 2)
         is_force = TRUE; /* switch force */
-      sleep(2);
+      sleep(1);
     }
     else
     {
@@ -2252,7 +2251,10 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
     }
   }
   if (retry_times == -1)
+  {
+    my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), concat_result_map(result_map).c_str());
     result = TRUE;
+  }
 
 finish:
   nodes_to_be_flushed.clear();
