@@ -1807,7 +1807,7 @@ int tc_do_grants_internal(LEX *lex)
   //spider do grant
   init_result_map(spider_result_map, spider_ipport_set);
   //set ddl_execute_by_ctl to off on spider, only need execute on spider node
-  spider_do_sql = "/*!50600 set ddl_execute_by_ctl = off */;";
+  spider_do_sql = "/*!50600 set ddl_execute_by_ctl = off ;*/";
   spider_do_sql += tc_get_spider_grant_sql(spider_ipport_set, spider_user_map,
       spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
   if (tc_exec_sql_paral(spider_do_sql, spider_conn_map,
@@ -2031,7 +2031,7 @@ int tc_flush_routing_by_wrapper(map<string, tc_exec_info> &result_map, map<strin
   std::string flush_priv_sql = "flush privileges";
   std::string flush_table_sql = "flush tables";
   std::string flush_rdlock_sql = "flush table with read lock";
-  std::string set_mdl_timeout_sql = "/*!50600 set lock_wait_timeout = 60 */";
+  std::string set_mdl_timeout_sql = "set lock_wait_timeout = 60";
   std::string set_interactive_timeout_sql = "set wait_timeout = 180";
   std::string set_option_sql = set_mdl_timeout_sql + ";" + set_interactive_timeout_sql;
   if (!strcasecmp(wrapper, TDBCTL_WRAPPER))
