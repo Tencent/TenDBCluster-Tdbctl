@@ -3572,7 +3572,7 @@ bool tc_exec_sql_paral(
         int retry_times = 3;
         while (retry_times-- > 0)
         {/* retry 3 times, 2 seconds interval */
-          sleep(2);
+          sleep(1);
           if (conn_map[ipport_or_servername])
           {
             mysql_close(conn_map[ipport_or_servername]);
@@ -4510,7 +4510,7 @@ int Query_exec_manager::make_real_query(const std::string &exec_query,
 
     /* 3.(only for Spider) */
     if (node_type == NODE_TYPE_SPIDER || node_type == NODE_TYPE_SPIDER_SLAVE)
-      real_query += "/*!50600 SET ddl_execute_by_ctl=0 */;";
+      real_query += "/*!50600 SET ddl_execute_by_ctl=0 ;*/";
 
     real_query += exec_query;
   } else {

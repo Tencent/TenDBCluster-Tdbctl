@@ -7840,13 +7840,13 @@ ER_TCADMIN_EXECUTE_ERROR
   eng "Execution failed: %s"
 
 ER_TCADMIN_FLUSH_ROUTING_ERROR
-  eng "failed to flush routing"
+  eng "failed to flush routing: %s"
 
 ER_TCADMIN_MULTI_NODE_EXISTS
   eng "MULTI NODES: mulit tdbctl exists in mysql.servers without MGR configured"
 
 ER_TCADMIN_INIT_MONITOR_ERROR
-  eng "failed to init monitor : %s"
+  eng "failed to init monitor: %s"
 
 ER_TCADMIN_NOT_SPIDER
   eng "EXECUTE FAILED: query must be from spider in mysql.servers when tc_admin=1"
