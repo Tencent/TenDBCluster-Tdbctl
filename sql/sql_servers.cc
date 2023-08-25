@@ -1531,35 +1531,6 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
 }
 
 
-bool get_servers_rollback_sql()
-{
-  int ret;
-  std::map<std::string, MYSQL*> spider_conn_map;
-  std::map<std::string, std::string> spider_user_map;
-  std::map<std::string, std::string> spider_passwd_map;
-  std::set<std::string> spider_ipport_set;
-  spider_ipport_set = get_spider_ipport_set(&mem, 
-                                            spider_user_map, 
-                                            spider_passwd_map, 
-                                            FALSE);
-  spider_conn_map = tc_spider_conn_connect(ret, spider_ipport_set, 
-                                           spider_user_map, 
-                                           spider_passwd_map);
-  if (ret)
-  {
-    return TRUE;
-  }
-
-  string sql = "select * from mysql.servers";
-  tc_conn_free(spider_conn_map);
-  spider_conn_map.clear();
-  spider_user_map.clear();
-  spider_passwd_map.clear();
-  spider_ipport_set.clear();
-  return FALSE;
-}
-
-
 map<string, string> get_ipport_map_from_serverlist(
   map<string, string>& user_map,
   map<string, string>& passwd_map,
@@ -1653,205 +1624,6 @@ int tc_set_changed_remote_read_only()
   remote_ipport_map.clear();
   free_root(&mem_root, MYF(0));
   return result;
-}
-
-/*
-  do GRANT PRIVILEGES on tdbctl, remote, spider
-
-  NOTES
-    spider node: need simple privileges to connect any tdbctl to transfer sql; need
-    INSERT, DELETE, UPDATE, DROP to connect any remote and do DML
-    tdbctl node: need ALL PRIVILEGES to connect spider, remote do DDL etc.
-    remote node: N/A
-
-    tdbctl only need to do grants on primary node at present
-    tdbctl, spider, remote must all exists in mysql.servers, otherwise, return 0(ok).
-
-  RETURN VALUE
-    zero is success, no zero for error.
-*/
-MY_ATTRIBUTE((unused))
-int tc_do_grants_internal(LEX *lex)
-{
-  int ret, error = 0;
-  MEM_ROOT mem_root;
-  map<string, MYSQL*> spider_conn_map;
-  map<string, string> spider_user_map;
-  map<string, string> spider_passwd_map;
-  map<string, tc_exec_info> spider_result_map;
-  string spider_do_sql;
-
-  map<string, MYSQL*> remote_conn_map;
-  map<string, string> remote_user_map;
-  map<string, string> remote_passwd_map;
-  map<string, tc_exec_info> remote_result_map;
-  string remote_do_sql;
-
-  map<string, MYSQL*> tdbctl_conn_map;
-  map<string, string> tdbctl_user_map;
-  map<string, string> tdbctl_passwd_map;
-  map<string, tc_exec_info> tdbctl_result_map;
-  string tdbctl_do_sql;
-
-  string host;
-  uint port;
-
-  init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-  /* get all spider nodes, including spider_slave nodes */
-  set<string>  spider_ipport_set = get_spider_ipport_set(
-      &mem_root,
-      spider_user_map,
-      spider_passwd_map,
-      TRUE);
-  map<string, string> tdbctl_ipport_map = get_tdbctl_ipport_map(
-      &mem_root,
-      tdbctl_user_map,
-      tdbctl_passwd_map);
-
-  map<string, string> remote_ipport_map;
-  bool on_alter_node = (lex->sql_command == TC_SQLCOM_ALTER_NODE);
-  if (on_alter_node) {
-	string slave_ipport = string(lex->server_options.get_host()) + "#" + to_string(lex->server_options.get_port());
-	remote_ipport_map.insert(pair<string, string>(lex->server_options.m_server_name.str, slave_ipport));
-	remote_user_map.insert(pair<string, string>(slave_ipport, lex->server_options.get_username()));
-	remote_passwd_map.insert(pair<string, string>(slave_ipport, lex->server_options.get_password()));
-  }
-  else {
-	remote_ipport_map = get_remote_ipport_map(
-		&mem_root,
-		remote_user_map,
-		remote_passwd_map,
-    TRUE);
-  }
-
-  if (spider_ipport_set.empty() ||
-      remote_ipport_map.empty() || tdbctl_ipport_map.empty())
-  {
-    error = 0;
-    push_warning_printf(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_INTERNAL_GRANT_ERROR,
-                        "skip do internal grant, at least exist one spider,"
-                        "tdbctl and mysql wrapper type in mysql.servers");
-    goto exit;
-  }
-
-  ret = tc_get_primary_node(host, &port);
-  if (ret == 1)
-  {//MGR with Single-Primary
-    string address = host + "#" + to_string(port);
-    /* NOTE: primary member must exist in mysql.servers */
-    if (std::find_if(tdbctl_ipport_map.begin(), tdbctl_ipport_map.end(),
-        [address](const std::pair<string, string> &tdbctl_ip_port) -> bool {
-        return address.compare(tdbctl_ip_port.second) == 0; }) == tdbctl_ipport_map.end())
-    {
-      push_warning_printf(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_INTERNAL_GRANT_ERROR,
-                          "skip do internal grant, primary member %s not exist in mysql.servers",
-                          address.c_str());
-      error = 0;
-      goto exit;
-    }
-    MYSQL *conn = tc_conn_connect(address, tdbctl_user_map[address], tdbctl_passwd_map[address]);
-    if (conn == NULL)
-    {
-      my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "connect to tdbctl primary failed");
-      goto exit;
-    }
-    /*
-      Single-Primary only need to execute on Primary, and Replication to others.
-      Other nodes is read-only and can't execute any sql.
-    */
-    tdbctl_conn_map.insert(pair<string, MYSQL*>(address, conn));
-    tdbctl_do_sql = "set tc_admin = off;";
-  }
-  else if (ret == 2)
-  {//Non-MGR or MGR with Multi-Primary
-    tdbctl_conn_map = tc_tdbctl_conn_connect(error,
-      tdbctl_ipport_map,
-      tdbctl_user_map,
-      tdbctl_passwd_map);
-    if (error)
-      goto exit;
-
-    //no need to replication to slave.
-    tdbctl_do_sql = "set tc_admin = off;set sql_log_bin = off;";
-  }
-  else
-  {
-    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), "get primary tdbctl abnormal");
-      goto exit;
-  }
-
-  spider_conn_map = tc_spider_conn_connect(error,
-      spider_ipport_set, spider_user_map, spider_passwd_map);
-  if (error)
-    goto exit;
-  remote_conn_map = tc_remote_conn_connect(error,
-      remote_ipport_map, remote_user_map, remote_passwd_map);
-  if (error)
-    goto exit;
-
-  //remote do grant
-  init_result_map2(remote_result_map, remote_ipport_map);
-  remote_do_sql = tc_get_remote_grant_sql(spider_ipport_set, spider_user_map,
-	  spider_passwd_map, remote_ipport_map, remote_user_map, remote_passwd_map,
-	  tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
-  if (tc_exec_sql_paral(remote_do_sql, remote_conn_map,
-	  remote_result_map, remote_user_map, remote_passwd_map, FALSE))
-  {/* return, close conn, reconnect + retry all */
-	  error = 1;
-	  my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), concat_result_map(remote_result_map).c_str());
-	  goto exit;
-  }
-
-  if (on_alter_node) goto exit;
-
-  //spider do grant
-  init_result_map(spider_result_map, spider_ipport_set);
-  //set ddl_execute_by_ctl to off on spider, only need execute on spider node
-  spider_do_sql = "/*!50600 set ddl_execute_by_ctl = off ;*/";
-  spider_do_sql += tc_get_spider_grant_sql(spider_ipport_set, spider_user_map,
-      spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
-  if (tc_exec_sql_paral(spider_do_sql, spider_conn_map,
-      spider_result_map, spider_user_map, spider_passwd_map, FALSE))
-  {/* return, close conn, reconnect + retry all */
-    error = 1;
-    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), concat_result_map(spider_result_map).c_str());
-    goto exit;
-  }
-
-  //tdbctl do grant
-  init_result_map2(tdbctl_result_map, tdbctl_ipport_map);
-  tdbctl_do_sql += tc_get_tdbctl_grant_sql(spider_ipport_set, spider_user_map,
-      spider_passwd_map, tdbctl_ipport_map, tdbctl_user_map, tdbctl_passwd_map);
-  if (tc_exec_sql_paral(tdbctl_do_sql, tdbctl_conn_map,
-    tdbctl_result_map, tdbctl_user_map, tdbctl_passwd_map, FALSE))
-  {
-    error = 1;
-    my_error(ER_TCADMIN_INTERNAL_GRANT_ERROR, MYF(0), concat_result_map(tdbctl_result_map).c_str());
-    goto exit;
-  }
-
-exit:
-  tc_conn_free(spider_conn_map);
-  tc_conn_free(remote_conn_map);
-  tc_conn_free(tdbctl_conn_map);
-  spider_conn_map.clear();
-  remote_conn_map.clear();
-  tdbctl_conn_map.clear();
-  spider_ipport_set.clear();
-  remote_ipport_map.clear();
-  tdbctl_ipport_map.clear();
-  spider_user_map.clear();
-  spider_passwd_map.clear();
-  remote_user_map.clear();
-  remote_passwd_map.clear();
-  tdbctl_user_map.clear();
-  tdbctl_passwd_map.clear();
-  spider_result_map.clear();
-  remote_result_map.clear();
-  tdbctl_result_map.clear();
-  free_root(&mem_root, MYF(0));
-
-  return error;
 }
 
 static int check_all_privileges(MYSQL *mysql, const AUTH_INFO &auth) {
@@ -2025,6 +1797,11 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
 
 // Generate routing sql by wrapper name
 // And then send these sql to spider/spider_slave/tdbctl nodes
+/* return val
+      0: success
+      1: failed
+      2: mean "flush table with read" is ok, but "replace mysql.servers" or "flush privileges" failed
+*/
 int tc_flush_routing_by_wrapper(map<string, tc_exec_info> &result_map, map<string, MYSQL*>conn_map, bool is_force,
                                 const char* wrapper)
 {
@@ -2870,38 +2647,24 @@ int get_remote_changed_servers(
   list<FOREIGN_SERVER*> *diff_serverlist
 )
 {
-  int ret = 0;
   int result = 0;
   map<string, MYSQL*> spider_conn_map;
-  map<string, string> spider_user_map;
-  map<string, string> spider_passwd_map;
   map<string, MYSQL*>::iterator its;
   string sql = "select Server_name,Host,Db,Username,Password,Port,Socket,Wrapper,Owner "
                "from mysql.servers where Wrapper = \"mysql\" order by Server_name";
   list<FOREIGN_SERVER*> new_list;
-  tc_exec_info exec_info;
-  const char *mysql_wrapper = "mysql";
-  set<string>  spider_ipport_set = get_spider_ipport_set(
-                                      mem_root, 
-                                      spider_user_map, 
-                                      spider_passwd_map,
-                                      FALSE);
-
-
-  get_server_by_wrapper(new_list, mem_root, mysql_wrapper, FALSE);
-  new_list.sort(server_compare);
-
-  spider_conn_map = tc_spider_conn_connect(
-                      ret, 
-                      spider_ipport_set, 
-                      spider_user_map, 
-                      spider_passwd_map);
-  if (ret)
+  Cluster_conn_manager *conn_mgr = new Cluster_conn_manager();
+  //exclude spider_slave
+  if (conn_mgr->refresh(false, true) || conn_mgr->connect(SPIDER_WRAPPER, false))
   {
-    result = 1;
-    goto finish;
+    delete conn_mgr;
+    return 1;
   }
+  else
+    spider_conn_map = conn_mgr->get_spider_conn_map();
 
+  get_server_by_wrapper(new_list, mem_root, MYSQL_WRAPPER, FALSE);
+  new_list.sort(server_compare);
 
   for (its = spider_conn_map.begin(); its != spider_conn_map.end(); its++)
   {
@@ -2959,12 +2722,7 @@ int get_remote_changed_servers(
   }
 
 
-finish:
-  tc_conn_free(spider_conn_map);
-  spider_conn_map.clear();
-  spider_ipport_set.clear();
-  spider_user_map.clear();
-  spider_passwd_map.clear();
+  delete conn_mgr;
   new_list.clear();
   return result;
 }
@@ -2992,53 +2750,37 @@ string get_delete_routing_sql()
 
 int delete_redundant_routings()
 {
-  int ret = 0;
   string del_sql = get_delete_routing_sql();
   if (del_sql.length() > 0)
   {
     map<string, MYSQL*> spider_conn_map;
-    map<string, string> spider_user_map;
-    map<string, string> spider_passwd_map;
-    MEM_ROOT mem_root;
-    init_sql_alloc(key_memory_servers, &mem_root,  ACL_ALLOC_BLOCK_SIZE, 0);
-    set<string>  spider_ipport_set = get_spider_ipport_set(
-                                        &mem_root, 
-                                        spider_user_map, 
-                                        spider_passwd_map, 
-                                        FALSE);
+    Cluster_conn_manager *conn_mgr = new Cluster_conn_manager();
+    //exclude spider_slave
+    if (conn_mgr->refresh(false, true) || conn_mgr->connect(NODE_TYPE_SPIDER, false))
+    {
+      delete conn_mgr;
+      return 1;
+    }
+    else
+      spider_conn_map = conn_mgr->get_spider_conn_map();
+
     string flush_priv_sql = "flush privileges";
     string sql;
-    map<string, MYSQL*>::iterator its2;
+    map<string, MYSQL*>::iterator it;
     sql = del_sql + ";" + flush_priv_sql;
 
-    spider_conn_map = tc_spider_conn_connect(
-                        ret, 
-                        spider_ipport_set, 
-                        spider_user_map, 
-                        spider_passwd_map);
-    if (ret)
+    for (it = spider_conn_map.begin(); it != spider_conn_map.end(); it++)
     {
-      goto finish;
-    }
-
-    for (its2 = spider_conn_map.begin(); its2 != spider_conn_map.end(); its2++)
-    {
-      string ipport = its2->first;
-      MYSQL* mysql = its2->second;
+      string ipport = it->first;
+      MYSQL* mysql = it->second;
       tc_exec_info exec_info;
       tc_exec_sql_without_result(mysql, sql, &exec_info);
     }
 
-  finish:
-    tc_conn_free(spider_conn_map);
-    spider_conn_map.clear();
-    spider_ipport_set.clear();
-    spider_user_map.clear();
-    spider_passwd_map.clear();
+    delete conn_mgr;
     to_delete_servername_list.clear();
-    free_root(&mem_root, MYF(0));
   }
 
-  return ret;
+  return 0;
 }
 

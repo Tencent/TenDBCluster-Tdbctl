@@ -43,6 +43,7 @@ set<string> spider_ipport_set;
 map<string, string> tdbctl_ipport_map;
 map<string, string> tdbctl_user_map;
 map<string, string> tdbctl_passwd_map;
+Cluster_conn_manager *conn_mgr;
 string  tdbctl_server_name="";
 MYSQL *tdbctl_primary_conn = NULL;
 MEM_ROOT mem_root;
@@ -56,6 +57,8 @@ void tc_free_connect()
     mysql_close(tdbctl_primary_conn);
     tdbctl_primary_conn = NULL;
   }
+  if (conn_mgr)
+    delete conn_mgr;
   spider_conn_map.clear();
   spider_ipport_set.clear();
   spider_user_map.clear();
@@ -145,26 +148,18 @@ int set_mysql_options(int &error_code, string &message)
 int tc_init_connect(ulong& server_version)
 {
   int ret = 0;
-  int error_code=0;
-  string message="";
+  int error_code = 0;
+  string message = "";
   tc_free_connect();
+  conn_mgr = new Cluster_conn_manager();
+  if (conn_mgr->refresh(false, true) || conn_mgr->connect(NODE_TYPE_SPIDER, false))
+    goto finish;
+  else
+    spider_conn_map = conn_mgr->get_spider_conn_map();
 
   init_sql_alloc(key_memory_monitor, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-  spider_ipport_set = get_spider_ipport_set(
-    &mem_root,
-    spider_user_map,
-    spider_passwd_map,
-    FALSE);
   spider_server_name_map = get_server_name_map(&mem_root, SPIDER_WRAPPER, false);
-  spider_conn_map = tc_spider_conn_connect(
-    ret,
-    spider_ipport_set,
-    spider_user_map,
-    spider_passwd_map);
-  if (ret)
-  {
-    goto finish;
-  }
+
   //get all TDBCTL
   tdbctl_ipport_map = get_tdbctl_ipport_map(
     &mem_root,
@@ -343,16 +338,7 @@ int tc_check_cluster_availability_init(string& err_msg)
     spider_passwd_map,
     FALSE);
 
-  spider_single_conn = tc_spider_conn_single(
-    err_msg,
-    spider_ipport_set,
-    spider_user_map,
-    spider_passwd_map);
-  if (err_msg.size())
-  {
-    result = 1;
-    goto finish;
-  }
+  spider_single_conn = spider_conn_map.begin()->second;
 
   //init schema and data for spider
   if (tc_exec_sql_without_result(spider_single_conn, init_sql, &exec_info))
