@@ -2291,6 +2291,8 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
         tc_parse_result_t->new_db_name = lex->select_lex->db;
         tc_parse_result_t->new_table_name = lex->name.str;
+        tc_parse_spider_rename_table(tc_parse_result_t);
+        tc_parse_remote_rename_table(tc_parse_result_t);
       }
       else if (lex->alter_info.flags == Alter_info::ADD_FOREIGN_KEY ||
         lex->alter_info.flags == Alter_info::DROP_FOREIGN_KEY)
@@ -2302,9 +2304,11 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
         tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       }
+
       if (!lex->alter_info.has_alter_partitions()) {
+        if (lex->alter_info.flags != Alter_info::ALTER_RENAME)
+          tc_parse_spider_alter_table(tc_parse_result_t);
         /* Only non-partitioning operations are allowed to be sent to Spider */
-        tc_parse_spider_alter_table(tc_parse_result_t);
         tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE;
       } else if (lex->alter_info.has_non_alter_partitions()) {
         /*
@@ -2317,7 +2321,10 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
                  "operations is not allowed in a single query");
         return FALSE;
       }
-      tc_parse_remote_alter_table(tc_parse_result_t);
+
+      if (lex->alter_info.flags != Alter_info::ALTER_RENAME)
+        tc_parse_remote_alter_table(tc_parse_result_t);
+
       tc_parse_result_t->execute_flag |= TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
