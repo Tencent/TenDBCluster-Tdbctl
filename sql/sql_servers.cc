@@ -1915,12 +1915,12 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
                                 lex->server_options.m_server_name.str, NULL);
     DBUG_ASSERT(server);
     scheme = server->scheme;
-    if (unlikely(strcasecmp(scheme, MYSQL_WRAPPER) &&
+    /* DEPRECATED*/
+    /*if (unlikely(strcasecmp(scheme, MYSQL_WRAPPER) &&
                  strcasecmp(scheme, MYSQL_SLAVE_WRAPPER))) {
-      /* Current version only supports ALTER NODE for remotes */
       DBUG_ASSERT(0);
       DBUG_RETURN(TRUE);
-    }
+    }*/
   } else {
     scheme = svr_options.get_scheme();
   }
