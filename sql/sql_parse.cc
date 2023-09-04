@@ -5455,13 +5455,14 @@ mysql_execute_command(THD *thd, bool first_level)
           goto error;
         }
         fill_lex_to_alter_node(lex, server);
-        /* At present, only support alter MYSQL wrapper node */
-        if (!(strcasecmp(server->scheme, MYSQL_WRAPPER) == 0 ||
+
+        /* DEPRECATED */
+        /*if (!(strcasecmp(server->scheme, MYSQL_WRAPPER) == 0 ||
             strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER) == 0))
         {
           my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), "only support mysql wrapper or mysql_slave wrapper");
           goto error;
-        }
+        }*/
 
         old_server_options = foreign_server_to_server_options(server);
         break;
