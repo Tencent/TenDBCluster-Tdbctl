@@ -1633,8 +1633,6 @@ bool mysql_change_db(THD *thd, const LEX_CSTRING &new_db_name,
 
   DEBUG_SYNC(thd, "before_db_dir_check");
 
-  if (!thd->variables.tc_admin)
-  {
     if (check_db_dir_existence(new_db_file_name.str))
     {
       if (force_switch)
@@ -1665,7 +1663,6 @@ bool mysql_change_db(THD *thd, const LEX_CSTRING &new_db_name,
         DBUG_RETURN(TRUE);
       }
     }
-  }
 
   /*
     NOTE: in mysql_change_db_impl() new_db_file_name is assigned to THD
