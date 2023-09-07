@@ -5480,7 +5480,7 @@ mysql_execute_command(THD *thd, bool first_level)
 
       if (!verify_validity_of_routing_host(thd->mem_root, lex->server_options.get_host()))
       {
-        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "mysql.servers can't contain both loopback network"
+        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "mysql.servers can't contain both loop-back network"
                                                    " address and external network address, please change the value of 'host' column");
         goto error;
       }
@@ -5489,6 +5489,8 @@ mysql_execute_command(THD *thd, bool first_level)
         goto error;
 
       // Reset the thread OK status before changing the outcome.
+      // We need do this, otherwise tc_do_grants_internal may call my_error
+      // and case assert fail in debug
       if (thd->get_stmt_da()->is_ok())
         thd->get_stmt_da()->reset_diagnostics_area();
 
@@ -5539,8 +5541,8 @@ mysql_execute_command(THD *thd, bool first_level)
         if(tc_load_schema_to_new_node(thd, lex))
           goto error;
       }
-
-      my_ok(thd);
+      //after reset, should call this
+      my_ok(thd, 1);
       break;
     }
     case TC_SQLCOM_FLUSH_ROUTING:

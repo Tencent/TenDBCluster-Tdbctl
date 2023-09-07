@@ -2291,6 +2291,8 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
         tc_parse_result_t->new_db_name = lex->select_lex->db;
         tc_parse_result_t->new_table_name = lex->name.str;
+        tc_parse_spider_rename_table(tc_parse_result_t);
+        tc_parse_remote_rename_table(tc_parse_result_t);
       }
       else if (lex->alter_info.flags == Alter_info::ADD_FOREIGN_KEY ||
         lex->alter_info.flags == Alter_info::DROP_FOREIGN_KEY)
@@ -2302,9 +2304,11 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
         tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       }
+
       if (!lex->alter_info.has_alter_partitions()) {
+        if (lex->alter_info.flags != Alter_info::ALTER_RENAME)
+          tc_parse_spider_alter_table(tc_parse_result_t);
         /* Only non-partitioning operations are allowed to be sent to Spider */
-        tc_parse_spider_alter_table(tc_parse_result_t);
         tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE;
       } else if (lex->alter_info.has_non_alter_partitions()) {
         /*
@@ -2317,7 +2321,10 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
                  "operations is not allowed in a single query");
         return FALSE;
       }
-      tc_parse_remote_alter_table(tc_parse_result_t);
+
+      if (lex->alter_info.flags != Alter_info::ALTER_RENAME)
+        tc_parse_remote_alter_table(tc_parse_result_t);
+
       tc_parse_result_t->execute_flag |= TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
@@ -3297,60 +3304,6 @@ map<string, string> get_tdbctl_ipport_map(
   return ipport_map;
 }
 
-map<string, MYSQL*> tc_spider_conn_connect(
-  int &ret, 
-  set<string> spider_ipport_set, 
-  map<string, string> spider_user_map, 
-  map<string, string> spider_passwd_map
-)
-{
-  map<string, MYSQL*> conn_map;
-  set<string>::iterator its;
-  for (its = spider_ipport_set.begin(); its != spider_ipport_set.end(); its++)
-  {// ipport_c must like 1.1.1.1#3306
-    string ipport = (*its);
-    MYSQL* mysql;
-    if((mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])))
-     conn_map.insert(pair<string, MYSQL*>(ipport, mysql));
-    else
-    {
-      /* error */
-      ret = 1;
-      my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
-      break;
-    }
-  }
-
-  return conn_map;
-}
-
-MYSQL* tc_spider_conn_single(
-	string &err_msg,
-	set<string> spider_ipport_set,
-	map<string, string> spider_user_map,
-	map<string, string> spider_passwd_map
-)
-{
-  MYSQL* mysql = NULL;
-  set<string>::iterator its;
-  char buff[1024];
-  if (spider_ipport_set.size())
-  {
-    // ipport must like 1.1.1.1#3306
-    string ipport = *(spider_ipport_set.begin());
-    if (!(mysql = tc_conn_connect(ipport, spider_user_map[ipport], spider_passwd_map[ipport])))
-    {
-      /* error */
-      sprintf(buff, ER(ER_TCADMIN_CONNECT_ERROR), ipport.c_str());
-      err_msg = buff;
-    }
-  }
-  else
-    err_msg = "no spider in mysql.servers";
-
-  return mysql;
-}
-
 map<string, MYSQL*> tc_remote_conn_connect(
   int &ret, 
   map<string, string> remote_ipport_map,
@@ -4179,102 +4132,6 @@ int tc_is_primary_tdbctl_node()
   return tdbctl_is_primary;
 }
 
-/*
-  get server_list according to wrapper_name.
-  connect each server and parallel execute sql.
-
-  @param
-   exec_sql: sql to execute
-   wraper_name: wrapper_name
-   with_slave: whether diffuse to slave
-
-  @retval
-   map for result
-   key:Server_name for mysql.servers
-   value: execute result
-*/
-map<string, MYSQL_RES*> tc_exec_sql_paral_by_wrapper(
-    string exec_sql, string wrapper_name, bool with_slave)
-{
-  map<string, MYSQL_RES*> result_map;
-  MEM_ROOT mem_root;
-  list<FOREIGN_SERVER*> server_list;
-  list<thread> thread_list;
-
-  init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-  MEM_ROOT_GUARD(mem_root);
-  get_server_by_wrapper(server_list, &mem_root, wrapper_name.c_str(), with_slave);
-
-  /*
-    create thread for work
-    each thread do connect, and execute sql
-  */
-  for (auto & server: server_list)
-  {
-    thread tmp_t([&]{
-      MYSQL* mysql;
-      MYSQL_RES *res;
-      string ipport = string(server->host) + "#" + to_string(server->port);
-      if (!(mysql = tc_conn_connect(ipport, server->username, server->password)))
-      {
-        /* error */
-        my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
-        return;
-      }
-      //use shared_ptr to release mysql
-      MYSQL_GUARD(mysql);
-      res = tc_exec_sql_with_result(mysql, exec_sql);
-      result_map.insert(pair<string, MYSQL_RES *>(server->server_name, std::move(res)));
-    });
-    thread_list.push_back(std::move(tmp_t));
-  }
-
-  /* wait all thread complete */
-  for (auto &td : thread_list) {
-    if (td.joinable())
-      td.join();
-  }
-
-  return result_map;
-}
-
-/*
-  get server by server_name and then connect
-  to server and execute sql.
-
-  @param
-   exec_sql: sql to execute
-   server_name: Server_name in mysql.servers.
-*/
-MYSQL_RES* tc_exec_sql_by_server(
-	string exec_sql, const char *server_name)
-{
-  MEM_ROOT mem_root;
-  MYSQL* mysql;
-  MYSQL_RES *res;
-  FOREIGN_SERVER *server;
-
-  init_sql_alloc(key_memory_bases, &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-  MEM_ROOT_GUARD(mem_root);
-
-  server = get_server_by_name(&mem_root, server_name, NULL);
-  if (server == NULL)
-    return NULL;
-
-  string ipport = string(server->host) + "#" + to_string(server->port);
-  if (!(mysql = tc_conn_connect(ipport, server->username, server->password)))
-  {
-    /* error */
-    my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
-    return NULL;
-  }
-  //use shared_ptr to release mysql
-  MYSQL_GUARD(mysql);
-  res = tc_exec_sql_with_result(mysql, exec_sql);
-
-  return res;
-}
-
 bool check_server_version(ulong& server_version)
 {
 	bool res = false;
@@ -4507,11 +4364,6 @@ int Query_exec_manager::make_real_query(const std::string &exec_query,
     real_query += "SET sql_mode='";
     real_query += string(sql_mode_str.str, sql_mode_str.length);
     real_query += "';";
-
-    /* 3.(only for Spider) */
-    if (node_type == NODE_TYPE_SPIDER || node_type == NODE_TYPE_SPIDER_SLAVE)
-      real_query += "/*!50600 SET ddl_execute_by_ctl=0 ;*/";
-
     real_query += exec_query;
   } else {
     real_query = exec_query;

@@ -608,20 +608,6 @@ map<string, MYSQL*> tc_remote_conn_connect(
   map<string, string> remote_user_map, 
   map<string, string> remote_passwd_map);
 
-map<string, MYSQL*> tc_spider_conn_connect(
-  int &ret,
-  set<string> spider_ipport_set, 
-  map<string, string> spider_user_map,
-  map<string, string> spider_passwd_map
-);
-
-MYSQL* tc_spider_conn_single(
-	string &err_msg,
-	set<string> spider_ipport_set,
-	map<string, string> spider_user_map,
-	map<string, string> spider_passwd_map
-);
-
 map<string, MYSQL*> tc_tdbctl_conn_connect(
   int &ret,
   map<string, string> tdbctl_ipport_map, 
@@ -636,7 +622,6 @@ MYSQL *tc_tdbctl_conn_primary(
 	map<string, string> &tdbctl_passwd_map
 );
 
-int tc_do_grants_internal(LEX *lex);
 int tc_do_grants_internal(THD *thd, LEX *lex);
 /**
  * @brief fill the options of alter node. These options
@@ -773,8 +758,6 @@ void init_result_map2(map<string, tc_exec_info>& result_map, map<string, string>
 string concat_result_map(map<string, tc_exec_info> result_map);
 
 string tc_get_variable_value(MYSQL *conn, const char *variable);
-map<string, MYSQL_RES*> tc_exec_sql_paral_by_wrapper(string exec_sql, string wrapper_name, bool with_slave);
-MYSQL_RES* tc_exec_sql_by_server(string exec_sql, const char *server_name);
 
 enum enum_ident_wrapper_check
 {
