@@ -2643,6 +2643,7 @@ mysql_execute_command(THD *thd, bool first_level)
   struct system_variables *per_query_variables_backup= NULL;
 
   bool tc_admin = thd->variables.tc_admin;
+  bool tc_dry_run = thd->variables.tc_dry_run;
   tc_parse_result parse_result;
   tc_execute_result exec_result;
   Query_exec_manager query_exec_manager(thd);
@@ -3005,6 +3006,13 @@ mysql_execute_command(THD *thd, bool first_level)
 
     if (!tc_command_convert(thd, lex, &parse_result))
       goto error;
+
+    if (tc_dry_run && lex->sql_command != SQLCOM_SET_OPTION) {
+      if (tc_explain_command(thd, &parse_result))
+        goto finish;
+      else
+        goto error;
+    }
   }
 
   /* There are three cases that sql_command need to be handled by tdbctl itself.

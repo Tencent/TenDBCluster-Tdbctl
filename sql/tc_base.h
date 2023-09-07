@@ -58,7 +58,7 @@ enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 #define TC_CONN_CONNECT_TIMEOUT 60
 #define TC_CONN_MAX_RETRIES_ON_FAILS 3
 
-//all spider node(inlcuding spider slave node) need execute sql
+//all spider node(include spider slave node) need execute sql
 #define TC_SPIDER_NEED_EXECUTE 1
 //all remote node need execute sql
 #define TC_REMOTE_NEED_EXECUTE 2
@@ -578,18 +578,7 @@ bool tc_query_parse(
 
 
 bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t);
-
-bool tc_query_convert(
-  THD *thd, 
-  LEX *lex, 
-  TC_PARSE_RESULT *tc_parse_result_t, 
-  int shard_count, 
-  tspider_shard_func shard_func,
-  tspider_shard_type shard_type,
-  bool is_unsigned_key,
-  string *spider_create_sql, 
-  map<string, string> *remote_create_sql
-);
+bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result);
 
 MYSQL* tc_conn_connect(
   string ipport, 

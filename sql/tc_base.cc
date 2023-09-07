@@ -2453,6 +2453,75 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
   return TRUE;
 }
 
+//display rewrite sql by parse_result
+bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
+{
+  Item *field;
+  List<Item> field_list;
+  size_t max_query_length = PROCESS_LIST_INFO_WIDTH;
+  Protocol *protocol = thd->get_protocol();
+  DBUG_ENTER("tc_dry_run_command");
+
+  field_list.push_back(new Item_empty_string("Server_name", NAME_CHAR_LEN));
+  field_list.push_back(field = new Item_empty_string("db", NAME_CHAR_LEN));
+  field->maybe_null = 1;
+  field_list.push_back(field = new Item_empty_string("table", NAME_CHAR_LEN));
+  field->maybe_null = 1;
+  field_list.push_back(field = new Item_empty_string("Command", max_query_length));
+  field->maybe_null = 1;
+  field_list.push_back(field = new Item_empty_string("Info", PROCESS_LIST_WIDTH));
+  field->maybe_null = 1;
+
+  if (thd->send_result_metadata(&field_list,
+                                Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+    DBUG_RETURN(FALSE);
+
+  auto auto_store = [&](string value) -> void {
+    if (value.empty())
+      protocol->store_null();
+    else
+      protocol->store(value.c_str(), value.length(), system_charset_info);
+  };
+
+  if (parse_result->execute_flag & TC_DESIGNATED_NODE_NEED_EXECUTE) {
+    FOREIGN_SERVER *server = get_server_by_name(thd->mem_root, thd->lex->server_options.m_server_name.str, NULL);
+    int node_type = get_node_type_by_wrapper(server->scheme);
+    protocol->start_row();
+    auto_store(server->server_name);
+    protocol->store_null();
+    protocol->store_null();
+    protocol->store(thd->lex->sql_statement, system_charset_info);
+    protocol->store(STRING_WITH_LEN("only specify node execute"), system_charset_info);
+    protocol->end_row();
+  }
+
+  if (parse_result->execute_flag & (TC_SPIDER_NEED_EXECUTE|TC_ONLY_ONE_SPIDER_NEED_EXECUTE)) {
+    protocol->start_row();
+    protocol->store(STRING_WITH_LEN(SPIDER_WRAPPER), system_charset_info);
+    auto_store(parse_result->db_name);
+    auto_store(parse_result->table_name);
+    auto_store(parse_result->spider_sql);
+    if (parse_result->execute_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE)
+      protocol->store(STRING_WITH_LEN("only one spider execute"), system_charset_info);
+    else
+      protocol->store(STRING_WITH_LEN("all spider execute"), system_charset_info);
+    protocol->end_row();
+  }
+
+  for (auto &row : parse_result->remote_sql_map) {
+    protocol->start_row();
+    auto_store(row.first);
+    protocol->store_null();
+    protocol->store_null();
+    auto_store(row.second);
+    protocol->store(STRING_WITH_LEN("all remote execute"), system_charset_info);
+    protocol->end_row();
+  }
+
+  my_eof(thd);
+  DBUG_RETURN(TRUE);
+}
+
 int tc_store_mysql_result_into_protocol(THD *thd, MYSQL_RES *res)
 {
   DBUG_ENTER("tc_store_mysql_result_into_protocol");

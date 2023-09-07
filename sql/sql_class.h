@@ -626,6 +626,8 @@ typedef struct system_variables
   my_bool session_track_state_change;
   my_bool expand_fast_index_creation;
   my_bool tc_admin;
+  //DRY RUN mode for all command
+  my_bool tc_dry_run;
   my_bool tc_force_execute;
   my_bool tc_auto_fix_conns;
 
