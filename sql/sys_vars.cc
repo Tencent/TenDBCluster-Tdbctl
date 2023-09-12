@@ -6326,6 +6326,12 @@ static Sys_var_mybool Sys_tc_admin(
        TDBCTL SESSION_VAR(tc_admin), CMD_LINE(OPT_ARG),
        DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_tc_dry_run(
+       "tc_dry_run",
+       "If set to TRUE, all command only display rewrite SQL without execute",
+       TDBCTL SESSION_VAR(tc_dry_run), NO_CMD_LINE,
+       DEFAULT(FALSE));
+
 static Sys_var_mybool Sys_tc_force_execute(
        "tc_force_execute",
        "If set to TRUE, go on running spider query if remote failed",
