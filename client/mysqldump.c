@@ -128,7 +128,8 @@ static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0,
                 opt_compressed_columns= 0,
                 opt_compressed_columns_with_dictionaries= 0,
                 opt_drop_compression_dictionary= 1,
-                opt_order_by_primary_desc= 0;
+                opt_order_by_primary_desc= 0,
+                opt_print_tc_admin_info=0;
 
 static my_bool insert_pat_inited= 0, debug_info_flag= 0, debug_check_flag= 0;
 static ulong opt_max_allowed_packet, opt_net_buffer_length;
@@ -620,6 +621,11 @@ static struct my_option my_long_options[] =
     "Add a DROP COMPRESSION_DICTIONARY before each create.",
     &opt_drop_compression_dictionary,
     &opt_drop_compression_dictionary, 0, GET_BOOL, NO_ARG, 1, 0, 0, 0, 0,
+    0},
+   {"print-tc-admin-info", OPT_PRINT_TC_ADMIN_INFO,
+    "Print the tc_admin setting 'set tc_admin = 0' into the dump file.",
+    &opt_print_tc_admin_info,
+    &opt_print_tc_admin_info, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0,
     0},
   {0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
@@ -6620,8 +6626,11 @@ static void set_session_tc_admin()
   {
     mysql_query_with_error_report(mysql, 0,
                                       "SET SESSION tc_admin=0");
-    fprintf(md_result_file,
-            "/*!50720 SET tc_admin=0 */;\n");
+    if(opt_print_tc_admin_info)
+    {
+      fprintf(md_result_file,
+              "/*!50720 SET tc_admin=0 */;\n");
+    }
   }
 }
 
