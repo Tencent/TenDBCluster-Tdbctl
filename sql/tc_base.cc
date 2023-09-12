@@ -2029,6 +2029,12 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_PREPARE:
     case SQLCOM_EXECUTE:
     case SQLCOM_DEALLOCATE_PREPARE:
+      secondary_node_allowed = false;
+      if (!tdbctl_is_primary)
+        break;
+      tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
+      tc_parse_result_t->execute_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+      break;
     case SQLCOM_UPDATE:
     case SQLCOM_UPDATE_MULTI:
     case SQLCOM_REPLACE:
