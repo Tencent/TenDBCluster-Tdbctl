@@ -46,7 +46,7 @@ int tc_dump_node_schema(
   // tdbctl enable gtid mode, therefore we need to get gtid info
   if (strcasecmp(wrapper, TDBCTL_WRAPPER) == 0)
   {
-    dump_options += space + "--set-gtid-purged=auto";
+    dump_options += space + "--set-gtid-purged=auto --print-tc-admin-info";
   }
   if (tc_skip_dump_db_list)
   {
