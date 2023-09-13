@@ -2491,7 +2491,6 @@ bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
 
   if (parse_result->execute_flag & TC_DESIGNATED_NODE_NEED_EXECUTE) {
     FOREIGN_SERVER *server = get_server_by_name(thd->mem_root, thd->lex->server_options.m_server_name.str, NULL);
-    int node_type = get_node_type_by_wrapper(server->scheme);
     protocol->start_row();
     auto_store(server->server_name);
     protocol->store_null();
