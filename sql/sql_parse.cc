@@ -3008,7 +3008,7 @@ mysql_execute_command(THD *thd, bool first_level)
       goto error;
 
     if (tc_dry_run && lex->sql_command != SQLCOM_SET_OPTION) {
-      if (tc_explain_command(thd, &parse_result))
+      if (tc_dry_run_command(thd, &parse_result))
         goto finish;
       else
         goto error;
