@@ -1324,7 +1324,7 @@ void tc_parse_remote_create_table(TC_PARSE_RESULT *tc_parse_result_t)
 
         remote_create_sql = regex_replace(remote_create_sql, pattern1, db_dst1);
         remote_create_sql = regex_replace(remote_create_sql, pattern2, db_dst2);
-        remote_create_sql = "use " + remote_db + ";" + remote_create_sql;
+        remote_create_sql = "use " + TC_STR_BACK_QUOTED(remote_db) + ";" + remote_create_sql;
         tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_create_sql));
     }
 }
@@ -1333,7 +1333,7 @@ string tc_get_only_spider_ddl_withdb(TC_PARSE_RESULT *tc_parse_result_t, int sha
 {
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
-    sql = "use " + db_name + ";" + sql;
+    sql = "use " + TC_STR_BACK_QUOTED(db_name) + ";" + sql;
     return sql;
 }
 
@@ -1415,7 +1415,7 @@ void tc_parse_spider_create_table(TC_PARSE_RESULT *tc_parse_result_t,
   tspider_shard_type shard_type = tc_parse_result_t->shard_type;
   string hash_key = tc_parse_result_t->shard_key;
 
-  spider_create_sql += "USE " + db_name + TC_STR_DELIMITER;
+  spider_create_sql += "USE " + TC_STR_BACK_QUOTED(db_name) + TC_STR_DELIMITER;
   if (part_start) {
     /*
       PARTITION BY is present, remove it for Spider. Note that it is assumed
@@ -1517,7 +1517,7 @@ void tc_parse_spider_drop_table(TC_PARSE_RESULT *tc_parse_result_t)
 {
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
-    sql = "use " + db_name + ";" + sql;
+    sql = "use " + TC_STR_BACK_QUOTED(db_name) + ";" + sql;
     tc_parse_result_t->spider_sql = sql;
 }
 
@@ -1547,7 +1547,7 @@ void tc_parse_remote_drop_table(TC_PARSE_RESULT *tc_parse_result_t)
 
         remote_sql = regex_replace(remote_sql, pattern1, db_dst1);
         remote_sql = regex_replace(remote_sql, pattern2, db_dst2);
-        remote_sql = "use " + remote_db + ";" + remote_sql;
+        remote_sql = "use " + TC_STR_BACK_QUOTED(remote_db) + ";" + remote_sql;
         tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
     }
 }
@@ -1644,7 +1644,7 @@ void tc_parse_spider_create_or_drop_index(TC_PARSE_RESULT *tc_parse_result_t)
 {
     string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
     string db_name = tc_parse_result_t->db_name;
-    sql = "use " + db_name + ";" + sql;
+    sql = "use " + TC_STR_BACK_QUOTED(db_name) + ";" + sql;
     tc_parse_result_t->spider_sql = sql;
 }
 
@@ -1674,7 +1674,7 @@ void tc_parse_remote_create_or_drop_index(TC_PARSE_RESULT *tc_parse_result_t)
 
         remote_sql = regex_replace(remote_sql, pattern1, db_dst1);
         remote_sql = regex_replace(remote_sql, pattern2, db_dst2);
-        remote_sql = "use " + remote_db + ";" + remote_sql;
+        remote_sql = "use " + TC_STR_BACK_QUOTED(remote_db) + ";" + remote_sql;
         tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
     }
 }
@@ -1694,7 +1694,7 @@ void tc_parse_spider_alter_table(TC_PARSE_RESULT *tc_parse_result_t)
     sql = regex_replace(sql, pattern3, "ENGINE = spider");
     sql = regex_replace(sql, pattern4, "");
     sql = regex_replace(sql, pattern5, "");
-    sql = "use " + db_name + ";" + sql;
+    sql = "use " + TC_STR_BACK_QUOTED(db_name) + ";" + sql;
     tc_parse_result_t->spider_sql = sql;
 }
 
@@ -1717,7 +1717,7 @@ void tc_parse_remote_alter_table(TC_PARSE_RESULT *tc_parse_result_t)
         string server = server_name_pre + hash_value;
 
         remote_sql = tc_dbname_replace_with_point(remote_sql, db_name, remote_db);
-        remote_sql = "use " + remote_db + ";" + remote_sql;
+        remote_sql = "use " + TC_STR_BACK_QUOTED(remote_db) + ";" + remote_sql;
         tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
     }
 }
@@ -1763,7 +1763,7 @@ void tc_parse_spider_rename_table(TC_PARSE_RESULT *tc_parse_result_t)
     }
     sstr.clear();
 
-    sql = "use " + db_name + ";" + sql + reorganize_partition_sql + partition_sql;
+    sql = "use " + TC_STR_BACK_QUOTED(db_name) + ";" + sql + reorganize_partition_sql + partition_sql;
     tc_parse_result_t->spider_sql = sql;
 }
 
@@ -1788,7 +1788,7 @@ void tc_parse_remote_rename_table(TC_PARSE_RESULT *tc_parse_result_t)
 
         remote_sql = tc_dbname_replace_with_point(remote_sql, db_name, remote_db);
         remote_sql = tc_dbname_replace_with_point(remote_sql, new_db, new_remote_db);
-        remote_sql = "use " + remote_db + ";" + remote_sql;
+        remote_sql = "use " + TC_STR_BACK_QUOTED(remote_db) + ";" + remote_sql;
         tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
     }
 }
@@ -1842,7 +1842,7 @@ void tc_parse_spider_create_table_like(
     }
     sstr.clear();
 
-    sql = "use " + db_name + ";" + sql + 
+    sql = "use " + TC_STR_BACK_QUOTED(db_name) + ";" + sql +
       reorganize_partition_sql + partition_sql;
     tc_parse_result_t->spider_sql = sql;
 }
@@ -1870,7 +1870,7 @@ void tc_parse_remote_create_table_like(
 
         remote_sql = tc_dbname_replace_with_point(remote_sql, db_name, remote_db);
         remote_sql = tc_dbname_replace_with_point(remote_sql, new_db, new_remote_db);
-        remote_sql = "use " + remote_db + ";" + remote_sql;
+        remote_sql = "use " + TC_STR_BACK_QUOTED(remote_db) + ";" + remote_sql;
         tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
     }
 }
@@ -2052,7 +2052,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         tc_parse_result_t->db_name = thd->db().str;
       else
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
-      tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + std::string(thd->query().str, thd->query().length);
+      tc_parse_result_t->spider_sql = "use " + TC_STR_BACK_QUOTED(tc_parse_result_t->db_name) + ";" + std::string(thd->query().str, thd->query().length);
       tc_parse_result_t->execute_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
       break;
     // These commands are executed on only one spider node and tdbctl itself in tcadmin primary mode,
@@ -2120,7 +2120,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         tc_parse_result_t->db_name = thd->db().str;
       else
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
-      tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + std::string(thd->query().str, thd->query().length);
+      tc_parse_result_t->spider_sql = "use " + TC_STR_BACK_QUOTED(tc_parse_result_t->db_name) + ";" + std::string(thd->query().str, thd->query().length);
       tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_VIEW:
@@ -2132,7 +2132,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         tc_parse_result_t->db_name = thd->db().str;
       else
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
-      tc_parse_result_t->spider_sql = "use " + tc_parse_result_t->db_name + ";" + std::string(thd->query().str, thd->query().length);
+      tc_parse_result_t->spider_sql = "use " + TC_STR_BACK_QUOTED(tc_parse_result_t->db_name) + ";" + std::string(thd->query().str, thd->query().length);
       tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_USER:

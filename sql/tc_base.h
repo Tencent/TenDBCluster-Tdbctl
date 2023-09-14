@@ -95,6 +95,7 @@ enum enum_node_type {
 #define TC_STR_IDENTIFIER(a) std::string("`" + (a) + "`")
 #define TC_STR_DOUBLE_QUOTED(a) std::string("\"" + (a) + "\"")
 #define TC_STR_SINGLE_QUOTED(a) std::string("'" + (a) + "'")
+#define TC_STR_BACK_QUOTED(a) std::string("`" + (a) + "`")
 
 //mysql guard to free mysql connection
 #define MYSQL_GUARD(p) std::shared_ptr<MYSQL> p##p(p, \
