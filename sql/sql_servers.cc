@@ -1914,6 +1914,16 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
   init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
   int ret = 0;
   std::string tdbctl_server_name;
+  tdbctl_server_name = tc_get_server_name(ret, &mem_root, TDBCTL_WRAPPER, true);
+  if (ret)
+  {
+    //tdbctl node must exists in mysql.servers
+    //TODO:need judge this tdbctl node is primary(current tdbctl)
+    my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), "no tdbctl node found");
+    result = TRUE;
+    return result;
+  }
+
   switch (lex->tc_flush_type)
   {
   case FLUSH_ALL_ROUTING:
@@ -1921,12 +1931,6 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
     get_server_name_set(&mem_root, spider_nodes, SPIDER_WRAPPER);
     get_server_name_set(&mem_root, spider_slave_nodes, SPIDER_SLAVE_WRAPPER);
     get_server_name_set(&mem_root, tdbctl_nodes, TDBCTL_WRAPPER);
-    tdbctl_server_name = tc_get_server_name(ret, &mem_root, TDBCTL_WRAPPER, true);
-    if (ret)
-    {
-      result = TRUE;
-      break;
-    }
     // remove the tdbctl_server_name of local node
     tdbctl_nodes.erase(tdbctl_server_name);
 
