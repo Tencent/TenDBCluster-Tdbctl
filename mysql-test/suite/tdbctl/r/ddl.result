@@ -1,0 +1,68 @@
+select * from mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SHOW STATUS LIKE 'tc_is_primary';
+Variable_name	Value
+Tc_is_primary	1
+CREATE DATABASE d1;
+USE d1;
+CREATE TABLE t1 (a INT PRIMARY KEY, b INT);
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) NOT NULL,
+  `b` int(11) DEFAULT NULL,
+  PRIMARY KEY (`a`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+CREATE DATABASE d2;
+ERROR HY000: EXECUTE FAILED: command [SQLCOM_CREATE_DB] is not allowed to execute on non-primary tdbctl node
+SHOW CREATE TABLE d1.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) NOT NULL,
+  `b` int(11) DEFAULT NULL,
+  PRIMARY KEY (`a`)
+) ENGINE=SPIDER DEFAULT CHARSET=utf8
+ PARTITION BY LIST (crc32(`a`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "d1_0", table "t1", server "SPT0"' ENGINE = SPIDER,
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "d1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SHOW CREATE TABLE d1_0.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) NOT NULL,
+  `b` int(11) DEFAULT NULL,
+  PRIMARY KEY (`a`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+SHOW CREATE TABLE d1_1.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) NOT NULL,
+  `b` int(11) DEFAULT NULL,
+  PRIMARY KEY (`a`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+SHOW STATUS LIKE 'tc_is_primary';
+Variable_name	Value
+Tc_is_primary	1
+DROP TABLE d1.t1;
+SHOW CREATE TABLE d1.t1;
+ERROR 42S02: Table 'd1.t1' doesn't exist
+SHOW CREATE TABLE d1_0.t1;
+ERROR 42S02: Table 'd1_0.t1' doesn't exist
+SHOW CREATE TABLE d1_1.t1;
+ERROR 42S02: Table 'd1_1.t1' doesn't exist
+DROP DATABASE d1;
+SHOW DATABASES LIKE 'd1';
+Database (d1)
+SHOW DATABASES LIKE 'd1_0';
+Database (d1_0)
+SHOW DATABASES LIKE 'd1_1';
+Database (d1_1)

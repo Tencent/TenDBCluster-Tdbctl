@@ -332,6 +332,8 @@ my %mysqld_logs;
 my $opt_debug_sync_timeout= 600; # Default timeout for WAIT_FOR actions.
 my $daemonize_mysqld= 0;
 
+our $opt_tdbctl_test=1;
+
 sub testcase_timeout ($) {
   my ($tinfo)= @_;
   if (exists $tinfo->{'case-timeout'}) {
@@ -440,7 +442,14 @@ sub main {
     unshift(@$tests, $tinfo);
   }
 
-  initialize_servers();
+  # * If we use docker-compose, we need to call initialize_docker_compose()
+  if ($opt_tdbctl_test) {
+    initialize_servers();
+    initialize_docker_compose();
+  }
+  else {
+    initialize_servers();
+  }
 
   #######################################################################
   my $num_tests= @$tests;
@@ -468,7 +477,7 @@ sub main {
   mtr_report("Using parallel: $opt_parallel");
 
   my $is_option_mysqlx_port_set= $opt_mysqlx_baseport ne "auto";
-  if ($opt_parallel > 1 && ($opt_start_exit || $opt_stress || $is_option_mysqlx_port_set)) {
+  if ($opt_parallel > 1 && ($opt_start_exit || $opt_stress || $is_option_mysqlx_port_set || $opt_tdbctl_test)) {
     mtr_warning("Parallel cannot be used neither with --start-and-exit nor --stress nor --mysqlx_port\n" .
                "Setting parallel to 1");
     $opt_parallel= 1;
@@ -1040,6 +1049,8 @@ sub run_worker ($) {
       }
       mark_time_used('admin');
       print_times_used($server, $thread_num);
+
+      remove_docker_compose();
       exit($valgrind_reports);
     }
     else {
@@ -1298,10 +1309,13 @@ sub command_line_setup {
              'help|h'                   => \$opt_usage,
 	     # list-options is internal, not listed in help
 	     'list-options'             => \$opt_list_options,
+	     'list-options'             => \$opt_list_options,
              'skip-test-list=s'         => \@opt_skip_test_list,
              'do-test-list=s'           => \$opt_do_test_list,
              'xml-report=s'             => \$opt_xml_report,
-             'summary-report=s'         => \$opt_summary_report
+             'summary-report=s'         => \$opt_summary_report,
+         # tdbctl-test
+         'tdbctl-test'              => \$opt_tdbctl_test
            );
 
   GetOptions(%options) or usage("Can't read options");
@@ -2827,18 +2841,18 @@ sub environment_setup {
   # ----------------------------------------------------
   # Setup env so childs can execute myisampack and myisamchk
   # ----------------------------------------------------
-  $ENV{'MYISAMCHK'}= native_path(mtr_exe_exists(
-                       vs_config_dirs('storage/myisam', 'myisamchk'),
-                       vs_config_dirs('myisam', 'myisamchk'),
-                       "$path_client_bindir/myisamchk",
-                       "$basedir/storage/myisam/myisamchk",
-                       "$basedir/myisam/myisamchk"));
-  $ENV{'MYISAMPACK'}= native_path(mtr_exe_exists(
-                        vs_config_dirs('storage/myisam', 'myisampack'),
-                        vs_config_dirs('myisam', 'myisampack'),
-                        "$path_client_bindir/myisampack",
-                        "$basedir/storage/myisam/myisampack",
-                        "$basedir/myisam/myisampack"));
+  #$ENV{'MYISAMCHK'}= native_path(mtr_exe_exists(
+  #                     vs_config_dirs('storage/myisam', 'myisamchk'),
+  #                     vs_config_dirs('myisam', 'myisamchk'),
+  #                     "$path_client_bindir/myisamchk",
+  #                     "$basedir/storage/myisam/myisamchk",
+  #                     "$basedir/myisam/myisamchk"));
+  #$ENV{'MYISAMPACK'}= native_path(mtr_exe_exists(
+  #                      vs_config_dirs('storage/myisam', 'myisampack'),
+  #                      vs_config_dirs('myisam', 'myisampack'),
+  #                      "$path_client_bindir/myisampack",
+  #                      "$basedir/storage/myisam/myisampack",
+  #                      "$basedir/myisam/myisampack"));
 
   # ----------------------------------------------------
   # mysqld_safe
@@ -3810,6 +3824,35 @@ sub check_ports_free ($)
   return 1;
 }
 
+sub remove_docker_compose {
+  my $rm_compose_cmd = "cd tendbcluster-compose && docker-compose down && rm -r ./data && cd ..";
+  my $result = system($rm_compose_cmd);
+
+  if ($result == 0) {
+    print "命令执行成功\n";
+  } else {
+    print "命令执行失败\n";
+  }
+}
+
+sub initialize_docker_compose {
+  my $data_dir = "tendbcluster-compose/data";
+  if(-d $data_dir) {
+    remove_docker_compose();
+  }
+
+
+  my $init_compose_cmd = "cd tendbcluster-compose && docker-compose up -d";
+  my $result = system($init_compose_cmd);
+
+  if ($result == 0) {
+    print "命令执行成功\n";
+  } else {
+    # remove docker-compose data-dir
+    # mtr_log
+    print "命令执行失败\n";
+  }
+}
 
 sub initialize_servers {
 

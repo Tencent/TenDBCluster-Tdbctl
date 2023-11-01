@@ -1,0 +1,50 @@
+select * from mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SHOW STATUS LIKE 'tc_is_primary';
+Variable_name	Value
+Tc_is_primary	1
+CREATE DATABASE d1;
+USE d1;
+CREATE TABLE t1 (a INT PRIMARY KEY, b INT);
+insert into t1 values (1,1);
+insert into t1 values (2,2);
+insert into t1 values (3,3);
+insert into t1 values (4,4);
+insert into t1 values (5,5);
+select * from d1.t1;
+a	b
+4	4
+5	5
+1	1
+2	2
+3	3
+update d1.t1 set b=10 where a=1;
+update d1.t1 set a=6, b=6 where a=5;
+select * from d1.t1;
+a	b
+4	4
+6	6
+1	10
+2	2
+3	3
+delete from d1.t1 where a=3;
+select * from d1.t1;
+a	b
+4	4
+6	6
+1	10
+2	2
+delete from d1.t1;
+select * from d1.t1;
+a	b
+drop database d1;

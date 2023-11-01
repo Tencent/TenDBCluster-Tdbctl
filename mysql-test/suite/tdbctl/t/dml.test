@@ -1,0 +1,41 @@
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+select * from mysql.servers;
+SHOW STATUS LIKE 'tc_is_primary';
+
+CREATE DATABASE d1;
+USE d1;
+
+CREATE TABLE t1 (a INT PRIMARY KEY, b INT);
+
+insert into t1 values (1,1);
+insert into t1 values (2,2);
+insert into t1 values (3,3);
+insert into t1 values (4,4);
+insert into t1 values (5,5);
+
+--connection spider0
+select * from d1.t1;
+
+--connection tdbctl0
+update d1.t1 set b=10 where a=1;
+update d1.t1 set a=6, b=6 where a=5;
+
+--connection spider0
+select * from d1.t1;
+
+--connection tdbctl0
+delete from d1.t1 where a=3;
+
+--connection spider0
+select * from d1.t1;
+
+--connection tdbctl0
+delete from d1.t1;
+
+--connection spider0
+select * from d1.t1;
+
+--connection tdbctl0
+drop database d1;
