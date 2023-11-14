@@ -1,0 +1,34 @@
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+select * from mysql.servers;
+SHOW STATUS LIKE 'tc_is_primary';
+
+create database `my-test`;
+use `my-test`;
+
+CREATE TABLE `tb1` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`,`b`)
+);
+
+CREATE TABLE `tb-1` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`,`b`)
+);
+
+show create table `tb1`;
+show create table `tb-1`;
+
+
+
+--connection tdbctl0
+
+DROP TABLE IF EXISTS `tb1`;
+DROP TABLE IF EXISTS `tb-1`;
+
+
+
+

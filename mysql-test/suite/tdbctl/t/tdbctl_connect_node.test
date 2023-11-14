@@ -1,0 +1,116 @@
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+select * from mysql.servers;
+
+create database d1;
+use d1;
+create table t1 (a int primary key, b int);
+
+insert into t1 values(1,1);
+insert into t1 values(2,2);
+insert into t1 values(3,3);
+insert into t1 values(4,4);
+insert into t1 values(5,5);
+insert into t1 values(6,6);
+
+tdbctl connect node SPIDER0 execute 'select * from d1.t1';
+
+tdbctl connect node SPT0 execute 'select * from d1_0.t1';
+
+tdbctl connect node SPT1 execute 'select * from d1_1.t1';
+
+CREATE TABLE all_data_types_example (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    int_col INT,
+    tinyint_col TINYINT,
+    smallint_col SMALLINT,
+    mediumint_col MEDIUMINT,
+    bigint_col BIGINT,
+    float_col FLOAT,
+    double_col DOUBLE,
+    decimal_col DECIMAL(10, 2),
+    date_col DATE,
+    time_col TIME,
+    datetime_col DATETIME,
+    timestamp_col TIMESTAMP,
+    year_col YEAR,
+    char_col CHAR(10),
+    varchar_col VARCHAR(255),
+    tinyblob_col TINYBLOB,
+    blob_col BLOB,
+    mediumblob_col MEDIUMBLOB,
+    longblob_col LONGBLOB,
+    tinytext_col TINYTEXT,
+    text_col TEXT,
+    mediumtext_col MEDIUMTEXT,
+    longtext_col LONGTEXT,
+    enum_col ENUM('A', 'B', 'C'),
+    set_col SET('X', 'Y', 'Z')
+);
+
+INSERT INTO all_data_types_example (
+    int_col,
+    tinyint_col,
+    smallint_col,
+    mediumint_col,
+    bigint_col,
+    float_col,
+    double_col,
+    decimal_col,
+    date_col,
+    time_col,
+    datetime_col,
+    timestamp_col,
+    year_col,
+    char_col,
+    varchar_col,
+    tinyblob_col,
+    blob_col,
+    mediumblob_col,
+    longblob_col,
+    tinytext_col,
+    text_col,
+    mediumtext_col,
+    longtext_col,
+    enum_col,
+    set_col
+) VALUES (
+    100,
+    50,
+    200,
+    50000,
+    123456789012345,
+    12.34,
+    56.78,
+    90.12,
+    '2021-01-01',
+    '12:34:56',
+    '2021-01-01 12:34:56',
+    '2023-11-02 15:08:07',
+    2022,
+    'hello',
+    'world',
+    'tinyblob data',
+    'blob data',
+    'mediumblob data',
+    'longblob data',
+    'tinytext data',
+    'text data',
+    'mediumtext data',
+    'longtext data',
+    'A',
+    'X,Y'
+);
+
+CREATE TABLE binary_table (
+  id INT PRIMARY KEY,
+  binary_data BINARY(10),
+  varbinary_data VARBINARY(255)
+);
+
+insert into binary_table values (1, BINARY 'hello', BINARY 'hello world');
+
+tdbctl connect node SPIDER0 execute 'select * from all_data_types_example';
+
+tdbctl connect node SPIDER0 execute 'select id, HEX(binary_data), HEX(varbinary_data) from binary_table';
