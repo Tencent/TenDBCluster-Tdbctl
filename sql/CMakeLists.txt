@@ -204,6 +204,7 @@ SET(SQL_SHARED_SOURCES
   tc_xa_repair.cc 
   tc_node.cc
   tc_show.cc
+  tc_check_table.cc
   sql_partition.cc
   sql_partition_admin.cc
   sql_planner.cc
@@ -323,6 +324,7 @@ ADD_COMPILE_FLAGS(
    tc_xa_repair.cc   
    tc_node.cc
    tc_show.cc
+   tc_check_table.cc
    sql_parse.cc
    sql_connect.cc
    sql_error.cc

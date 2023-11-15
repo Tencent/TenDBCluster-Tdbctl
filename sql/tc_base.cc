@@ -2424,6 +2424,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case TC_SQLCOM_MONITOR_INIT:
     case TC_SQLCOM_SHOW_PROCESSLIST:
     case TC_SQLCOM_SHOW_VARIABLES:
+    case TC_SQLCOM_CHECK_TABLE:
       secondary_node_allowed = false;
       if (!tdbctl_is_primary)
         break;
@@ -4853,6 +4854,7 @@ bool check_tc_command(bool tc_admin, LEX *lex)
     case TC_SQLCOM_ENABLE_PRIMARY:
     case TC_SQLCOM_DISABLE_PRIMARY:
     case TC_SQLCOM_GET_PRIMARY:
+    case TC_SQLCOM_CHECK_TABLE:
       if(!tc_admin)
       {
         allowed = false;

@@ -2359,6 +2359,11 @@ tdbctl:
         {
           Lex->sql_command = TC_SQLCOM_GET_PRIMARY;
         }
+      | TDBCTL_SYM CHECK_SYM opt_table_sym table_name
+        {
+          Lex->sql_command = TC_SQLCOM_CHECK_TABLE;
+          YYPS->m_lock_type= TL_UNLOCK;
+        }
         ;
 
           
