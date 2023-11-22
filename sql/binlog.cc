@@ -11139,7 +11139,9 @@ int THD::decide_logging_format(TABLE_LIST *tables)
       {
         if (table->is_placeholder())
           continue;
-        if (table->table->file->ht->db_type == DB_TYPE_BLACKHOLE_DB &&
+        if ((table->table->file->ht->db_type == DB_TYPE_BLACKHOLE_DB ||
+            table->table->file->ht->db_type == DB_TYPE_TOKUDB ||
+            table->table->file->ht->db_type == DB_TYPE_ROCKSDB) &&
             table->lock_type >= TL_WRITE_ALLOW_WRITE)
         {
             table_names.append(table->table_name);

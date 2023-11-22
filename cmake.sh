@@ -82,7 +82,8 @@ cd $bld_dir
 
 rm -f CMakeCache.txt
 
-cmd="cmake .. -DDOWNLOAD_BOOST=1 -DWITH_BOOST=$boost_dir -DWITH_ZLIB=bundled -DWITHOUT_TOKUDB_STORAGE_ENGINE=1 -DMYSQL_SERVER_SUFFIX=$suffix $debug_flag -DFEATURE_SET=community  -DWITH_EMBEDDED_SERVER=OFF -DCMAKE_C_COMPILER=$gccdir/bin/gcc -DCMAKE_CXX_COMPILER=$gccdir/bin/g++ -DCMAKE_INSTALL_PREFIX=$install_dir -DWITH_QUERY_RESPONSE_TIME=on $static_flag"
+#cmd="cmake .. -DDOWNLOAD_BOOST=1 -DWITH_BOOST=$boost_dir -DWITH_ZLIB=bundled -DWITHOUT_TOKUDB_STORAGE_ENGINE=1 -DMYSQL_SERVER_SUFFIX=$suffix $debug_flag -DFEATURE_SET=community  -DWITH_EMBEDDED_SERVER=OFF -DCMAKE_C_COMPILER=$gccdir/bin/gcc -DCMAKE_CXX_COMPILER=$gccdir/bin/g++ -DCMAKE_INSTALL_PREFIX=$install_dir -DWITH_QUERY_RESPONSE_TIME=on $static_flag"
+cmd="cmake .. -DDOWNLOAD_BOOST=1 -DWITH_BOOST=$boost_dir -DWITH_ZLIB=bundled -DMYSQL_SERVER_SUFFIX=$suffix $debug_flag -DFEATURE_SET=community  -DWITH_EMBEDDED_SERVER=OFF -DCMAKE_C_COMPILER=$gccdir/bin/gcc -DCMAKE_CXX_COMPILER=$gccdir/bin/g++ -DCMAKE_INSTALL_PREFIX=$install_dir -DWITH_QUERY_RESPONSE_TIME=on $static_flag"
 echo "compile args:"
 echo "$cmd"
 $cmd
