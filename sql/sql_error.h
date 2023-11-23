@@ -23,6 +23,7 @@
 
 class THD;
 class my_decimal;
+class Query_exec_manager;
 typedef struct st_mysql_lex_string LEX_STRING;
 typedef struct tc_parse_result TC_PARSE_RESULT;
 typedef struct tc_execute_result TC_EXEC_RESULT;
@@ -724,7 +725,7 @@ void push_warning_printf(THD *thd, Sql_condition::enum_severity_level severity,
  */
 bool tc_return_one_valid_result(THD* thd, TC_EXEC_RESULT* exec_result);
 bool tc_mysqld_show_result(THD* thd, TC_PARSE_RESULT* parse_result, TC_EXEC_RESULT* exec_result);
-bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, int result_set_flag);
+bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, Query_exec_manager* query_exec_manager, int result_set_flag);
 
 /**
   Generates a warning that a feature is deprecated.
