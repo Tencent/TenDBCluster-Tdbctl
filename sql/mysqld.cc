@@ -436,6 +436,7 @@ my_bool tc_check_availability = FALSE;
 my_bool sort_when_partition_prefix_order = TRUE;
 my_bool tc_partition_admin = TRUE;
 my_bool tc_restrict_query_from_spider = TRUE;
+my_bool tc_ignore_partitioning_for_create_table = FALSE;
 ulong tc_check_repair_routing_interval = 300;
 ulong tc_check_availability_interval = 10;
 ulong tc_partition_admin_interval = 86400;

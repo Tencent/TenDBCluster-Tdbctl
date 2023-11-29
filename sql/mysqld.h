@@ -191,6 +191,7 @@ extern my_bool tc_check_availability;
 extern my_bool sort_when_partition_prefix_order;
 extern my_bool tc_partition_admin;
 extern my_bool tc_restrict_query_from_spider;
+extern my_bool tc_ignore_partitioning_for_create_table;
 extern ulong tc_check_repair_routing_interval;
 extern ulong tc_check_availability_interval;
 extern ulong tc_partition_admin_interval;

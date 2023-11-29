@@ -3388,6 +3388,15 @@ mysql_execute_command(THD *thd, bool first_level)
         create_info.table_charset = 0;
       }
 
+      if (tc_ignore_partitioning_for_create_table)
+      {
+        /*
+          Ignore the partitioning definition of a CREATE TABLE query. This is
+          added mainly for the purpose of migrating tables from Spider servers.
+        */
+        thd->work_part_info = NULL;
+      }
+      else
       {
         partition_info *part_info = thd->lex->part_info;
         if (part_info != NULL && has_external_data_or_index_dir(*part_info) &&
