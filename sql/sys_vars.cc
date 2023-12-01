@@ -6479,3 +6479,8 @@ static Sys_var_mybool Sys_tc_auto_fix_connections(
     "Whether to automatically re-create a connection without raising an error "
     "when an existing connection is found lost.",
     TDBCTL SESSION_VAR(tc_auto_fix_conns), CMD_LINE(OPT_ARG), DEFAULT(TRUE));
+
+static Sys_var_mybool Sys_tc_ignore_partitioning_for_create_table(
+    "tc_ignore_partitioning_for_create_table",
+    "Whether to ignore the PARTITION clause when creating a table under non-admin mode.",
+    TDBCTL GLOBAL_VAR(tc_ignore_partitioning_for_create_table), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
