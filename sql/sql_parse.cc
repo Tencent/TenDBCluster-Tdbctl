@@ -3959,6 +3959,13 @@ mysql_execute_command(THD *thd, bool first_level)
         goto error;
       res = tdbctl_check_table(thd, first_table);
       break;
+    case TC_SQLCOM_CHECK_ROUTING:
+      if (lock_dbtb_name(thd, "mysql", "servers",
+                         MDL_SHARED))
+        goto error;
+      res = tdbctl_check_routing(thd);
+      break;
+
     case SQLCOM_SHOW_PRIVILEGES:
       res = mysqld_show_privileges(thd);
       break;
