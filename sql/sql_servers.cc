@@ -1725,6 +1725,13 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
     */
     if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_CTL))
       DBUG_RETURN(TRUE);
+
+    /*
+      3. New Remote(slave) ==grant==> All Spiders(slave)
+    */
+    if (!strcasecmp(scheme, MYSQL_SLAVE_WRAPPER) &&
+        tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER_SLAVE))
+      DBUG_RETURN(TRUE);
   } else if (!strcasecmp(scheme, SPIDER_WRAPPER) ||
              !strcasecmp(scheme, SPIDER_SLAVE_WRAPPER)) {
     /* Target Node Type: SPIDER */
@@ -1736,10 +1743,11 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
       DBUG_RETURN(TRUE);
 
     /*
-      2. All Remotes ==grant==> New Spider
+      2. All Remotes(master & slave) ==grant==> New Spider
       This allows the new Spider to access data on remote nodes.
     */
-    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE))
+    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE) ||
+        tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE_SLAVE))
       DBUG_RETURN(TRUE);
 
     /*
@@ -1766,26 +1774,29 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
       DBUG_RETURN(TRUE);
 
     /*
-      3. All Spiders ==grant==> New Tdbctl
+      3. All Spiders(master & slave) ==grant==> New Tdbctl
       This allows the new Tdbctl to operate on all Spiders (usually when its
       Primary Mode is enabled)
     */
-    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_SPIDER))
+    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_SPIDER) ||
+        tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_SPIDER_SLAVE))
       DBUG_RETURN(TRUE);
 
     /*
-      4. New Tdbctl ==grant==> All Spiders
+      4. New Tdbctl ==grant==> All Spiders(master & slave)
       This allows all Spiders to run DDLs on the new Tdbctl on a cluster level
       (with @@ddl_execute_by_ctl=ON).
     */
-    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER))
+    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER) ||
+        tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER_SLAVE))
       DBUG_RETURN(TRUE);
 
     /*
-      5. All Remotes ==grant==> New Tdbctl
+      5. All Remotes(master & slave) ==grant==> New Tdbctl
       This allows the new Tdbctl to operate on the remote nodes.
     */
-    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE))
+    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE) ||
+        tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE_SLAVE))
       DBUG_RETURN(TRUE);
   } else {
     /* unreachable */
