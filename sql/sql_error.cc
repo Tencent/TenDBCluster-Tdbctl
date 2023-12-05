@@ -1195,7 +1195,19 @@ bool tc_return_one_valid_result(THD* thd, TC_EXEC_RESULT* exec_result)
   return result;
 }
 
-bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, int result_set_flag)
+bool produce_sent_sql(Query_exec_manager* query_exec_manager, std::string server_name, enum_node_type node_type)
+{
+  std::string real_query;
+  if(!query_exec_manager->get_real_query(server_name, real_query, node_type))
+  {
+    sql_print_error("node_name: %s, sent sql: %s", server_name.c_str(), real_query.c_str());
+  } else {
+    sql_print_error("failed to produce repair sql");
+  }
+  return 1;
+}
+
+bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, Query_exec_manager* query_exec_manager, int result_set_flag)
 {
   if (exec_result->result)
   {/* error happened */
@@ -1210,6 +1222,7 @@ bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, int result_set
         err_msg += "Spider@" + server_name + ": (Error ";
         err_msg += std::to_string(exec_info.err_code);
         err_msg +=  ": " + exec_info.err_msg + ")\n";
+        produce_sent_sql(query_exec_manager, server_name, NODE_TYPE_SPIDER);
       }
     }
 
@@ -1222,16 +1235,18 @@ bool tc_process_all_result(THD* thd, TC_EXEC_RESULT* exec_result, int result_set
         err_msg += "Spider_SLAVE@" + server_name + ": (Error ";
         err_msg += std::to_string(exec_info.err_code);
         err_msg +=  ": " + exec_info.err_msg + ")\n";
+        produce_sent_sql(query_exec_manager, server_name, NODE_TYPE_SPIDER_SLAVE);
       }
     }
 
     for (map<string, tc_exec_info>::iterator iter = exec_result->result_info[NODE_TYPE_REMOTE].begin(); iter != exec_result->result_info[NODE_TYPE_REMOTE].end(); iter++) {
-      const string &name = iter->first;
+      const string &server_name = iter->first;
       const tc_exec_info &exec_info = iter->second;
       if (exec_info.err_code) {
-        err_msg += "Remote@" + name + ": (Error ";
+        err_msg += "Remote@" + server_name + ": (Error ";
         err_msg += std::to_string(exec_info.err_code);
         err_msg += ": " + exec_info.err_msg + ")\n";
+        produce_sent_sql(query_exec_manager, server_name, NODE_TYPE_REMOTE);
       }
     }
 
