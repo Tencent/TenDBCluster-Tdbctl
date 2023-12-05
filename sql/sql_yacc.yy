@@ -2364,6 +2364,10 @@ tdbctl:
           Lex->sql_command = TC_SQLCOM_CHECK_TABLE;
           YYPS->m_lock_type= TL_UNLOCK;
         }
+      | TDBCTL_SYM CHECK_SYM ROUTING_SYM
+        {
+          Lex->sql_command = TC_SQLCOM_CHECK_ROUTING;
+        }
         ;
 
           
@@ -13739,7 +13743,7 @@ keyword:
         | REPAIR                {}
         | RESET_SYM             {}
         | RESTORE_SYM           {}
-        | ROUTING_SYM           {}
+//        | ROUTING_SYM           {}
         | ROLLBACK_SYM          {}
         | SAVEPOINT_SYM         {}
         | SECURITY_SYM          {}

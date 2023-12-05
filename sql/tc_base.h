@@ -896,4 +896,6 @@ int tdbctl_handle_primary_cmd(THD *thd, LEX *lex);
 
 bool tdbctl_check_table(THD *thd, TABLE_LIST *tables);
 
+bool tdbctl_check_routing(THD *thd);
+
 #endif /* TC_BASE_INCLUDED */

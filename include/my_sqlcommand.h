@@ -205,6 +205,7 @@ enum enum_sql_command {
   TC_SQLCOM_DISABLE_PRIMARY,
   TC_SQLCOM_GET_PRIMARY,
   TC_SQLCOM_CHECK_TABLE,
+  TC_SQLCOM_CHECK_ROUTING,
   /* This should be the last !!! */
   SQLCOM_END
 };
