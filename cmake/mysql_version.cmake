@@ -22,17 +22,17 @@ SET(SHARED_LIB_MINOR_VERSION "3")
 SET(PROTOCOL_VERSION "10")
 SET(DOT_FRM_VERSION "6")
 
-# Generate "something" to trigger cmake rerun when VERSION changes
+# Generate "something" to trigger cmake rerun when MYSQL_VERSION changes
 CONFIGURE_FILE(
-  ${CMAKE_SOURCE_DIR}/VERSION
+  ${CMAKE_SOURCE_DIR}/MYSQL_VERSION
   ${CMAKE_BINARY_DIR}/VERSION.dep
 )
 
-# Read value for a variable from VERSION.
+# Read value for a variable from MYSQL_VERSION.
 
 MACRO(MYSQL_GET_CONFIG_VALUE keyword var)
  IF(NOT ${var})
-   FILE (STRINGS ${CMAKE_SOURCE_DIR}/VERSION str REGEX "^[ ]*${keyword}=")
+   FILE (STRINGS ${CMAKE_SOURCE_DIR}/MYSQL_VERSION str REGEX "^[ ]*${keyword}=")
    IF(str)
      STRING(REPLACE "${keyword}=" "" str ${str})
      STRING(REGEX REPLACE  "[ ].*" ""  str "${str}")
@@ -53,7 +53,7 @@ MACRO(GET_MYSQL_VERSION)
   IF(NOT DEFINED MAJOR_VERSION OR
      NOT DEFINED MINOR_VERSION OR
      NOT DEFINED PATCH_VERSION)
-    MESSAGE(FATAL_ERROR "VERSION file cannot be parsed.")
+    MESSAGE(FATAL_ERROR "MYSQL_VERSION file cannot be parsed.")
   ENDIF()
 
   SET(VERSION
