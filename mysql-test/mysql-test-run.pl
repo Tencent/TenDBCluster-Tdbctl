@@ -3836,21 +3836,44 @@ sub remove_docker_compose {
 }
 
 sub initialize_docker_compose {
+  my $current_path = `pwd`;
+  print "Current path: $current_path";
+
+  # compile tdbctl
+  my $compile_cmd="cd .. && sh cmake.sh -v test -t --bld-dir=bld_test &&
+                   cp ./bld_test/mysql-5.7.20-linux-x86_64-tdbctl-test.tar.gz ./mysql-test/tendbcluster-compose/tdbctl-docker/tdbctl-test-linux-x86_64.tar.gz";
+  my $result = system($compile_cmd);
+  if ($result == 0) {
+    print "compile tdbctl 命令执行成功\n";
+  } else {
+    print "compile tdbctl 命令执行失败\n";
+  }
+
+  # produce docker image for tdbctl
+  my $docker_cmd="cd ./tendbcluster-compose/tdbctl-docker &&
+                  docker build . -t tendbcluster/tdbctl:test --network=host";
+  $result = system($docker_cmd);
+  if ($result == 0) {
+    print "produce docker image for tdbctl 命令执行成功\n";
+  } else {
+    print "produce docker image for tdbctl 命令执行失败\n";
+  }
+
+  # initialize docker_compose
   my $data_dir = "tendbcluster-compose/data";
   if(-d $data_dir) {
     remove_docker_compose();
   }
 
-
   my $init_compose_cmd = "cd tendbcluster-compose && docker-compose up -d";
-  my $result = system($init_compose_cmd);
+  $result = system($init_compose_cmd);
 
   if ($result == 0) {
-    print "命令执行成功\n";
+    print "initialize docker_compose 命令执行成功\n";
   } else {
     # remove docker-compose data-dir
     # mtr_log
-    print "命令执行失败\n";
+    print "initialize docker_compose 命令执行失败\n";
   }
 }
 

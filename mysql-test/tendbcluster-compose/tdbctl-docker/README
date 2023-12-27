@@ -1,0 +1,7 @@
+#build
+docker build . -t tendbcluster/tdbctl:2.4.3 --network=host
+#run
+docker run  -it --name tdbctl -e MYSQL_ROOT_PASSWORD=test -d tendbcluster/tdbctl:2.4.3  --defaults-file=/etc/my.cnf --user=mysql
+#debug
+docker run  -it --name tdbctl -e MYSQL_ROOT_PASSWORD=test -d tendbcluster/tdbctl:2.4.3  bash -c "sleep 3600"
+docker exec -it `docker ps -a|grep tdbctl|awk {'print $1'}` bash
