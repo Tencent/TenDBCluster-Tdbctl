@@ -1,0 +1,22 @@
+select * from mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+TDBCTL ENABLE PRIMARY;
+SHOW STATUS LIKE 'tc_is_primary';
+Variable_name	Value
+Tc_is_primary	1
+tdbctl check routing;
+update mysql.servers set Host='127.0.0.2' where Server_name='SPIDER0';
+tdbctl check routing;
+ERROR HY000: Internal error: The routing info of the following nodes is inconsistent with tdbctl primary: SPIDER0 
+tdbctl flush routing;
+tdbctl check routing;

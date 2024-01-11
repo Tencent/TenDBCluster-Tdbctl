@@ -333,6 +333,8 @@ my $opt_debug_sync_timeout= 600; # Default timeout for WAIT_FOR actions.
 my $daemonize_mysqld= 0;
 
 our $opt_tdbctl_test=1;
+my $opt_skip_compilation_for_tdbctl=0;
+my $opt_skip_build_docker_for_tdbctl=0;
 
 sub testcase_timeout ($) {
   my ($tinfo)= @_;
@@ -1148,174 +1150,176 @@ sub command_line_setup {
   Getopt::Long::Configure("pass_through");
   my %options=(
              # Control what engine/variation to run
-             'embedded-server'          => \$opt_embedded_server,
-             'ps-protocol'              => \$opt_ps_protocol,
-             'sp-protocol'              => \$opt_sp_protocol,
-             'view-protocol'            => \$opt_view_protocol,
-             'opt-trace-protocol'       => \$opt_trace_protocol,
-             'explain-protocol'         => \$opt_explain_protocol,
-             'json-explain-protocol'    => \$opt_json_explain_protocol,
-             'cursor-protocol'          => \$opt_cursor_protocol,
-             'ssl|with-openssl'         => \$opt_ssl,
-             'skip-ssl'                 => \$opt_skip_ssl,
-             'compress'                 => \$opt_compress,
-             'vs-config=s'              => \$opt_vs_config,
+      'embedded-server'                 => \$opt_embedded_server,
+      'ps-protocol'                     => \$opt_ps_protocol,
+      'sp-protocol'                     => \$opt_sp_protocol,
+      'view-protocol'                   => \$opt_view_protocol,
+      'opt-trace-protocol'              => \$opt_trace_protocol,
+      'explain-protocol'                => \$opt_explain_protocol,
+      'json-explain-protocol'           => \$opt_json_explain_protocol,
+      'cursor-protocol'                 => \$opt_cursor_protocol,
+      'ssl|with-openssl'                => \$opt_ssl,
+      'skip-ssl'                        => \$opt_skip_ssl,
+      'compress'                        => \$opt_compress,
+      'vs-config=s'                     => \$opt_vs_config,
 
-	     # Max number of parallel threads to use
-	     'parallel=s'               => \$opt_parallel,
+      # Max number of parallel threads to use
+      'parallel=s'                      => \$opt_parallel,
 
-             # Config file to use as template for all tests
-	     'defaults-file=s'          => \&collect_option,
-	     # Extra config file to append to all generated configs
-	     'defaults-extra-file=s'    => \&collect_option,
+      # Config file to use as template for all tests
+      'defaults-file=s'                 => \&collect_option,
+      # Extra config file to append to all generated configs
+      'defaults-extra-file=s'           => \&collect_option,
 
-             # Control what test suites or cases to run
-             'force'                    => \$opt_force,
-             'with-ndbcluster-only'     => \&collect_option,
-             'ndb|include-ndbcluster'   => \$opt_include_ndbcluster,
-             'skip-ndbcluster|skip-ndb' => \$opt_skip_ndbcluster,
-             'suite|suites=s'           => \$opt_suites,
-             'skip-rpl'                 => \&collect_option,
-             'skip-test=s'              => \&collect_option,
-             'do-test=s'                => \&collect_option,
-             'start-from=s'             => \&collect_option,
-             'big-test'                 => \$opt_big_test,
-	     'combination=s'            => \@opt_combinations,
-             'skip-combinations'        => \&collect_option,
-             'experimental=s'           => \@opt_experimentals,
-             'skip-sys-schema'          => \$opt_skip_sys_schema,
-	     # skip-im is deprecated and silently ignored
-	     'skip-im'                  => \&ignore_option,
+      # Control what test suites or cases to run
+      'force'                           => \$opt_force,
+      'with-ndbcluster-only'            => \&collect_option,
+      'ndb|include-ndbcluster'          => \$opt_include_ndbcluster,
+      'skip-ndbcluster|skip-ndb'        => \$opt_skip_ndbcluster,
+      'suite|suites=s'                  => \$opt_suites,
+      'skip-rpl'                        => \&collect_option,
+      'skip-test=s'                     => \&collect_option,
+      'do-test=s'                       => \&collect_option,
+      'start-from=s'                    => \&collect_option,
+      'big-test'                        => \$opt_big_test,
+      'combination=s'                   => \@opt_combinations,
+      'skip-combinations'               => \&collect_option,
+      'experimental=s'                  => \@opt_experimentals,
+      'skip-sys-schema'                 => \$opt_skip_sys_schema,
+      # skip-im is deprecated and silently ignored
+      'skip-im'                         => \&ignore_option,
 
-             # Specify ports
-             'build-thread|mtr-build-thread=i' => \$opt_build_thread,
-             'mysqlx-port=i'                   => \$opt_mysqlx_baseport,
-             'port-base|mtr-port-base=i'       => \$opt_port_base,
+      # Specify ports
+      'build-thread|mtr-build-thread=i' => \$opt_build_thread,
+      'mysqlx-port=i'                   => \$opt_mysqlx_baseport,
+      'port-base|mtr-port-base=i'       => \$opt_port_base,
 
-             # Test case authoring
-             'record'                   => \$opt_record,
-             'check-testcases!'         => \$opt_check_testcases,
-             'mark-progress'            => \$opt_mark_progress,
-             'test-progress'            => \$opt_test_progress,
+      # Test case authoring
+      'record'                          => \$opt_record,
+      'check-testcases!'                => \$opt_check_testcases,
+      'mark-progress'                   => \$opt_mark_progress,
+      'test-progress'                   => \$opt_test_progress,
 
-             # Extra options used when starting mysqld
-             'mysqld=s'                 => \@opt_extra_mysqld_opt,
-             'mysqld-env=s'             => \@opt_mysqld_envs,
+      # Extra options used when starting mysqld
+      'mysqld=s'                        => \@opt_extra_mysqld_opt,
+      'mysqld-env=s'                    => \@opt_mysqld_envs,
 
-             # Extra options used when bootstrapping mysqld
-             'bootstrap=s'                 => \@opt_extra_bootstrap_opt,
+      # Extra options used when bootstrapping mysqld
+      'bootstrap=s'                     => \@opt_extra_bootstrap_opt,
 
-             # Run test on running server
-             'extern=s'                  => \%opts_extern, # Append to hash
+      # Run test on running server
+      'extern=s'                        => \%opts_extern, # Append to hash
 
-             # Debugging
-             'debug'                    => \$opt_debug,
-             'debug-common'             => \$opt_debug_common,
-             'debug-server'             => \$opt_debug_server,
-             'gdb'                      => \$opt_gdb,
-             'lldb'                     => \$opt_lldb,
-             'client-gdb'               => \$opt_client_gdb,
-             'client-lldb'              => \$opt_client_lldb,
-             'manual-gdb'               => \$opt_manual_gdb,
-             'manual-boot-gdb'          => \$opt_manual_boot_gdb,
-             'manual-lldb'              => \$opt_manual_lldb,
-	     'boot-gdb'                 => \$opt_boot_gdb,
-             'manual-debug'             => \$opt_manual_debug,
-             'ddd'                      => \$opt_ddd,
-             'client-ddd'               => \$opt_client_ddd,
-             'manual-ddd'               => \$opt_manual_ddd,
-	     'boot-ddd'                 => \$opt_boot_ddd,
-             'dbx'                      => \$opt_dbx,
-	     'client-dbx'               => \$opt_client_dbx,
-	     'manual-dbx'               => \$opt_manual_dbx,
-	     'debugger=s'               => \$opt_debugger,
-	     'boot-dbx'                 => \$opt_boot_dbx,
-	     'client-debugger=s'        => \$opt_client_debugger,
-             'strace-server'            => \$opt_strace_server,
-             'strace-client'            => \$opt_strace_client,
-             'max-save-core=i'          => \$opt_max_save_core,
-             'max-save-datadir=i'       => \$opt_max_save_datadir,
-             'max-test-fail=i'          => \$opt_max_test_fail,
+      # Debugging
+      'debug'                           => \$opt_debug,
+      'debug-common'                    => \$opt_debug_common,
+      'debug-server'                    => \$opt_debug_server,
+      'gdb'                             => \$opt_gdb,
+      'lldb'                            => \$opt_lldb,
+      'client-gdb'                      => \$opt_client_gdb,
+      'client-lldb'                     => \$opt_client_lldb,
+      'manual-gdb'                      => \$opt_manual_gdb,
+      'manual-boot-gdb'                 => \$opt_manual_boot_gdb,
+      'manual-lldb'                     => \$opt_manual_lldb,
+      'boot-gdb'                        => \$opt_boot_gdb,
+      'manual-debug'                    => \$opt_manual_debug,
+      'ddd'                             => \$opt_ddd,
+      'client-ddd'                      => \$opt_client_ddd,
+      'manual-ddd'                      => \$opt_manual_ddd,
+      'boot-ddd'                        => \$opt_boot_ddd,
+      'dbx'                             => \$opt_dbx,
+      'client-dbx'                      => \$opt_client_dbx,
+      'manual-dbx'                      => \$opt_manual_dbx,
+      'debugger=s'                      => \$opt_debugger,
+      'boot-dbx'                        => \$opt_boot_dbx,
+      'client-debugger=s'               => \$opt_client_debugger,
+      'strace-server'                   => \$opt_strace_server,
+      'strace-client'                   => \$opt_strace_client,
+      'max-save-core=i'                 => \$opt_max_save_core,
+      'max-save-datadir=i'              => \$opt_max_save_datadir,
+      'max-test-fail=i'                 => \$opt_max_test_fail,
 
-             # Coverage, profiling etc
-             'gcov'                     => \$opt_gcov,
-             'gprof'                    => \$opt_gprof,
-             'valgrind|valgrind-all'    => \$opt_valgrind,
-	     'valgrind-clients'         => \$opt_valgrind_clients,
-             'valgrind-mysqltest'       => \$opt_valgrind_mysqltest,
-             'valgrind-mysqld'          => \$opt_valgrind_mysqld,
-             'valgrind-options=s'       => sub {
-	       my ($opt, $value)= @_;
-	       # Deprecated option unless it's what we know pushbuild uses
-	       if ($value eq "--gen-suppressions=all --show-reachable=yes") {
-		 push(@valgrind_args, $_) for (split(' ', $value));
-		 return;
-	       }
-	       die("--valgrind-options=s is deprecated. Use ",
-		   "--valgrind-option=s, to be specified several",
-		   " times if necessary");
-	     },
-             'valgrind-option=s'        => \@valgrind_args,
-             'valgrind-path=s'          => \$opt_valgrind_path,
-	     'callgrind'                => \$opt_callgrind,
-             'helgrind'                 => \$opt_helgrind,
-	     'debug-sync-timeout=i'     => \$opt_debug_sync_timeout,
+      # Coverage, profiling etc
+      'gcov'                            => \$opt_gcov,
+      'gprof'                           => \$opt_gprof,
+      'valgrind|valgrind-all'           => \$opt_valgrind,
+      'valgrind-clients'                => \$opt_valgrind_clients,
+      'valgrind-mysqltest'              => \$opt_valgrind_mysqltest,
+      'valgrind-mysqld'                 => \$opt_valgrind_mysqld,
+      'valgrind-options=s'              => sub {
+        my ($opt, $value) = @_;
+        # Deprecated option unless it's what we know pushbuild uses
+        if ($value eq "--gen-suppressions=all --show-reachable=yes") {
+          push(@valgrind_args, $_) for (split(' ', $value));
+          return;
+        }
+        die("--valgrind-options=s is deprecated. Use ",
+            "--valgrind-option=s, to be specified several",
+            " times if necessary");
+      },
+      'valgrind-option=s'               => \@valgrind_args,
+      'valgrind-path=s'                 => \$opt_valgrind_path,
+      'callgrind'                       => \$opt_callgrind,
+      'helgrind'                        => \$opt_helgrind,
+      'debug-sync-timeout=i'            => \$opt_debug_sync_timeout,
 
-	     # Directories
-             'tmpdir=s'                 => \$opt_tmpdir,
-             'vardir=s'                 => \$opt_vardir,
-             'mem'                      => \$opt_mem,
-	     'clean-vardir'             => \$opt_clean_vardir,
-             'client-bindir=s'          => \$path_client_bindir,
-             'client-libdir=s'          => \$path_client_libdir,
+      # Directories
+      'tmpdir=s'                        => \$opt_tmpdir,
+      'vardir=s'                        => \$opt_vardir,
+      'mem'                             => \$opt_mem,
+      'clean-vardir'                    => \$opt_clean_vardir,
+      'client-bindir=s'                 => \$path_client_bindir,
+      'client-libdir=s'                 => \$path_client_libdir,
 
-             # Misc
-             'report-features'          => \$opt_report_features,
-             'comment=s'                => \$opt_comment,
-             'fast'                     => \$opt_fast,
-	     'force-restart'            => \$opt_force_restart,
-             'reorder!'                 => \$opt_reorder,
-             'enable-disabled'          => \&collect_option,
-             'verbose+'                 => \$opt_verbose,
-             'verbose-restart'          => \&report_option,
-             'sleep=i'                  => \$opt_sleep,
-             'start-dirty'              => \$opt_start_dirty,
-             'start-and-exit'           => \$opt_start_exit,
-             'start'                    => \$opt_start,
-	     'user-args'                => \$opt_user_args,
-             'wait-all'                 => \$opt_wait_all,
-	     'print-testcases'          => \&collect_option,
-	     'repeat=i'                 => \$opt_repeat,
-             'report-unstable-tests'    => \$opt_report_unstable_tests,
-	     'retry=i'                  => \$opt_retry,
-	     'retry-failure=i'          => \$opt_retry_failure,
-             'timer!'                   => \&report_option,
-             'user=s'                   => \$opt_user,
-             'testcase-timeout=i'       => \$opt_testcase_timeout,
-             'suite-timeout=i'          => \$opt_suite_timeout,
-             'shutdown-timeout=i'       => \$opt_shutdown_timeout,
-             'warnings!'                => \$opt_warnings,
-	     'timestamp'                => \&report_option,
-	     'timediff'                 => \&report_option,
-	     'max-connections=i'        => \$opt_max_connections,
-	     'default-myisam!'          => \&collect_option,
-	     'report-times'             => \$opt_report_times,
-	     'result-file'              => \$opt_resfile,
-	     'unit-tests!'              => \$opt_ctest,
-	     'unit-tests-report!'	=> \$opt_ctest_report,
-	     'stress=s'                 => \$opt_stress,
-             'suite-opt=s'              => \$opt_suite_opt,
+      # Misc
+      'report-features'                 => \$opt_report_features,
+      'comment=s'                       => \$opt_comment,
+      'fast'                            => \$opt_fast,
+      'force-restart'                   => \$opt_force_restart,
+      'reorder!'                        => \$opt_reorder,
+      'enable-disabled'                 => \&collect_option,
+      'verbose+'                        => \$opt_verbose,
+      'verbose-restart'                 => \&report_option,
+      'sleep=i'                         => \$opt_sleep,
+      'start-dirty'                     => \$opt_start_dirty,
+      'start-and-exit'                  => \$opt_start_exit,
+      'start'                           => \$opt_start,
+      'user-args'                       => \$opt_user_args,
+      'wait-all'                        => \$opt_wait_all,
+      'print-testcases'                 => \&collect_option,
+      'repeat=i'                        => \$opt_repeat,
+      'report-unstable-tests'           => \$opt_report_unstable_tests,
+      'retry=i'                         => \$opt_retry,
+      'retry-failure=i'                 => \$opt_retry_failure,
+      'timer!'                          => \&report_option,
+      'user=s'                          => \$opt_user,
+      'testcase-timeout=i'              => \$opt_testcase_timeout,
+      'suite-timeout=i'                 => \$opt_suite_timeout,
+      'shutdown-timeout=i'              => \$opt_shutdown_timeout,
+      'warnings!'                       => \$opt_warnings,
+      'timestamp'                       => \&report_option,
+      'timediff'                        => \&report_option,
+      'max-connections=i'               => \$opt_max_connections,
+      'default-myisam!'                 => \&collect_option,
+      'report-times'                    => \$opt_report_times,
+      'result-file'                     => \$opt_resfile,
+      'unit-tests!'                     => \$opt_ctest,
+      'unit-tests-report!'              => \$opt_ctest_report,
+      'stress=s'                        => \$opt_stress,
+      'suite-opt=s'                     => \$opt_suite_opt,
 
-             'help|h'                   => \$opt_usage,
-	     # list-options is internal, not listed in help
-	     'list-options'             => \$opt_list_options,
-	     'list-options'             => \$opt_list_options,
-             'skip-test-list=s'         => \@opt_skip_test_list,
-             'do-test-list=s'           => \$opt_do_test_list,
-             'xml-report=s'             => \$opt_xml_report,
-             'summary-report=s'         => \$opt_summary_report,
-         # tdbctl-test
-         'tdbctl-test'              => \$opt_tdbctl_test
+      'help|h'                          => \$opt_usage,
+      # list-options is internal, not listed in help
+      'list-options'                    => \$opt_list_options,
+      'list-options'                    => \$opt_list_options,
+      'skip-test-list=s'                => \@opt_skip_test_list,
+      'do-test-list=s'                  => \$opt_do_test_list,
+      'xml-report=s'                    => \$opt_xml_report,
+      'summary-report=s'                => \$opt_summary_report,
+      # tdbctl-test
+      'tdbctl-test'                     => \$opt_tdbctl_test,
+      'skip-compilation-for-tdbctl'     => \$opt_skip_compilation_for_tdbctl,
+      'skip-build-docker-for-tdbctl'    => \$opt_skip_build_docker_for_tdbctl
            );
 
   GetOptions(%options) or usage("Can't read options");
@@ -3838,25 +3842,32 @@ sub remove_docker_compose {
 sub initialize_docker_compose {
   my $current_path = `pwd`;
   print "Current path: $current_path";
+  my $result;
 
   # compile tdbctl
-  my $compile_cmd="cd .. && sh cmake.sh -v test -t --bld-dir=bld_test &&
+  if(!$opt_skip_compilation_for_tdbctl) {
+    my $compile_cmd = "cd .. && sh cmake.sh -v test -t --bld-dir=bld_test &&
                    cp ./bld_test/mysql-5.7.20-linux-x86_64-tdbctl-test.tar.gz ./mysql-test/tendbcluster-compose/tdbctl-docker/tdbctl-test-linux-x86_64.tar.gz";
-  my $result = system($compile_cmd);
-  if ($result == 0) {
-    print "compile tdbctl 命令执行成功\n";
-  } else {
-    print "compile tdbctl 命令执行失败\n";
+    $result = system($compile_cmd);
+    if ($result == 0) {
+      print "compile tdbctl 命令执行成功\n";
+    }
+    else {
+      print "compile tdbctl 命令执行失败\n";
+    }
   }
 
   # produce docker image for tdbctl
-  my $docker_cmd="cd ./tendbcluster-compose/tdbctl-docker &&
+  if(!$opt_skip_build_docker_for_tdbctl) {
+    my $docker_cmd = "cd ./tendbcluster-compose/tdbctl-docker &&
                   docker build . -t tendbcluster/tdbctl:test --network=host";
-  $result = system($docker_cmd);
-  if ($result == 0) {
-    print "produce docker image for tdbctl 命令执行成功\n";
-  } else {
-    print "produce docker image for tdbctl 命令执行失败\n";
+    $result = system($docker_cmd);
+    if ($result == 0) {
+      print "produce docker image for tdbctl 命令执行成功\n";
+    }
+    else {
+      print "produce docker image for tdbctl 命令执行失败\n";
+    }
   }
 
   # initialize docker_compose

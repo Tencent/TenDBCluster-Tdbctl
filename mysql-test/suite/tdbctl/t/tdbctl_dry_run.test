@@ -1,0 +1,18 @@
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+select * from mysql.servers;
+SHOW STATUS LIKE 'tc_is_primary';
+
+create database test1;
+use test1;
+
+SELECT @@session.tc_dry_run INTO @old_value;
+
+SET @@session.tc_dry_run = 1;
+
+create table t1(a int primary key);
+
+SET @@session.tc_dry_run = @old_value;
+
+drop database test1;

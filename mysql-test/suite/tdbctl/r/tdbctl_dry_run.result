@@ -1,0 +1,26 @@
+select * from mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SHOW STATUS LIKE 'tc_is_primary';
+Variable_name	Value
+Tc_is_primary	1
+create database test1;
+use test1;
+SELECT @@session.tc_dry_run INTO @old_value;
+SET @@session.tc_dry_run = 1;
+create table t1(a int primary key);
+Server_name	db	table	Command	Info
+SPIDER	test1	t1	USE `test1`;create table t1(a int primary key) PARTITION BY LIST(CRC32(`a`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER);	all spider execute
+SPT0	NULL	NULL	use `test1_0`;create table t1(a int primary key)	all remote execute
+SPT1	NULL	NULL	use `test1_1`;create table t1(a int primary key)	all remote execute
+SET @@session.tc_dry_run = @old_value;
+drop database test1;

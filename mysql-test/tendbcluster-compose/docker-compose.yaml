@@ -221,7 +221,7 @@ services:
     #  timeout: 3s
     #  retries: 30
   ctl0:
-    image: mirrors.tencent.com/build/blueking/tdbctl:2.4.3_v2
+    image: tendbcluster/tdbctl:test
     networks:
       mynetwork:
         ipv4_address: 172.18.0.9
@@ -255,7 +255,7 @@ services:
     #  timeout: 3s
     #  retries: 30
   ctl1:
-    image: mirrors.tencent.com/build/blueking/tdbctl:2.4.3_v2
+    image: tendbcluster/tdbctl:test
     networks:
       mynetwork:
         ipv4_address: 172.18.0.10
@@ -289,7 +289,7 @@ services:
     #  timeout: 3s
     #  retries: 30
   ctl2:
-    image: mirrors.tencent.com/build/blueking/tdbctl:2.4.3_v2
+    image: tendbcluster/tdbctl:test
     networks:
       mynetwork:
         ipv4_address: 172.18.0.11
@@ -323,7 +323,7 @@ services:
     #  timeout: 3s
     #  retries: 30
   clustersetup:
-    image: mirrors.tencent.com/build/blueking/tdbctl:2.4.3_v2    
+    image: tendbcluster/tdbctl:test
     networks:
       - mynetwork
     depends_on:
