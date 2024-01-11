@@ -2425,6 +2425,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case TC_SQLCOM_SHOW_PROCESSLIST:
     case TC_SQLCOM_SHOW_VARIABLES:
     case TC_SQLCOM_CHECK_TABLE:
+    case TC_SQLCOM_CHECK_TABLES:
     case TC_SQLCOM_CHECK_ROUTING:
       secondary_node_allowed = false;
       if (!tdbctl_is_primary)
@@ -4835,6 +4836,28 @@ int Cluster_conn_manager::ping(MYSQL *mysql) {
   DBUG_RETURN(res);
 }
 
+bool init_cluster_conn_manager(THD *thd, bool force_refresh, bool no_connect,
+                               bool identify_self) {
+  Cluster_conn_manager *conn_mgr;
+  DBUG_ENTER("init_cluster_conn_manager");
+
+  if (unlikely(!thd->cluster_conn_manager)) {
+    thd->cluster_conn_manager = new Cluster_conn_manager;
+  }
+  conn_mgr = thd->cluster_conn_manager;
+
+  if (conn_mgr->refresh(force_refresh, no_connect))
+    DBUG_RETURN(TRUE);
+
+  if (identify_self && conn_mgr->identify_self()) {
+    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0),
+             "failed to identify current server");
+    DBUG_RETURN(TRUE);
+  }
+
+  DBUG_RETURN(FALSE);
+}
+
 void free_cluster_conn_manager(THD *thd) {
   delete thd->cluster_conn_manager;
 }
@@ -4856,6 +4879,7 @@ bool check_tc_command(bool tc_admin, LEX *lex)
     case TC_SQLCOM_DISABLE_PRIMARY:
     case TC_SQLCOM_GET_PRIMARY:
     case TC_SQLCOM_CHECK_TABLE:
+    case TC_SQLCOM_CHECK_TABLES:
     case TC_SQLCOM_CHECK_ROUTING:
       if(!tc_admin)
       {

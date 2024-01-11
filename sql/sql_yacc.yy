@@ -2359,9 +2359,8 @@ tdbctl:
         {
           Lex->sql_command = TC_SQLCOM_GET_PRIMARY;
         }
-      | TDBCTL_SYM CHECK_SYM opt_table_sym table_name
+      | TDBCTL_SYM CHECK_SYM opt_tdbctl_check_table
         {
-          Lex->sql_command = TC_SQLCOM_CHECK_TABLE;
           YYPS->m_lock_type= TL_UNLOCK;
         }
       | TDBCTL_SYM CHECK_SYM ROUTING_SYM
@@ -2370,6 +2369,22 @@ tdbctl:
         }
         ;
 
+opt_tdbctl_check_table:
+        TABLE_SYM table_name
+        {
+          Lex->sql_command = TC_SQLCOM_CHECK_TABLE;
+        }
+      | TABLES opt_db opt_show
+        {
+          Lex->sql_command = TC_SQLCOM_CHECK_TABLES;
+          Lex->select_lex->db = $2;
+        }
+      | DATABASE ident
+        {
+          Lex->sql_command = TC_SQLCOM_CHECK_TABLES;
+          Lex->select_lex->db = $2.str;
+          Lex->wild = NULL;
+        }
           
 opt_tdbctl_flush:
          /* empty */ {  Lex->tc_flush_type = FLUSH_ALL_ROUTING; }

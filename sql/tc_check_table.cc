@@ -5,7 +5,9 @@
 #include <string>
 #include <vector>
 
+#include "auth_common.h"
 #include "sql_class.h"
+#include "sql_db.h"
 #include "sql_show.h" // IS_COLUMNS_* indices
 
 #include "tc_base.h"
@@ -21,8 +23,16 @@ using std::map;
   "SELECT * FROM information_schema.TABLES WHERE TABLE_SCHEMA='%s' AND "       \
   "TABLE_NAME='%s'"
 
+/* Get table names for multi-table checks */
+#define SQL_GET_ALL_TABLES_IN_DB                                               \
+  "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='%s'"
+#define SQL_GET_TABLES_IN_DB_LIKE                                              \
+  "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='%s' "  \
+  "AND TABLE_NAME LIKE '%s'"
+
 #define IS_TABLES_TABLE_SCHEMA          1
 #define IS_TABLES_TABLE_NAME            2
+#define IS_TABLES_TABLE_ENGINE          4
 #define IS_TABLES_TABLE_COLLATION      17
 
 #define EMPTY_STRING std::string()
@@ -39,6 +49,28 @@ struct Column_record;
 struct Table_info;
 
 typedef std::map<std::string, Column_record> Column_records;
+
+static std::string fix_db_name(const std::string &db_name,
+                               const std::string &server_name,
+                               enum_node_type node_type);
+static bool get_column_records_for_server(THD *thd, const std::string &db_name,
+                                          const std::string &table_name,
+                                          const std::string &server_name,
+                                          MYSQL *mysql, Column_records &records,
+                                          enum_node_type node_type);
+static bool get_table_info_for_server(THD *thd, const std::string &db_name,
+                                      const std::string &table_name,
+                                      const std::string &server_name,
+                                      MYSQL *mysql, Table_info &info,
+                                      enum_node_type node_type);
+static bool fill_tables_list(MYSQL *conn, const char *db, String *wild,
+                            List<std::string> &tables);
+static bool do_send_metadata(THD *thd);
+static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
+                               const string &db_name, const string &table_name, bool do_send);
+static bool validate_db_grants(THD *thd, const char *db);
+
+static const int max_message_length = 512;
 
 /*
   Only store some selected fields that are considered important.
@@ -57,6 +89,7 @@ struct Table_info {
   bool exists;
   string table_schema;
   string table_name;
+  string table_engine;
   string table_collation;
 };
 
@@ -114,6 +147,37 @@ private:
   string message_str;
   int idx;
   bool error;
+};
+
+class Table_MDL_lock_guard {
+public:
+  Table_MDL_lock_guard(THD *thd, const std::string &db,
+                       const std::string &table)
+      : m_thd(thd) {
+    string name = db + "#" + table;
+
+    MDL_REQUEST_INIT(&mdl_request, MDL_key::USER_LEVEL_LOCK, "", name.c_str(),
+                     MDL_SHARED, MDL_STATEMENT);
+    locked = !m_thd->mdl_context.acquire_lock(&mdl_request,
+                                              thd->variables.lock_wait_timeout);
+  }
+
+  ~Table_MDL_lock_guard() {
+    if (locked) {
+      m_thd->mdl_context.release_all_locks_for_name(mdl_request.ticket);
+    }
+  }
+
+  bool lock_successful() const { return locked; }
+
+private:
+  Table_MDL_lock_guard() {}
+
+  bool locked;
+
+  THD *m_thd;
+
+  MDL_request mdl_request;
 };
 
 static string fix_db_name(const string &db_name, const string &server_name,
@@ -201,6 +265,7 @@ static bool get_table_info_for_server(THD *thd, const string &db_name,
     info.exists = TRUE;
     info.table_schema = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_TABLE_SCHEMA);
     info.table_name = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_TABLE_NAME);
+    info.table_engine = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_TABLE_ENGINE);
     info.table_collation = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_TABLE_COLLATION);
   }
   mysql_free_result(res);
@@ -209,34 +274,92 @@ static bool get_table_info_for_server(THD *thd, const string &db_name,
 }
 
 /**
+ * Send metadata for check-table results.
  *
- * Result Set:
- *  - SERVER_NAME   VARCHAR(64)   Server's identifier
- *  - DB            VARCHAR(64)   Corresponding db on the server
- *  - TABLE         VARCHAR(?)    Corresponding table on the server
- *  - STATUS        CHAR(10)      Check result: [OK, Error]
- *  - MESSAGE       VARCHAR(512)  Error message
+ * Fields:
+ *  - SERVER_NAME   VARCHAR(64)         Server's identifier
+ *  - DB            VARCHAR(64)         Corresponding db on the server
+ *  - TABLE         VARCHAR(64*3*2)     Corresponding table on the server
+ *  - STATUS        CHAR(10)            Check result: [OK, Error]
+ *  - MESSAGE       VARCHAR(512)        Error message
  *
+ * @retval True on error, False on success
  * */
-bool tdbctl_check_table(THD *thd, TABLE_LIST *tables) {
+static bool do_send_metadata(THD *thd) {
   List<Item> field_list;
   Item *item;
-  Protocol *protocol = thd->get_protocol();
-  Cluster_conn_manager *conn_mgr;
-  Query_exec_manager query_mgr(thd);
-  string db_name, table_name;
-  DBUG_ENTER("tdbctl_check_table");
+  DBUG_ENTER("do_send_metadata");
 
-  const uint max_message_length = 512;
   field_list.push_back(item =
                            new Item_empty_string("Server_name", NAME_CHAR_LEN));
   field_list.push_back(item = new Item_empty_string("Db", NAME_CHAR_LEN));
   field_list.push_back(item = new Item_empty_string("Table", NAME_LEN * 2));
   field_list.push_back(item = new Item_empty_string("Status", 10));
-  field_list.push_back(item = new Item_empty_string("Message", max_message_length));
+  field_list.push_back(
+      item = new Item_empty_string("Message", max_message_length));
   if (thd->send_result_metadata(&field_list,
                                 Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
+
+  DBUG_RETURN(FALSE);
+}
+
+/**
+ * Get names of tables in specified database that match the filter.
+ *
+ * @param conn: Connection to this Tdbctl server
+ * @param db: Specified database
+ * @param wild: Table name wildcard (fetch all tables if null)
+ * @param[out] tables: List of results
+ *
+ * @retval True on error, False on success
+ * */
+static bool fill_tables_list(MYSQL *conn, const char *db, String *wild,
+                            List<std::string> &tables) {
+  char query_buff[512];
+  MYSQL_ROW row;
+  MYSQL_RES *res;
+  DBUG_ENTER("fill_tables_list");
+
+  if (wild) {
+    snprintf(query_buff, sizeof(query_buff), SQL_GET_TABLES_IN_DB_LIKE, db,
+             wild->ptr());
+  } else {
+    /* No wildcards: get all tables in <db> */
+    snprintf(query_buff, sizeof(query_buff), SQL_GET_ALL_TABLES_IN_DB, db);
+  }
+
+  if (mysql_real_query(conn, query_buff, strlen(query_buff)) ||
+      !(res = mysql_store_result(conn)))
+    DBUG_RETURN(TRUE);
+
+  while ((row = mysql_fetch_row(res))) {
+    tables.push_back(new string(row[0], mysql_fetch_lengths(res)[0]));
+  }
+
+  DBUG_RETURN(FALSE);
+}
+
+/**
+ * Check a table.
+ *
+ * @param thd: Thread handler
+ * @param tables: A table list with only the target table
+ *
+ * @retval True on error, False on success
+ * */
+bool tdbctl_check_table(THD *thd, TABLE_LIST *tables) {
+  Cluster_conn_manager *conn_mgr;
+  string db_name, table_name;
+  DBUG_ENTER("tdbctl_check_table");
+
+  if (check_some_access(thd, SHOW_CREATE_TABLE_ACLS, tables) ||
+      !(tables->grant.privilege & SHOW_CREATE_TABLE_ACLS)) {
+    my_error(ER_TABLEACCESS_DENIED_ERROR, MYF(0), "TDBCTL CHECK TABLE",
+             thd->security_context()->priv_user().str,
+             thd->security_context()->host_or_ip().str, tables->alias);
+    DBUG_RETURN(TRUE);
+  }
 
   /*
     DB name on this Tdbctl server should be considered a base name. A suffix is
@@ -245,17 +368,95 @@ bool tdbctl_check_table(THD *thd, TABLE_LIST *tables) {
   db_name = string(tables->db, tables->db_length);
   table_name = string(tables->table_name, tables->table_name_length);
 
-  DBUG_ASSERT(thd->cluster_conn_manager);
+  if (init_cluster_conn_manager(thd, TRUE, FALSE, TRUE))
+    DBUG_RETURN(TRUE);
   conn_mgr = thd->cluster_conn_manager;
 
-  /* TODO: allow specification of node types */
-  if (conn_mgr->refresh(TRUE, FALSE))
+  /* Send metadata for check results */
+  if (do_send_metadata(thd))
     DBUG_RETURN(TRUE);
-  if (conn_mgr->identify_self()) {
-    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0),
-             "cannot identify current server");
+
+  if (do_check_one_table(thd, conn_mgr, db_name, table_name, TRUE))
+    DBUG_RETURN(TRUE);
+
+  my_eof(thd);
+  DBUG_RETURN(FALSE);
+}
+
+/**
+ * Check multiple tables.
+ *
+ * @param thd: Thread handler
+ * @param db: Target database, use current db if null
+ * @param wild: Table name wildcard, null value means all tables in target db
+ *
+ * @retval True on error, False on success
+ * */
+int tdbctl_check_tables(THD *thd, const char *db, String *wild) {
+  MYSQL *my_conn;
+  Cluster_conn_manager *conn_mgr;
+  List<string> tables;
+  List_iterator<string> table_it;
+  string *table, db_name;
+  DBUG_ENTER("tdbctl_check_tables");
+
+  if (db) {
+    db_name.assign(db);
+  } else {
+    LEX_STRING tmp;
+    if (thd->copy_db_to(&tmp.str, &tmp.length))
+      /* ERROR: No database selected */
+      DBUG_RETURN(TRUE);
+    db_name.assign(tmp.str, tmp.length);
+  }
+
+  /*
+    Since we are checking multiple (or could be all) tables in the same db. The
+    user is required to have access to the entire db.
+  */
+  if (validate_db_grants(thd, db_name.c_str()))
+    DBUG_RETURN(TRUE);
+
+  if (init_cluster_conn_manager(thd, TRUE, FALSE, TRUE))
+    DBUG_RETURN(TRUE);
+  conn_mgr = thd->cluster_conn_manager;
+
+  /* Send metadata for check results */
+  if (do_send_metadata(thd))
+    DBUG_RETURN(TRUE);
+
+  my_conn =
+      conn_mgr->get_conn_map(NODE_TYPE_CTL).at(conn_mgr->get_my_server_name());
+  if (fill_tables_list(my_conn, db_name.c_str(), wild, tables)) {
+    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), "failed to fetch tables");
     DBUG_RETURN(TRUE);
   }
+
+  table_it.init(tables);
+  while ((table = table_it++)) {
+    if (do_check_one_table(thd, conn_mgr, db_name, *table, TRUE))
+      DBUG_RETURN(TRUE);
+  }
+
+  my_eof(thd);
+  DBUG_RETURN(FALSE);
+}
+
+/**
+ * Helper function that actually does the checking.
+ *
+ * @retval True on error, False on success
+ * */
+static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
+                               const string &db_name, const string &table_name,
+                              bool do_send) {
+  Protocol *protocol = (do_send ? thd->get_protocol() : NULL);
+  DBUG_ENTER("do_check_one_table");
+
+  /* Lock against possible DDL actions */
+  Table_MDL_lock_guard guard(thd, db_name, table_name);
+  if (!guard.lock_successful())
+    DBUG_RETURN(TRUE);
 
   /* Get column records for the table on this server */
   string my_server = conn_mgr->get_my_server_name();
@@ -276,6 +477,10 @@ bool tdbctl_check_table(THD *thd, TABLE_LIST *tables) {
     DBUG_RETURN(TRUE);
   }
 
+  /*
+    Compare table & column definition from each Spider/Remote server against
+    this server's.
+  */
   enum_node_type type = NODE_TYPE_SPIDER;
   while (type != NODE_TYPE_END) {
     map<string, MYSQL *>::const_iterator conn_it;
@@ -291,12 +496,15 @@ bool tdbctl_check_table(THD *thd, TABLE_LIST *tables) {
       /* For Remotes, add a numeric suffix according to their server_name */
       string fixed_db_name = fix_db_name(db_name, server_name, type);
 
-      protocol->start_row();
-      protocol->store(server_name.c_str(), server_name.length(),
-                      system_charset_info);
-      protocol->store(fixed_db_name.c_str(), fixed_db_name.length(), system_charset_info);
-      protocol->store(table_name.c_str(), table_name.length(),
-                      system_charset_info);
+      if (do_send) {
+        protocol->start_row();
+        protocol->store(server_name.c_str(), server_name.length(),
+                        system_charset_info);
+        protocol->store(fixed_db_name.c_str(), fixed_db_name.length(),
+                        system_charset_info);
+        protocol->store(table_name.c_str(), table_name.length(),
+                        system_charset_info);
+      }
 
       /* STAGE 1: check table info */
       if (get_table_info_for_server(thd, fixed_db_name, table_name, server_name,
@@ -316,8 +524,18 @@ bool tdbctl_check_table(THD *thd, TABLE_LIST *tables) {
       /* Compare default charsets */
       if (my_table_info.table_collation != table_info.table_collation) {
         writer.write(Message_writer::MSG_LEVEL_ERROR,
-                     "inconsistent table collation '%s'",
-                     table_info.table_collation.c_str());
+                     "inconsistent table collation '%s', should be '%s'",
+                     table_info.table_collation.c_str(),
+                     my_table_info.table_collation.c_str());
+      }
+
+      /* Compare engines (skip Spiders) */
+      if (type != NODE_TYPE_SPIDER &&
+          my_table_info.table_engine != table_info.table_engine) {
+        writer.write(Message_writer::MSG_LEVEL_ERROR,
+                     "inconsistent table engine '%s', should be '%s'",
+                     table_info.table_engine.c_str(),
+                     my_table_info.table_engine.c_str());
       }
 
       /* STAGE 2: check column definitions */
@@ -370,13 +588,15 @@ bool tdbctl_check_table(THD *thd, TABLE_LIST *tables) {
       }
 
     send_row:
-      status = (writer.has_error() ? "Error" : "OK");
-      protocol->store(status, strlen(status), system_charset_info);
-      protocol->store(writer.raw_str(),
-                      MY_MIN(writer.length(), max_message_length),
-                      system_charset_info);
-      if (protocol->end_row())
-        DBUG_RETURN(TRUE);
+      if (do_send) {
+        status = (writer.has_error() ? "Error" : "OK");
+        protocol->store(status, strlen(status), system_charset_info);
+        protocol->store(writer.raw_str(),
+                        MY_MIN(writer.length(), max_message_length),
+                        system_charset_info);
+        if (protocol->end_row())
+          DBUG_RETURN(TRUE);
+      }
     }
     /* Once Spiders are finished, move on to Remotes */
     if (type == NODE_TYPE_SPIDER)
@@ -385,6 +605,37 @@ bool tdbctl_check_table(THD *thd, TABLE_LIST *tables) {
       type = NODE_TYPE_END;
   }
 
-  my_eof(thd);
   DBUG_RETURN(FALSE);
+}
+
+static bool validate_db_grants(THD *thd, const char *db) {
+  char db_name[NAME_LEN];
+  Security_context *sctx = thd->security_context();
+  uint db_access;
+
+  strcpy(db_name, db);
+  if (lower_case_table_names)
+    my_casedn_str(files_charset_info, db_name);
+
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  if (sctx->check_access(DB_ACLS))
+    db_access = DB_ACLS;
+  else
+    db_access = (acl_get(sctx->host().str, sctx->ip().str,
+                         sctx->priv_user().str, db_name, 0) |
+                 sctx->master_access());
+  if (!(db_access & DB_ACLS)) {
+    my_error(ER_DBACCESS_DENIED_ERROR, MYF(0), sctx->priv_user().str,
+             sctx->host_or_ip().str, db_name);
+    return TRUE;
+  }
+#endif
+
+  if (!is_infoschema_db(db_name) && check_db_dir_existence(db_name)) {
+    /* ERROR: Unknown database */
+    my_error(ER_BAD_DB_ERROR, MYF(0), db_name);
+    return TRUE;
+  }
+
+  return FALSE;
 }

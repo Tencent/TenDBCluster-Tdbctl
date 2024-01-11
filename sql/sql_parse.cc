@@ -3953,11 +3953,10 @@ mysql_execute_command(THD *thd, bool first_level)
       break;
     case TC_SQLCOM_CHECK_TABLE:
       DBUG_ASSERT(first_table == all_tables && first_table != 0);
-      /* Lock against possible DDL actions */
-      if (lock_dbtb_name(thd, first_table->db, first_table->table_name,
-                         MDL_SHARED))
-        goto error;
       res = tdbctl_check_table(thd, first_table);
+      break;
+    case TC_SQLCOM_CHECK_TABLES:
+      res = tdbctl_check_tables(thd, select_lex->db, lex->wild);
       break;
     case TC_SQLCOM_CHECK_ROUTING:
       if (lock_dbtb_name(thd, "mysql", "servers",

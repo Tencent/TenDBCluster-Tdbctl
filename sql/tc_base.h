@@ -464,6 +464,9 @@ private:
   int ping(MYSQL *mysql);
 };
 
+bool init_cluster_conn_manager(THD *thd, bool force_refresh, bool no_connect,
+                               bool identify_self);
+
 int tc_grant_single_node(THD *thd, MYSQL *mysql, const AUTH_INFO &auth);
 int tc_grant_single_to_multi(THD *thd, MYSQL *mysql,
                              const AUTH_INFO &target_auth,
@@ -895,6 +898,8 @@ const char *get_wrapper_name_by_node_type(enum_node_type type);
 int tdbctl_handle_primary_cmd(THD *thd, LEX *lex);
 
 bool tdbctl_check_table(THD *thd, TABLE_LIST *tables);
+
+int tdbctl_check_tables(THD *thd, const char *db, String *wild);
 
 bool tdbctl_check_routing(THD *thd);
 
