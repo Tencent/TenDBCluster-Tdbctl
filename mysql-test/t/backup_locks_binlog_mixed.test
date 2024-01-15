@@ -1,9 +1,0 @@
-SET @old_binlog_format=@@binlog_format;
-
-SET GLOBAL binlog_format='MIXED';
-SET SESSION binlog_format='MIXED';
-
---source include/have_binlog_format_mixed.inc
---source include/backup_locks_binlog.inc
-
-SET GLOBAL binlog_format = @old_binlog_format;

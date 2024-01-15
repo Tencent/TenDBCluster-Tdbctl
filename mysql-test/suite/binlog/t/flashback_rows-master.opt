@@ -1,4 +1,0 @@
---timezone=GMT-8
---binlog-format=row
---binlog-row-image=full
---log-bin=master-bin
