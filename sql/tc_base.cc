@@ -2444,6 +2444,8 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       secondary_node_allowed = false;
       if (!tdbctl_is_primary)
         break;
+      // set names utf8 is for compatibility with remote backend Mysql 8.0
+      tc_parse_result_t->designated_node_sql = "set names utf8;" + std::string(lex->sql_statement.str, lex->sql_statement.length);
       tc_parse_result_t->execute_flag |= TC_DESIGNATED_NODE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       tc_parse_result_t->result_set_flag |= RETURN_RESULT_SET_FROM_ONE_NODE;
       break;
@@ -2498,7 +2500,7 @@ bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
     auto_store(server->server_name);
     protocol->store_null();
     protocol->store_null();
-    protocol->store(thd->lex->sql_statement, system_charset_info);
+    auto_store(parse_result->designated_node_sql);
     protocol->store(STRING_WITH_LEN("only specify node execute"), system_charset_info);
     protocol->end_row();
   }
