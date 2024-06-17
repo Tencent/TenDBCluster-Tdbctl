@@ -159,6 +159,7 @@ typedef struct tc_parse_result
     LEX_CSTRING query_string;
     string spider_sql;
     map<string, string> remote_sql_map;
+    string designated_node_sql;
     int execute_flag;
     int result_set_flag;
 

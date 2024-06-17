@@ -5691,10 +5691,9 @@ mysql_execute_command(THD *thd, bool first_level)
         goto error;
       }
       std::string srv_name = std::string(server->server_name, server->server_name_length);
-      std::string sql_statement = std::string(lex->sql_statement.str, lex->sql_statement.length);
       if(thd->cluster_conn_manager->connect(srv_name, (enum_node_type)node_type, false))
         goto error;
-      query_exec_manager.store_exec_query(srv_name, sql_statement, (enum_node_type)node_type);
+      query_exec_manager.store_exec_query(srv_name, parse_result.designated_node_sql, (enum_node_type)node_type);
     }
 
     if (thd->cluster_conn_manager->check_query_manager_validity(
