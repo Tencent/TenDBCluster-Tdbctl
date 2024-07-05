@@ -82,7 +82,8 @@ enum enum_log_table_type
 {
   QUERY_LOG_NONE = 0,
   QUERY_LOG_SLOW = 1,
-  QUERY_LOG_GENERAL = 2
+  QUERY_LOG_GENERAL = 2,
+  QUERY_LOG_TDBCTL_DRY_RUN =3
 };
 
 class File_query_log
@@ -179,6 +180,9 @@ class File_query_log
                   const char *user_host, size_t user_host_len,
                   ulonglong query_utime, ulonglong lock_utime, bool is_command,
                   const char *sql_text, size_t sql_text_len);
+
+  bool write_dry_run(THD *thd, ulonglong current_utime,
+                     const char *sql_text, size_t sql_text_len);
 
 private:
   /** Type of log file. */
@@ -286,6 +290,10 @@ public:
                            const char *command_type, size_t command_type_len,
                            const char *sql_text, size_t sql_text_len,
                            const CHARSET_INFO *client_cs)= 0;
+
+
+  virtual bool log_tdbctl_dry_run(THD *thd, ulonglong current_utime,
+                                    const char *sql_text, size_t sql_text_len)= 0;
 };
 
 
@@ -306,6 +314,9 @@ public:
                            const char *command_type, size_t command_type_len,
                            const char *sql_text, size_t sql_text_len,
                            const CHARSET_INFO *client_cs);
+
+  virtual bool log_tdbctl_dry_run(THD *thd, ulonglong current_utime,
+                                  const char *sql_text, size_t sql_text_len);
 
 private:
   /**
@@ -330,6 +341,7 @@ class Log_to_file_event_handler: public Log_event_handler
 {
   File_query_log mysql_general_log;
   File_query_log mysql_slow_log;
+  File_query_log tdbctl_dry_run_log;
 
 public:
   /**
@@ -352,10 +364,18 @@ public:
                            const char *sql_text, size_t sql_text_len,
                            const CHARSET_INFO *client_cs);
 
+  /**
+     Wrapper around File_query_log::write_tdbctl_dry_run() for tdbctl dry run log.
+     @see Log_event_handler::log_tdbctl_dry_run().
+   */
+  virtual bool log_tdbctl_dry_run(THD *thd, ulonglong current_utime,
+                                  const char *sql_text, size_t sql_text_len);
+
 private:
   Log_to_file_event_handler()
     : mysql_general_log(QUERY_LOG_GENERAL),
-    mysql_slow_log(QUERY_LOG_SLOW)
+    mysql_slow_log(QUERY_LOG_SLOW),
+    tdbctl_dry_run_log(QUERY_LOG_TDBCTL_DRY_RUN)
   { }
 
   /** Close slow and general log files. */
@@ -363,6 +383,7 @@ private:
   {
     mysql_general_log.close();
     mysql_slow_log.close();
+    tdbctl_dry_run_log.close();
   }
 
   /** @return File_query_log instance responsible for writing to slow/general log.*/
@@ -370,6 +391,8 @@ private:
   {
     if (log_type == QUERY_LOG_SLOW)
       return &mysql_slow_log;
+    else if (log_type == QUERY_LOG_TDBCTL_DRY_RUN)
+      return &tdbctl_dry_run_log;
     DBUG_ASSERT(log_type == QUERY_LOG_GENERAL);
     return &mysql_general_log;
   }
@@ -407,12 +430,13 @@ class Query_logger
   /** NULL-terminated arrays of log handlers. */
   Log_event_handler *slow_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
   Log_event_handler *general_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
+  Log_event_handler *tdbctl_dry_run_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
 
 private:
   /**
      Setup log event handlers for the given log_type.
 
-     @param log_type     QUERY_LOG_SLOW or QUERY_LOG_GENERAL
+     @param log_type     QUERY_LOG_SLOW or QUERY_LOG_GENERAL or QUERY_LOG_TDBCTL_DRY_RUN
      @param log_printer  Bitmap of LOG_NONE, LOG_FILE, LOG_TABLE
   */
   void init_query_log(enum_log_table_type log_type, ulonglong log_printer);
@@ -435,6 +459,8 @@ public:
       return (opt_slow_log && (log_output_options & LOG_TABLE));
     else if (log_type == QUERY_LOG_GENERAL)
       return (opt_general_log && (log_output_options & LOG_TABLE));
+    else if (log_type == QUERY_LOG_TDBCTL_DRY_RUN)
+      return (tc_dry_run_log && (log_output_options & LOG_TABLE));
     DBUG_ASSERT(false);
     return false;                             /* make compiler happy */
   }
@@ -476,6 +502,17 @@ public:
      @return true if error, false otherwise.
   */
   bool slow_log_write(THD *thd, const char *query, size_t query_length);
+
+    /**
+       Log tdbctl dry run status with all enabled log event handlers.
+
+       @param thd           THD of the statement being logged.
+       @param query         The query string being logged.
+       @param query_length  The length of the query string.
+
+       @return true if error, false otherwise.
+    */
+  bool tdbctl_dry_run_log_write(THD *thd, const char* query, size_t query_length);
 
   /**
      Write printf style message to general query log.

@@ -3642,7 +3642,8 @@ bool generate_new_log_name(char *new_name, ulong *new_ext,
   fn_format(new_name, log_name, mysql_data_home, "", 4);
   if (!fn_ext(log_name)[0])
   {
-    if (is_binlog || max_slowlog_size > 0)
+    // the suffix of log may be changed here, we could improve it in the future
+    if (is_binlog || max_slowlog_size > 0 || max_dryrun_log_size > 0)
     {
       ulong scratch;
       if (find_uniq_filename(new_name, new_ext ? new_ext : &scratch,
@@ -3654,7 +3655,7 @@ bool generate_new_log_name(char *new_name, ulong *new_ext,
         return true;
       }
     }
-    else if (max_slowlog_size == 0 && new_ext)
+    else if ((max_slowlog_size == 0 || max_dryrun_log_size == 0) && new_ext)
     {
       /* For slow query log files, reset any extension counter in progress,
       if max_slowlog_size has been reset back to zero, meaning no rotation */

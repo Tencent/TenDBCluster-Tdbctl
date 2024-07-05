@@ -584,6 +584,7 @@ bool tc_query_parse(
 
 bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t);
 bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result);
+bool tc_dry_run_log_file(THD *thd, TC_PARSE_RESULT *parse_result);
 
 MYSQL* tc_conn_connect(
   string ipport, 

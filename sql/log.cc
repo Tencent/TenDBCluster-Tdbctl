@@ -219,6 +219,8 @@ static Query_log_table_intact log_table_intact;
 ulong max_binlog_files;
 ulong max_slowlog_size;
 ulong max_slowlog_files;
+ulong max_dryrun_log_size;
+ulong max_dryrun_log_files;
 
 /**
   Silence all errors and warnings reported when performing a write
@@ -635,6 +637,8 @@ bool File_query_log::open()
     log_name= opt_slow_logname;
   else if (m_log_type == QUERY_LOG_GENERAL)
     log_name= opt_general_logname;
+  else if (m_log_type == QUERY_LOG_TDBCTL_DRY_RUN)
+    log_name= tc_dry_run_logname;
   else
     DBUG_ASSERT(false);
   DBUG_ASSERT(log_name && log_name[0]);
@@ -647,7 +651,8 @@ bool File_query_log::open()
     goto err;
   }
 
-  if ((cur_log_ext == (ulong)-1) || max_slowlog_size == 0)
+  if ((cur_log_ext == (ulong)-1) || (m_log_type == QUERY_LOG_SLOW && max_slowlog_size == 0)
+                                 || (m_log_type == QUERY_LOG_TDBCTL_DRY_RUN && max_dryrun_log_size == 0))
   {
     if (generate_new_log_name(log_file_name, &cur_log_ext, name, false))
       goto err;
@@ -741,6 +746,11 @@ err:
   {
     strcpy(log_open_file_error_message, "either restart the query logging "
            "by using \"SET GLOBAL GENERAL_LOG=ON\" or");
+  }
+  else if (strcmp(tc_dry_run_logname, name) == 0)
+  {
+    strcpy(log_open_file_error_message, "either restart the query logging "
+           "by using \"SET GLOBAL tc_dry_run_log=ON\" or");
   }
 
   char errbuf[MYSYS_STRERROR_SIZE];
@@ -1062,6 +1072,60 @@ err:
   return true;
 }
 
+bool File_query_log::write_dry_run(THD *thd, ulonglong current_utime,
+                                   const char *sql_text, size_t sql_text_len)
+{
+  char buff[80];
+  //char query_time_buff[22+7], lock_time_buff[22+7];
+  size_t buff_len;
+  bool need_purge= false;
+  ulong save_cur_ext= 0;
+
+  mysql_mutex_lock(&LOCK_log);
+  DBUG_ASSERT(is_open());
+
+  if ((max_dryrun_log_size > 0) && rotate(max_dryrun_log_size, &need_purge))
+    goto err;
+
+  char my_timestamp[iso8601_size];
+
+  make_iso8601_timestamp(my_timestamp, current_utime);
+
+  buff_len= my_snprintf(buff, sizeof buff,
+                        "# Time: %s\n", my_timestamp);
+
+  /* Note that my_b_write() assumes it knows the length for this */
+  if (my_b_write(&log_file, (uchar*) buff, buff_len))
+    goto err;
+
+  buff_len= my_snprintf(buff, 32, "Thread_id : %5u\n", thd->thread_id());
+  if (my_b_write(&log_file, (uchar*) buff, buff_len))
+    goto err;
+
+  if (my_b_write(&log_file, (uchar*) sql_text, sql_text_len) ||
+      my_b_write(&log_file, (uchar*) ";\n",2) ||
+      flush_io_cache(&log_file))
+    goto err;
+
+  save_cur_ext = cur_log_ext;
+
+  mysql_mutex_unlock(&LOCK_log);
+
+  if (max_dryrun_log_files && need_purge &&
+      purge_up_to(save_cur_ext > max_dryrun_log_files ?
+                  save_cur_ext - max_dryrun_log_files : 0, log_file_name))
+  {
+    check_and_print_write_error();
+    return true;
+  }
+
+  return false;
+
+  err:
+  check_and_print_write_error();
+  mysql_mutex_unlock(&LOCK_log);
+  return true;
+}
 
 bool Log_to_csv_event_handler::log_general(THD *thd, ulonglong event_utime,
                                            const char *user_host,
@@ -1379,6 +1443,12 @@ err:
   DBUG_RETURN(result);
 }
 
+bool Log_to_csv_event_handler::log_tdbctl_dry_run(THD *thd, ulonglong current_utime, const char *sql_text,
+                                                  size_t sql_text_len)
+{
+  // To do
+  return false;
+}
 
 bool Log_to_csv_event_handler::activate_log(THD *thd,
                                             enum_log_table_type log_table_type)
@@ -1399,6 +1469,9 @@ bool Log_to_csv_event_handler::activate_log(THD *thd,
                               SLOW_LOG_NAME.str, SLOW_LOG_NAME.length,
                               SLOW_LOG_NAME.str, TL_WRITE_CONCURRENT_INSERT);
     break;
+  case QUERY_LOG_TDBCTL_DRY_RUN:
+    // to do
+    return false;
   default:
     DBUG_ASSERT(false);
   }
@@ -1456,6 +1529,19 @@ bool Log_to_file_event_handler::log_general(THD *thd, ulonglong event_utime,
                                                user_host_len, thread_id,
                                                command_type, command_type_len,
                                                sql_text, sql_text_len);
+  thd->pop_internal_handler();
+  return retval;
+}
+
+bool Log_to_file_event_handler::log_tdbctl_dry_run(THD *thd, ulonglong current_utime,
+                                                   const char *sql_text, size_t sql_text_len)
+{
+  if(!tdbctl_dry_run_log.is_open())
+    return false;
+
+  Silence_log_table_errors error_handler;
+  thd->push_internal_handler(&error_handler);
+  bool retval = tdbctl_dry_run_log.write_dry_run(thd, current_utime, sql_text, sql_text_len);
   thd->pop_internal_handler();
   return retval;
 }
@@ -1534,6 +1620,47 @@ bool Query_logger::slow_log_write(THD *thd, const char *query,
                                            user_host_buff, user_host_len,
                                            query_utime, lock_utime, is_command,
                                            query, query_length);
+  }
+
+  mysql_rwlock_unlock(&LOCK_logger);
+
+  return error;
+}
+
+bool Query_logger::tdbctl_dry_run_log_write(THD *thd, const char *query, size_t query_length)
+{
+  DBUG_ASSERT(tc_dry_run_log);
+
+  if (!(*tdbctl_dry_run_log_handler_list))
+    return false;
+
+  /* do not log tdbctl_dry_run log from replication threads */
+  if (thd->slave_thread)
+    return false;
+
+  mysql_rwlock_rdlock(&LOCK_logger);
+
+  /* fill in user_host value: the format is "%s[%s] @ %s [%s]" */
+//  char user_host_buff[MAX_USER_HOST_SIZE + 1];
+//  Security_context *sctx= thd->security_context();
+//  LEX_CSTRING sctx_user= sctx->user();
+//  LEX_CSTRING sctx_host= sctx->host();
+//  LEX_CSTRING sctx_ip= sctx->ip();
+  ulonglong current_utime= thd->current_utime();
+
+  //bool is_command= false;
+  if (!query)
+  {
+    //is_command= true;
+    query= command_name[thd->get_command()].str;
+    query_length= command_name[thd->get_command()].length;
+  }
+
+  bool error= false;
+  for(Log_event_handler **current_handler= slow_log_handler_list;
+      *current_handler ;)
+  {
+    error|= (*current_handler++)->log_tdbctl_dry_run(thd, current_utime, query, query_length);
   }
 
   mysql_rwlock_unlock(&LOCK_logger);
@@ -1701,6 +1828,30 @@ void Query_logger::init_query_log(enum_log_table_type log_type,
       break;
     }
   }
+  else if (log_type == QUERY_LOG_TDBCTL_DRY_RUN)
+  {
+    if (log_printer & LOG_NONE)
+    {
+      tdbctl_dry_run_log_handler_list[0]= NULL;
+      return;
+    }
+
+    switch (log_printer) {
+      case LOG_FILE:
+        tdbctl_dry_run_log_handler_list[0]= file_log_handler;
+        tdbctl_dry_run_log_handler_list[1]= NULL;
+        break;
+      case LOG_TABLE:
+        tdbctl_dry_run_log_handler_list[0]= &table_log_handler;
+        tdbctl_dry_run_log_handler_list[1]= NULL;
+        break;
+      case LOG_TABLE|LOG_FILE:
+        tdbctl_dry_run_log_handler_list[0]= file_log_handler;
+        tdbctl_dry_run_log_handler_list[1]= &table_log_handler;
+        tdbctl_dry_run_log_handler_list[2]= NULL;
+        break;
+    }
+  }
   else
     DBUG_ASSERT(false);
 }
@@ -1712,6 +1863,7 @@ void Query_logger::set_handlers(ulonglong log_printer)
 
   init_query_log(QUERY_LOG_SLOW, log_printer);
   init_query_log(QUERY_LOG_GENERAL, log_printer);
+  init_query_log(QUERY_LOG_TDBCTL_DRY_RUN, log_printer);
 
   mysql_rwlock_unlock(&LOCK_logger);
 }
@@ -1810,6 +1962,8 @@ char *make_query_log_name(char *buff, enum_log_table_type log_type)
     log_ext= ".log";
   else if (log_type == QUERY_LOG_SLOW)
     log_ext= "-slow.log";
+  else if (log_type == QUERY_LOG_TDBCTL_DRY_RUN)
+    log_ext= "-dry-run.log";
   else
     DBUG_ASSERT(false);
 
@@ -2187,8 +2341,8 @@ int File_query_log::new_file()
   }
 
   mysql_mutex_assert_owner(&LOCK_log);
-
-  if ((cur_log_ext == (ulong)-1) || max_slowlog_size == 0)
+  if ((cur_log_ext == (ulong)-1) || (m_log_type == QUERY_LOG_SLOW && max_slowlog_size == 0)
+                                 || (m_log_type == QUERY_LOG_TDBCTL_DRY_RUN && max_dryrun_log_size == 0))
   {
     strcpy(new_name, name);
     if ((error= generate_new_log_name(new_name, &cur_log_ext, name, false)))

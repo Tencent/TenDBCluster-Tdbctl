@@ -6332,6 +6332,83 @@ static Sys_var_mybool Sys_tc_dry_run(
        TDBCTL SESSION_VAR(tc_dry_run), NO_CMD_LINE,
        DEFAULT(FALSE));
 
+static Sys_var_ulong Sys_max_dryrun_log_size(
+        "max_dry_run_log_size",
+        "Dry_run log will be rotated automatically when the size exceeds "
+        "this value. The default is 0, don't limit the size.",
+        TDBCTL GLOBAL_VAR(max_dryrun_log_size), CMD_LINE(REQUIRED_ARG),
+        VALID_RANGE(0, 1024*1024L*1024L), DEFAULT(0L),
+        BLOCK_SIZE(IO_SIZE));
+
+static Sys_var_ulong Sys_max_dryrun_log_files(
+        "max_dry_run_log_files",
+        "Maximum number of dry run log files. Used with --max-dryrun-log-size "
+        "this can be used to limit the total amount of disk space used for the "
+        "dry_run log. "
+        "Default is 0, don't limit.",
+        TDBCTL GLOBAL_VAR(max_dryrun_log_files),
+        CMD_LINE(REQUIRED_ARG), VALID_RANGE(0, 102400),
+        DEFAULT(0), BLOCK_SIZE(1));
+
+static bool fix_dry_run_log_state(sys_var *self, THD *thd, enum_var_type type)
+{
+  if (query_logger.is_log_file_enabled(QUERY_LOG_TDBCTL_DRY_RUN) == tc_dry_run_log)
+    return false;
+
+  if (!tc_dry_run_log)
+  {
+    mysql_mutex_unlock(&LOCK_global_system_variables);
+    query_logger.deactivate_log_handler(QUERY_LOG_TDBCTL_DRY_RUN);
+    mysql_mutex_lock(&LOCK_global_system_variables);
+    return false;
+  }
+  else
+  {
+    mysql_mutex_unlock(&LOCK_global_system_variables);
+    bool res= query_logger.activate_log_handler(thd, QUERY_LOG_TDBCTL_DRY_RUN);
+    mysql_mutex_lock(&LOCK_global_system_variables);
+    if (res)
+      tc_dry_run_log= false;
+    return res;
+  }
+}
+static Sys_var_mybool Sys_tc_dry_run_log(
+        "tc_dry_run_log",
+        "If set to TRUE, Log the dry run status of queries to a log file",
+        TDBCTL GLOBAL_VAR(tc_dry_run_log), CMD_LINE(OPT_ARG),
+        DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+        ON_UPDATE(fix_dry_run_log_state));
+
+static bool fix_dry_run_log_file(sys_var *self, THD *thd, enum_var_type type)
+{
+  if (!tc_dry_run_logname) // SET ... = DEFAULT
+  {
+    char buff[FN_REFLEN];
+    tc_dry_run_logname= my_strdup(key_memory_LOG_name,
+                                make_query_log_name(buff, QUERY_LOG_TDBCTL_DRY_RUN),
+                                MYF(MY_FAE+MY_WME));
+    if (!tc_dry_run_logname)
+      return true;
+  }
+  bool res= false;
+  if (tc_dry_run_log)
+  {
+    mysql_mutex_unlock(&LOCK_global_system_variables);
+    res= query_logger.reopen_log_file(QUERY_LOG_TDBCTL_DRY_RUN);
+    mysql_mutex_lock(&LOCK_global_system_variables);
+    if (res)
+      tc_dry_run_log= false;
+  }
+  return res;
+}
+
+static Sys_var_charptr Sys_tc_dry_run_log_path(
+        "tc_dry_run_log_file", "log the dry run status of queries to given log file. "
+                               "Defaults logging to hostname-dry_run.log.",
+        TDBCTL GLOBAL_VAR(tc_dry_run_logname), CMD_LINE(REQUIRED_ARG),
+        IN_FS_CHARSET, DEFAULT(0), NO_MUTEX_GUARD, NOT_IN_BINLOG,
+        ON_CHECK(check_log_path), ON_UPDATE(fix_dry_run_log_file));
+
 static Sys_var_mybool Sys_tc_force_execute(
        "tc_force_execute",
        "If set to TRUE, go on running spider query if remote failed",

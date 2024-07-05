@@ -3013,6 +3013,11 @@ mysql_execute_command(THD *thd, bool first_level)
       else
         goto error;
     }
+
+    if (tc_dry_run_log) {
+      if(!tc_dry_run_log_file(thd, &parse_result))
+        goto error;
+    }
   }
 
   /* There are three cases that sql_command need to be handled by tdbctl itself.

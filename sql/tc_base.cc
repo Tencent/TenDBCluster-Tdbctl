@@ -2467,11 +2467,12 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 //display rewrite sql by parse_result
 bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
 {
+  DBUG_ENTER("tc_dry_run_command");
+
   Item *field;
-  List<Item> field_list;
+  List <Item> field_list;
   size_t max_query_length = PROCESS_LIST_INFO_WIDTH;
   Protocol *protocol = thd->get_protocol();
-  DBUG_ENTER("tc_dry_run_command");
 
   field_list.push_back(new Item_empty_string("Server_name", NAME_CHAR_LEN));
   field_list.push_back(field = new Item_empty_string("db", NAME_CHAR_LEN));
@@ -2488,10 +2489,10 @@ bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
     DBUG_RETURN(FALSE);
 
   auto auto_store = [&](string value) -> void {
-    if (value.empty())
-      protocol->store_null();
-    else
-      protocol->store(value.c_str(), value.length(), system_charset_info);
+      if (value.empty())
+        protocol->store_null();
+      else
+        protocol->store(value.c_str(), value.length(), system_charset_info);
   };
 
   if (parse_result->execute_flag & TC_DESIGNATED_NODE_NEED_EXECUTE) {
@@ -2501,11 +2502,11 @@ bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
     protocol->store_null();
     protocol->store_null();
     auto_store(parse_result->designated_node_sql);
-    protocol->store(STRING_WITH_LEN("only specify node execute"), system_charset_info);
+    protocol->store(STRING_WITH_LEN("only specified node execute"), system_charset_info);
     protocol->end_row();
   }
 
-  if (parse_result->execute_flag & (TC_SPIDER_NEED_EXECUTE|TC_ONLY_ONE_SPIDER_NEED_EXECUTE)) {
+  if (parse_result->execute_flag & (TC_SPIDER_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE)) {
     protocol->start_row();
     protocol->store(STRING_WITH_LEN(SPIDER_WRAPPER), system_charset_info);
     auto_store(parse_result->db_name);
@@ -2529,6 +2530,50 @@ bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
   }
 
   my_eof(thd);
+  DBUG_RETURN(TRUE);
+}
+
+// record dry_run info into log file
+bool tc_dry_run_log_file(THD *thd, TC_PARSE_RESULT *parse_result) {
+  DBUG_ENTER("tc_dry_run_log_file");
+
+  std::string dry_run_log_content;
+  if (parse_result->execute_flag & TC_TDBCTL_NEED_EXECUTE) {
+    dry_run_log_content.append("Server_name: " + std::string(STRING_WITH_LEN(TDBCTL_WRAPPER)) + "\n");
+    dry_run_log_content.append("Command: " + std::string(thd->query().str, thd->query().length) + "\n");
+    dry_run_log_content.append("Info: tdbctl node execute \n\n");
+  }
+
+  if (parse_result->execute_flag & TC_DESIGNATED_NODE_NEED_EXECUTE) {
+    FOREIGN_SERVER *server = get_server_by_name(thd->mem_root, thd->lex->server_options.m_server_name.str, NULL);
+    dry_run_log_content.append("Server_name: " + std::string(server->server_name) + "\n");
+    dry_run_log_content.append("Db: \n");
+    dry_run_log_content.append("Table: \n");
+    dry_run_log_content.append("Command: " + parse_result->designated_node_sql + "\n");
+    dry_run_log_content.append("Info: only specified node execute \n\n");
+  }
+
+  if (parse_result->execute_flag & (TC_SPIDER_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE)) {
+    dry_run_log_content.append("Server_name: " + std::string(STRING_WITH_LEN(SPIDER_WRAPPER)) + "\n");
+    //dry_run_log_content.append("Db: " + parse_result->db_name + "\n");
+    //dry_run_log_content.append("Table: " + parse_result->table_name + "\n");
+    dry_run_log_content.append("Command: " + parse_result->spider_sql + "\n");
+    if (parse_result->execute_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE)
+      dry_run_log_content.append("Info: only one spider execute \n\n");
+    else
+      dry_run_log_content.append("Info: all spider execute \n\n");
+  }
+
+  for (auto &row: parse_result->remote_sql_map) {
+    dry_run_log_content.append("Server_name: " + row.first + "\n");
+    //dry_run_log_content.append("Db: \n");
+    //dry_run_log_content.append("Table: \n");
+    dry_run_log_content.append("Command: " + row.second + "\n");
+    dry_run_log_content.append("Info: all remote execute \n\n");
+  }
+  if(query_logger.tdbctl_dry_run_log_write(thd, dry_run_log_content.c_str(), dry_run_log_content.size()))
+    DBUG_RETURN(FALSE);
+
   DBUG_RETURN(TRUE);
 }
 
