@@ -291,16 +291,32 @@ bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
     we can't dump schema from the newly created node
     *Note*: dump tdbctl schema will dump schema from local node generally.
   */
-  DBUG_ASSERT(!(strcasecmp(server_list.front()->host, lex->server_options.get_host()) == 0 &&
-              server_list.front()->port == lex->server_options.get_port()));
+
+  FOREIGN_SERVER* dump_server = nullptr;
+  for(auto it = server_list.begin(); it != server_list.end(); it ++) {
+    if(!strcasecmp((*it)->scheme, lex->server_options.get_scheme())) {
+      if(!(strcasecmp((*it)->host, lex->server_options.get_host()) == 0 &&
+           (*it)->port == lex->server_options.get_port())) {
+        dump_server = *it;
+        break;
+      }
+    }
+  }
+
+  if(!dump_server) {
+    push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
+                        "No online %s Node to dump schema ",
+                        lex->server_options.get_scheme());
+    return false;
+  }
 
   if (tc_dump_node_schema(
-          server_list.front()->host,
-          server_list.front()->port,
-          server_list.front()->username,
-          server_list.front()->password,
+          dump_server->host,
+          dump_server->port,
+          dump_server->username,
+          dump_server->password,
           schema_path,
-          server_list.front()->scheme))
+          dump_server->scheme))
   {
     Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
     drop_node->execute(thd);
