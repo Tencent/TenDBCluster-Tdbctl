@@ -442,6 +442,7 @@ ulong tc_check_availability_interval = 10;
 ulong tc_partition_admin_interval = 86400;
 ulong tc_partition_admin_time = 3600;
 ulong tc_partition_init_interval = 300;
+my_bool tc_dry_run_log =  false;
 
 int tdbctl_simple_enable_primary(THD *thd);
 int tdbctl_simple_disable_primary(THD *thd);
@@ -649,6 +650,7 @@ const key_map key_map_empty(0);
 key_map key_map_full(0);                        // Will be initialized later
 char logname_path[FN_REFLEN];
 char slow_logname_path[FN_REFLEN];
+char tc_dry_run_logname_path[FN_REFLEN];
 char secure_file_real_path[FN_REFLEN];
 
 Date_time_format global_date_format, global_datetime_format, global_time_format;
@@ -791,7 +793,7 @@ ulong master_retry_count=0;
 char *master_info_file;
 char *relay_log_info_file, *report_user, *report_password, *report_host;
 char *opt_relay_logname = 0, *opt_relaylog_index_name=0;
-char *opt_general_logname, *opt_slow_logname, *opt_bin_logname;
+char *opt_general_logname, *opt_slow_logname, *opt_bin_logname, *tc_dry_run_logname;
 
 /* Static variables */
 
@@ -3387,6 +3389,8 @@ int init_common_variables()
               make_query_log_name(logname_path, QUERY_LOG_GENERAL));
   FIX_LOG_VAR(opt_slow_logname,
               make_query_log_name(slow_logname_path, QUERY_LOG_SLOW));
+  FIX_LOG_VAR(tc_dry_run_logname,
+              make_query_log_name(tc_dry_run_logname_path, QUERY_LOG_TDBCTL_DRY_RUN));
 
 #if defined(ENABLED_DEBUG_SYNC)
   /* Initialize the debug sync facility. See debug_sync.cc. */
@@ -4477,6 +4481,10 @@ a file name for --log-bin-index option", opt_binlog_index_name);
   // Open general log file if enabled.
   if (opt_general_log && query_logger.reopen_log_file(QUERY_LOG_GENERAL))
     opt_general_log= false;
+
+  // Open tc_dry_run log file if enabled
+  if (tc_dry_run_log && query_logger.reopen_log_file(QUERY_LOG_TDBCTL_DRY_RUN))
+    tc_dry_run_log= false;
 
   /*
     Set the default storage engines
@@ -7444,6 +7452,7 @@ static int mysql_init_variables(void)
   opt_skip_name_resolve= 0;
   opt_ignore_builtin_innodb= 0;
   opt_general_logname= opt_update_logname= opt_binlog_index_name= opt_slow_logname= NULL;
+  tc_dry_run_logname= NULL;
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
   opt_secure_auth= 0;
   opt_myisam_log= 0;

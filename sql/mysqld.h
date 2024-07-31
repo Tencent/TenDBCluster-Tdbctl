@@ -182,6 +182,7 @@ extern ulong opt_log_slow_sp_statements;
 extern ulonglong opt_slow_query_log_use_global_control;
 extern ulong opt_slow_query_log_rate_type;
 extern my_bool sp_automatic_privileges, opt_noacl;
+extern my_bool tc_dry_run_log;
 extern my_bool tc_check_repair_routing;
 extern my_bool tc_check_repair_trans;
 extern my_bool tc_set_changed_node_read_only;
@@ -218,6 +219,8 @@ extern ulong expire_logs_days;
 extern ulong max_binlog_files;
 extern ulong max_slowlog_size;
 extern ulong max_slowlog_files;
+extern ulong max_dryrun_log_size;
+extern ulong max_dryrun_log_files;
 extern my_bool relay_log_recovery;
 extern uint sync_binlog_period, sync_relaylog_period,
             sync_relayloginfo_period, sync_masterinfo_period,
@@ -234,7 +237,7 @@ extern ulong delay_key_write_options;
 extern ulong opt_log_timestamps;
 extern const char *timestamp_type_names[];
 extern char *opt_general_logname, *opt_slow_logname, *opt_bin_logname,
-            *opt_relay_logname;
+            *opt_relay_logname, *tc_dry_run_logname;
 extern char *opt_backup_history_logname, *opt_backup_progress_logname,
             *opt_backup_settings_name;
 extern const char *log_output_str;
