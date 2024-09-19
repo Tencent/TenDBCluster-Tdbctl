@@ -1657,7 +1657,7 @@ bool Query_logger::tdbctl_dry_run_log_write(THD *thd, const char *query, size_t 
   }
 
   bool error= false;
-  for(Log_event_handler **current_handler= slow_log_handler_list;
+  for(Log_event_handler **current_handler= tdbctl_dry_run_log_handler_list;
       *current_handler ;)
   {
     error|= (*current_handler++)->log_tdbctl_dry_run(thd, current_utime, query, query_length);
