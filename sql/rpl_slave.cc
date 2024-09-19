@@ -3095,6 +3095,15 @@ when it try to get the value of TIME_ZONE global variable from master.";
   if (DBUG_EVALUATE_IF("simulate_slave_unaware_checksum", 0, 1))
   {
     int rc;
+    rc= mysql_real_query(mysql, STRING_WITH_LEN("SET TC_ADMIN=0"));
+    if (rc != 0) {
+      mi->report(WARNING_LEVEL, mysql_errno(mysql),
+                 "Notifying master by SET TC_ADMIN=0 failed with "
+                 "error: %s", mysql_error(mysql));
+      mysql_free_result(mysql_store_result(mysql));
+      goto err;
+    }
+    mysql_free_result(mysql_store_result(mysql));
     const char query[]= "SET @master_binlog_checksum= @@global.binlog_checksum";
     master_res= NULL;
     //initially undefined
