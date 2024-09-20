@@ -402,9 +402,7 @@ const char* get_stmt_type_str(int type)
       return "TC_SQLCOM_CREATE_TABLE_WITH_TABLE_COMMENT";
     case TC_SQLCOM_CREATE_TABLE_WITH_FIELD_CHARSET: 
       return "TC_SQLCOM_CREATE_TABLE_WITH_FIELD_CHARSET";
-    case TC_SQLCOM_CREATE_TABLE_LIKE:
-      return "TC_SQLCOM_CREATE_TABLE_LIKE";
-    case TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY: 
+    case TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY:
       return "TC_SQLCOM_CREATE_OR_DROP_UNIQUE_KEY";
     case TC_SQLCOM_ALTER_TABLE_UNSUPPORT: 
       return "TC_SQLCOM_ALTER_TABLE_UNSUPPORT";
@@ -2165,9 +2163,22 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       char key_name[256];
       char result_info[256];
 
+
       tc_parse_result_t->query_string = thd->processed_query();
       tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
+
+      if (lex->create_info.options & HA_LEX_CREATE_TABLE_LIKE)
+      {
+        tc_parse_result_t->new_db_name = tc_get_new_dbname(thd, lex);
+        tc_parse_result_t->new_table_name = tc_get_new_tbname(thd, lex);
+        tc_parse_result_t->query_string = thd->query();
+        tc_parse_spider_create_table_like(tc_parse_result_t);
+        tc_parse_remote_create_table_like(tc_parse_result_t);
+        tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
+        break;
+      }
+
       if (tc_parse_getkey_for_spider(thd, key_name, result_info, sizeof(result_info), &with_unique, &is_unsigned_key))
       {
         my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), result_info);
@@ -2220,7 +2231,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         {
           switch (ret) {
           case TCADMIN_PARSE_TABLE_COMMENT_UNSUPPORTED:
-            my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: UNSUPPORT SQL CREATE TABLE WITH TABLE COMMENT");
+            my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: UNSUPPORTED SQL CREATE TABLE WITH TABLE COMMENT");
             return FALSE;
           case TCADMIN_PARSE_SHARD_COUNT_INVALID:
             my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: SQL CREATE TABLE WITH INVALID SHARD COUNT COMMENT");
@@ -2240,13 +2251,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         }
       }
 
-      if (lex->create_info.options & HA_LEX_CREATE_TABLE_LIKE)
-      {
-        tc_parse_result_t->new_db_name = tc_get_new_dbname(thd, lex);
-        tc_parse_result_t->new_table_name = tc_get_new_tbname(thd, lex);
-        break;
-      }
-      else if (lex->select_lex && lex->select_lex->item_list.elements > 0)
+      if (lex->select_lex && lex->select_lex->item_list.elements > 0)
       {// create table select
         my_error(ER_TCADMIN_CREATE_TABLE, MYF(0), "ERROR: UNSUPPORT SQL CREATE TABLE WITH SELECT");
         return FALSE;
@@ -2395,17 +2400,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_remote_drop_database(tc_parse_result_t);
       tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_SPIDER_EXECUTE_FIRST | TC_TDBCTL_NEED_EXECUTE;
       break;
-    case TC_SQLCOM_CREATE_TABLE_LIKE:
-    {
-      secondary_node_allowed = false;
-      if (!tdbctl_is_primary)
-        break;
-      tc_parse_result_t->query_string = thd->query();
-      tc_parse_spider_create_table_like(tc_parse_result_t);
-      tc_parse_remote_create_table_like(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
-      break;
-    }
     case TC_SQLCOM_CREATE_NODE:
     case TC_SQLCOM_ALTER_NODE:
     case TC_SQLCOM_DROP_NODE:
