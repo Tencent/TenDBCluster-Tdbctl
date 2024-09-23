@@ -5039,12 +5039,54 @@ static void append_grant_privileges(const AUTH_INFO &auth, uint grant,
   sql += TC_STR_DELIMITER;
 }
 
+static bool drop_existing_same_user(const AUTH_INFO &auth, MYSQL *mysql) {
+  std::string sql;
+  if(auth.wrapper == TDBCTL_WRAPPER)
+    sql += "set tc_admin = 0;";
+  sql += "select user,host from mysql.user where ";
+  sql += "user = " + TC_STR_SINGLE_QUOTED(auth.user);
+  sql += "and host = " + TC_STR_SINGLE_QUOTED(auth.host);
+  sql += TC_STR_DELIMITER;
+  if (mysql_real_query(mysql, sql.c_str(),
+                              sql.length())) {
+    return true;
+  }
+  MYSQL_RES *res = mysql_store_result(mysql);
+  MYSQL_ROW row;
+  bool found = false;
+  while ((row = mysql_fetch_row(res))) {
+    if(row[0] && row[1]) {
+      found = true;
+    }
+  }
+  mysql_free_result(res);
+
+  if(found) {
+    std::string drop_sql;
+    if(auth.wrapper == TDBCTL_WRAPPER)
+      drop_sql += "set tc_admin = 0;";
+    drop_sql += "drop user " +
+            TC_STR_SINGLE_QUOTED(auth.user) +
+            "@" +
+            TC_STR_SINGLE_QUOTED(auth.host);
+    if (mysql_real_query(mysql, drop_sql.c_str(),
+                         drop_sql.length())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 int tc_grant_single_node(THD *thd, MYSQL *mysql, const AUTH_INFO &auth) {
   int err;
   char errmsg[512];
   string create_user_sql, grant_sql;
 
   DBUG_ENTER("tc_grant_single_node");
+
+  if (drop_existing_same_user(auth, mysql)) {
+    goto error;
+  }
 
   append_create_user(auth, create_user_sql);
   append_grant_privileges(auth, GLOBAL_ACLS, grant_sql);
@@ -5087,6 +5129,8 @@ int tc_grant_single_to_multi(THD *thd, MYSQL *mysql,
     AUTH_INFO grant_to_who = it->second;
     grant_to_who.user = target_auth.user;
     grant_to_who.passwd = target_auth.passwd;
+    // grant_to_who.wrapper stores the wrapper of the connected node
+    grant_to_who.wrapper = target_auth.wrapper;
 
     if (tc_grant_single_node(thd, mysql, grant_to_who))
       DBUG_RETURN(TRUE);
@@ -5118,6 +5162,8 @@ int tc_grant_multi_to_single(THD *thd, const AUTH_INFO &target_auth,
     AUTH_INFO grant_to_who = target_auth;
     grant_to_who.user = it->second.user;
     grant_to_who.passwd = it->second.passwd;
+    // grant_to_who.wrapper stores the wrapper of the connected node
+    grant_to_who.wrapper = get_wrapper_name_by_node_type(node_type);
 
     if (tc_grant_single_node(thd, conns[server_name], grant_to_who))
       DBUG_RETURN(TRUE);
