@@ -44,6 +44,7 @@
 #include "select_lex_visitor.h"
 #include "parse_tree_hints.h"
 #include "sql_admin.h"
+#include "event_parse_data.h"
 #include <map>
 
 #ifdef MYSQL_SERVER

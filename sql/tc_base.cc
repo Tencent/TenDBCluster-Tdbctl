@@ -1228,7 +1228,38 @@ const char* tc_get_cur_tbname(THD *thd, LEX *lex)
 const char* tc_get_cur_dbname(THD *thd, LEX *lex)
 {
     TABLE_LIST* table_list = lex->query_tables;
-    return (table_list->db);
+    if (table_list)
+        return table_list->db;
+
+    switch (lex->sql_command) {
+        case SQLCOM_ALTER_EVENT:
+            if (lex->sphead)
+                return  lex->sphead->m_db.str;
+            if (lex->event_parse_data && lex->event_parse_data->identifier)
+                return lex->event_parse_data->identifier->m_db.str;
+            break;
+        case SQLCOM_CREATE_PROCEDURE:
+        case SQLCOM_CREATE_SPFUNCTION:
+        case SQLCOM_CREATE_EVENT:
+            if (lex->sphead)
+              return lex->sphead->m_db.str;
+            break;
+        case SQLCOM_CREATE_TRIGGER:
+        case SQLCOM_DROP_TRIGGER:
+        case SQLCOM_SHOW_CREATE_EVENT:
+        case SQLCOM_DROP_EVENT:
+        case SQLCOM_CALL:
+        case SQLCOM_ALTER_PROCEDURE:
+        case SQLCOM_ALTER_FUNCTION:
+        case SQLCOM_DROP_FUNCTION:
+        case SQLCOM_DROP_PROCEDURE:
+            if (lex->spname)
+               return lex->spname->m_db.str;
+            break;
+        default:
+            return "";
+    }
+    return "";
 }
 
 const char* tc_get_new_tbname(THD *thd, LEX *lex)
@@ -1958,6 +1989,8 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_INSTALL_PLUGIN:
     case SQLCOM_UNINSTALL_PLUGIN:
     case SQLCOM_RESET:
+        //annotation, e.g: --
+    case SQLCOM_EMPTY_QUERY:
       tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     // These commands are not supported in tcadmin primary or secondary mode.
@@ -1966,7 +1999,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_SHOW_ENGINE_STATUS:
     case SQLCOM_SHOW_ENGINE_MUTEX:
     case SQLCOM_SHOW_ENGINE_LOGS:
-    case SQLCOM_EMPTY_QUERY:
     case SQLCOM_ASSIGN_TO_KEYCACHE:
     case SQLCOM_PRELOAD_KEYS:
     case SQLCOM_CHECKSUM:
@@ -2114,10 +2146,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       secondary_node_allowed = false;
       if (!tdbctl_is_primary)
         break;
-      if (thd->db().str)
-        tc_parse_result_t->db_name = thd->db().str;
-      else
-        tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
+      tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->spider_sql = "use " + TC_STR_BACK_QUOTED(tc_parse_result_t->db_name) + ";" + std::string(thd->query().str, thd->query().length);
       tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
