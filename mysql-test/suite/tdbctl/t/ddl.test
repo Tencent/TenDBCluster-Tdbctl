@@ -1,0 +1,56 @@
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+select * from mysql.servers;
+SHOW STATUS LIKE 'tc_is_primary';
+
+# CREATE DATABASE and TABLE
+CREATE DATABASE d1;
+USE d1;
+
+CREATE TABLE t1 (a INT PRIMARY KEY, b INT);
+SHOW CREATE TABLE t1;
+
+# can't execute ddl on non-primary node
+--connection tdbctl1
+--error ER_TCADMIN_NOT_PRIMARY
+CREATE DATABASE d2;
+
+--connection spider0
+SHOW CREATE TABLE d1.t1;
+
+--connection remote_master0
+SHOW CREATE TABLE d1_0.t1;
+
+--connection remote_master1
+SHOW CREATE TABLE d1_1.t1;
+
+# DROP TABLE
+--connection tdbctl0
+SHOW STATUS LIKE 'tc_is_primary';
+
+DROP TABLE d1.t1;
+--connection spider0
+--error ER_NO_SUCH_TABLE
+SHOW CREATE TABLE d1.t1;
+
+--connection remote_master0
+--error ER_NO_SUCH_TABLE
+SHOW CREATE TABLE d1_0.t1;
+
+--connection remote_master1
+--error ER_NO_SUCH_TABLE
+SHOW CREATE TABLE d1_1.t1;
+
+# DROP DATABASE
+--connection tdbctl0
+DROP DATABASE d1;
+
+--connection spider0
+SHOW DATABASES LIKE 'd1';
+
+--connection remote_master0
+SHOW DATABASES LIKE 'd1_0';
+
+--connection remote_master1
+SHOW DATABASES LIKE 'd1_1';

@@ -1,0 +1,17 @@
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+select * from mysql.servers;
+TDBCTL ENABLE PRIMARY;
+SHOW STATUS LIKE 'tc_is_primary';
+
+tdbctl check routing;
+
+--connection spider0
+update mysql.servers set Host='127.0.0.2' where Server_name='SPIDER0';
+
+--connection tdbctl0
+--error 12046
+tdbctl check routing;
+tdbctl flush routing;
+tdbctl check routing;

@@ -1,0 +1,43 @@
+select * from mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SHOW STATUS LIKE 'tc_is_primary';
+Variable_name	Value
+Tc_is_primary	1
+create database `my-test`;
+use `my-test`;
+CREATE TABLE `tb1` (
+`a` int(11) NOT NULL,
+`b` int(11) NOT NULL,
+PRIMARY KEY (`a`,`b`)
+);
+CREATE TABLE `tb-1` (
+`a` int(11) NOT NULL,
+`b` int(11) NOT NULL,
+PRIMARY KEY (`a`,`b`)
+);
+show create table `tb1`;
+Table	Create Table
+tb1	CREATE TABLE `tb1` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`,`b`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+show create table `tb-1`;
+Table	Create Table
+tb-1	CREATE TABLE `tb-1` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`,`b`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+DROP TABLE IF EXISTS `tb1`;
+DROP TABLE IF EXISTS `tb-1`;

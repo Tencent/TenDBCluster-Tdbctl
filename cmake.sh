@@ -12,6 +12,7 @@ usage(){
     echo -e " -i --install		do install"
     echo -e " --test			do mysql-test-run"
     echo -e " --debug		compile with debug info"
+    echo -e " --bld-dir     build directory"
     echo -e "--------------------------------------------------------"
     echo -e "  version		default 2.0"
     echo -e "  debug			default to false"
@@ -35,7 +36,7 @@ install_dir=/usr/local/tdbctl
 gccdir=/usr/local/gcc-5.5.0
 export LD_LIBRARY_PATH=$gccdir/lib64/:$LD_LIBRARY_PATH
 
-TEMP=`getopt -o b:d:hitv: --long debug,test,help,install,tar,version:,directory:,boost-dir:,verion: \
+TEMP=`getopt -o b:d:hitv: --long debug,test,help,install,tar,version:,directory:,boost-dir:,verion:,bld-dir: \
 	-n "Try $0 --help for more information" -- "$@"`
 
 if [ $? != 0 ]
@@ -61,6 +62,7 @@ do
 	-b|--boost-dir)	boost_dir=$2; shift 2;;
 	--debug)	debug=1; shift;;
 	--test)		do_test=1; shift;;
+  --bld-dir) bld_dir=$2; shift 2;;
 	--) shift ; break;;
 	*) usage;
 	esac

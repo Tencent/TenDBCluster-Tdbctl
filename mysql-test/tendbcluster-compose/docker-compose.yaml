@@ -1,0 +1,353 @@
+version: '3.9'
+networks:
+  mynetwork:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+          gateway: 172.18.0.1
+services:
+  master0:
+    image: mirrors.tencent.com/build/blueking/tendb-5.7.20:3.4.2_v1
+    networks:
+      mynetwork:
+          ipv4_address: 172.18.0.2
+    container_name: master0
+    volumes:
+      - ./data/master0:/data1
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+    command: [
+            "mysqld",
+            "--defaults-file=/etc/my.cnf",
+            "--user=mysql",
+            "--server-id=1",
+            "--character-set-server=utf8",
+            "--skip-name-resolve",
+            "--default-storage-engine=innodb",
+            "--innodb_file_per_table=1",
+            "--innodb_flush_log_at_trx_commit=0",
+            "--replicate-wild-ignore-table=mysql.%",
+            "--skip-external-locking"]
+    ports:
+      - "30000:3306"
+    #restart: on-failure:3
+    #healthcheck:
+    #  test: ["CMD", "mysqladmin", "-h127.0.0.1", "-uroot", "-p123", "-P3306", "ping"]
+    #  interval: 1s
+    #  timeout: 3s
+    #  retries: 30
+  master1:
+    image: mirrors.tencent.com/build/blueking/tendb-5.7.20:3.4.2_v1
+    networks:
+      mynetwork:
+        ipv4_address: 172.18.0.3
+    container_name: master1
+    volumes:
+      - ./data/master1:/data1
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+    command: [
+            "mysqld",
+            "--defaults-file=/etc/my.cnf",
+            "--user=mysql",
+            "--server-id=2",
+            "--character-set-server=utf8",
+            "--skip-name-resolve",
+            "--default-storage-engine=innodb",
+            "--innodb_file_per_table=1",
+            "--innodb_flush_log_at_trx_commit=0",
+            "--replicate-wild-ignore-table=mysql.%",
+            "--skip-external-locking"]
+    ports:
+      - "30001:3306"
+    #restart: on-failure:3
+    #healthcheck:
+    #  test: ["CMD", "mysqladmin", "-h127.0.0.1", "-uroot", "-p123", "-P3306", "ping"]
+    #  interval: 1s
+    #  timeout: 3s
+    #  retries: 30
+  slave0:
+    image: mirrors.tencent.com/build/blueking/tendb-5.7.20:3.4.2_v1
+    networks:
+      mynetwork:
+        ipv4_address: 172.18.0.4
+    container_name: slave0 
+    volumes:
+      - ./data/slave0:/data1
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+    command: [
+            "mysqld",
+            "--defaults-file=/etc/my.cnf",
+            "--user=mysql",
+            "--server-id=3",
+            "--character-set-server=utf8",
+            "--skip-name-resolve",
+            "--default-storage-engine=innodb",
+            "--innodb_file_per_table=1",
+            "--innodb_flush_log_at_trx_commit=0",
+            "--replicate-wild-ignore-table=mysql.%",
+            "--skip-external-locking"]
+    ports:
+      - "40000:3306"
+    #restart: on-failure:3
+    #healthcheck:
+    #  test: ["CMD", "mysqladmin", "-h127.0.0.1", "-uroot", "-p123", "-P3306", "ping"]
+    #  interval: 1s
+    #  timeout: 3s
+    #  retries: 30
+  slave1:
+    image: mirrors.tencent.com/build/blueking/tendb-5.7.20:3.4.2_v1
+    networks:
+      mynetwork:
+        ipv4_address: 172.18.0.5
+    container_name: slave1
+    volumes:
+      - ./data/slave1:/data1
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+    command: [
+            "mysqld",
+            "--defaults-file=/etc/my.cnf",
+            "--user=mysql",
+            "--server-id=4",
+            "--character-set-server=utf8",
+            "--skip-name-resolve",
+            "--default-storage-engine=innodb",
+            "--innodb_file_per_table=1",
+            "--innodb_flush_log_at_trx_commit=0",
+            "--replicate-wild-ignore-table=mysql.%",
+            "--skip-external-locking"]
+    ports:
+      - "40001:3306"
+    #restart: on-failure:3
+    #healthcheck:
+    #  test: ["CMD", "mysqladmin", "-h127.0.0.1", "-uroot", "-p123", "-P3306", "ping"]
+    #  interval: 1s
+    #  timeout: 3s
+    #  retries: 30
+  spider0:
+    image: mirrors.tencent.com/build/blueking/tspider3:3.7.8_v1
+    networks:
+      mynetwork:
+        ipv4_address: 172.18.0.6
+    container_name: spider0
+    volumes:
+      - ./data/spider0:/data1
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+    command: [
+            "mysqld",
+            "--defaults-file=/etc/my.cnf",
+            "--user=mysql",
+            "--socket=/data1/mysqldata/mysql.sock",
+            "--character-set-server=utf8",
+            "--skip-name-resolve",
+            "--default-storage-engine=innodb",
+            "--innodb_file_per_table=1",
+            "--innodb_flush_log_at_trx_commit=0",
+            "--replicate-wild-ignore-table=mysql.%",
+            "--skip-external-locking",
+            "--port=3306"]
+    ports:
+      - "35000:3306"
+    #restart: on-failure:3
+    #healthcheck:
+    #  test: ["CMD", "mysqladmin", "-h127.0.0.1", "-uroot", "-p123", "-P3306", "ping"]
+    #  interval: 1s
+    #  timeout: 3s
+    #  retries: 30
+  spider1:
+    image: mirrors.tencent.com/build/blueking/tspider3:3.7.8_v1
+    networks:
+      mynetwork:
+        ipv4_address: 172.18.0.7
+    container_name: spider1
+    volumes:
+      - ./data/spider1:/data1
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+    command: [
+            "mysqld",
+            "--defaults-file=/etc/my.cnf",
+            "--user=mysql",
+            "--socket=/data1/mysqldata/mysql.sock",
+            "--character-set-server=utf8",
+            "--skip-name-resolve",
+            "--default-storage-engine=innodb",
+            "--innodb_file_per_table=1",
+            "--innodb_flush_log_at_trx_commit=0",
+            "--replicate-wild-ignore-table=mysql.%",
+            "--skip-external-locking",
+            "--port=3306"]
+    ports:
+      - "35001:3306"
+    #restart: on-failure:3
+    #healthcheck:
+    #  test: ["CMD", "mysqladmin", "-h127.0.0.1", "-uroot", "-p123", "-P3306", "ping"]
+    #  interval: 1s
+    #  timeout: 3s
+    #  retries: 30
+  spider2:
+    image: mirrors.tencent.com/build/blueking/tspider3:3.7.8_v1
+    networks:
+      mynetwork:
+        ipv4_address: 172.18.0.8
+    container_name: spider2
+    volumes:
+      - ./data/spider2:/data1
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+    command: [
+            "mysqld",
+            "--defaults-file=/etc/my.cnf",
+            "--user=mysql",
+            "--socket=/data1/mysqldata/mysql.sock",
+            "--character-set-server=utf8",
+            "--skip-name-resolve",
+            "--default-storage-engine=innodb",
+            "--innodb_file_per_table=1",
+            "--innodb_flush_log_at_trx_commit=0",
+            "--replicate-wild-ignore-table=mysql.%",
+            "--skip-external-locking",
+            "--port=3306"]
+    ports:
+      - "35002:3306"
+    #restart: on-failure:3
+    #healthcheck:
+    #  test: ["CMD", "mysqladmin", "-h127.0.0.1", "-uroot", "-p123", "-P3306", "ping"]
+    #  interval: 1s
+    #  timeout: 3s
+    #  retries: 30
+  ctl0:
+    image: tendbcluster/tdbctl:test
+    networks:
+      mynetwork:
+        ipv4_address: 172.18.0.9
+    container_name: ctl0
+    volumes:
+      - ./data/ctl0:/data1
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+    command: [
+            "mysqld",
+            "--defaults-file=/etc/my.cnf",
+            "--user=mysql",
+            "--server-id=1",
+            "--character-set-server=utf8",
+            "--skip-name-resolve",
+            "--default-storage-engine=innodb",
+            "--innodb_file_per_table=1",
+            "--innodb_flush_log_at_trx_commit=0",
+            "--replicate-wild-ignore-table=mysql.%",
+            "--skip-external-locking",
+            "--gtid_mode=ON",
+            "--enforce-gtid-consistency=ON",
+            "--loose-rpl_semi_sync_master_enabled=1",
+            "--loose-rpl_semi_sync_slave_enabled=1"]
+    ports:
+      - "46000:3306"    
+    #restart: on-failure:3
+    #healthcheck:
+    #  test: ["CMD", "mysqladmin", "-h127.0.0.1", "-uroot", "-p123", "-P3306", "ping"]
+    #  interval: 1s
+    #  timeout: 3s
+    #  retries: 30
+  ctl1:
+    image: tendbcluster/tdbctl:test
+    networks:
+      mynetwork:
+        ipv4_address: 172.18.0.10
+    container_name: ctl1
+    volumes:
+      - ./data/ctl1:/data1
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+    command: [
+            "mysqld",
+            "--defaults-file=/etc/my.cnf",
+            "--user=mysql",
+            "--server-id=2",
+            "--character-set-server=utf8",
+            "--skip-name-resolve",
+            "--default-storage-engine=innodb",
+            "--innodb_file_per_table=1",
+            "--innodb_flush_log_at_trx_commit=0",
+            "--replicate-wild-ignore-table=mysql.%",
+            "--skip-external-locking",
+            "--gtid_mode=ON",
+            "--enforce-gtid-consistency=ON",
+            "--loose-rpl_semi_sync_master_enabled=1",
+            "--loose-rpl_semi_sync_slave_enabled=1"]
+    ports:
+      - "46001:3306"
+    #restart: on-failure:3
+    #healthcheck:
+    #  test: ["CMD", "mysqladmin", "-h127.0.0.1", "-uroot", "-p123", "-P3306", "ping"]
+    #  interval: 1s
+    #  timeout: 3s
+    #  retries: 30
+  ctl2:
+    image: tendbcluster/tdbctl:test
+    networks:
+      mynetwork:
+        ipv4_address: 172.18.0.11
+    container_name: ctl2
+    volumes:
+      - ./data/ctl2:/data1
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+    command: [
+            "mysqld",
+            "--defaults-file=/etc/my.cnf",
+            "--user=mysql",
+            "--server-id=3",
+            "--character-set-server=utf8",
+            "--skip-name-resolve",
+            "--default-storage-engine=innodb",
+            "--innodb_file_per_table=1",
+            "--innodb_flush_log_at_trx_commit=0",
+            "--replicate-wild-ignore-table=mysql.%",
+            "--skip-external-locking",
+            "--gtid_mode=ON",
+            "--enforce-gtid-consistency=ON",
+            "--loose-rpl_semi_sync_master_enabled=1",
+            "--loose-rpl_semi_sync_slave_enabled=1"]
+    ports:
+      - "46002:3306"
+    #restart: on-failure:3
+    #healthcheck:
+    #  test: ["CMD", "mysqladmin", "-h127.0.0.1", "-uroot", "-p123", "-P3306", "ping"]
+    #  interval: 1s
+    #  timeout: 3s
+    #  retries: 30
+  clustersetup:
+    image: tendbcluster/tdbctl:test
+    networks:
+      - mynetwork
+    depends_on:
+      master0:
+        condition: service_healthy
+      master1:
+        condition: service_healthy
+      slave0:
+        condition: service_healthy
+      slave1:
+        condition: service_healthy
+      spider0:
+        condition: service_healthy
+      spider1:
+        condition: service_healthy
+      spider2:
+        condition: service_healthy
+      ctl0:
+        condition: service_healthy
+      ctl1:
+        condition: service_healthy
+      ctl2:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - ./cluster-init/:/cluster-init
+    entrypoint: ["bash", "/cluster-init/init-cluster.sh"]  
