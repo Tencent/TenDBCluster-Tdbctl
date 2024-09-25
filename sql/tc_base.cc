@@ -5064,8 +5064,17 @@ static void append_grant_privileges(const AUTH_INFO &auth, uint grant,
 
 static bool drop_existing_same_user(const AUTH_INFO &auth, MYSQL *mysql) {
   std::string sql;
-  if(auth.wrapper == TDBCTL_WRAPPER)
-    sql += "set tc_admin = 0;";
+  MYSQL_RES *res;
+  if(auth.wrapper == TDBCTL_WRAPPER){
+    string set_sql = "set tc_admin=0;";
+    if (mysql_real_query(mysql, set_sql.c_str(),
+                         set_sql.length())) {
+      return true;
+    }
+    if ((res = mysql_store_result(mysql))){
+      mysql_free_result(res);
+    }
+  }
   sql += "select user,host from mysql.user where ";
   sql += "user = " + TC_STR_SINGLE_QUOTED(auth.user);
   sql += "and host = " + TC_STR_SINGLE_QUOTED(auth.host);
@@ -5074,7 +5083,9 @@ static bool drop_existing_same_user(const AUTH_INFO &auth, MYSQL *mysql) {
                               sql.length())) {
     return true;
   }
-  MYSQL_RES *res = mysql_store_result(mysql);
+  if((res = mysql_store_result(mysql)) == NULL){
+    return false;
+  }
   MYSQL_ROW row;
   bool found = false;
   while ((row = mysql_fetch_row(res))) {
@@ -5096,6 +5107,12 @@ static bool drop_existing_same_user(const AUTH_INFO &auth, MYSQL *mysql) {
                          drop_sql.length())) {
       return true;
     }
+    do {
+      MYSQL_RES *result = mysql_store_result(mysql);
+      if (result != NULL) {
+        mysql_free_result(result);
+      }
+    } while (tc_mysql_next_result(mysql) == 0);
   }
   return false;
 }
