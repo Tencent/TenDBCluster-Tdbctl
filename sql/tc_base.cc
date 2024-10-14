@@ -3356,8 +3356,10 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
     real_connect_option = CLIENT_INTERACTIVE | CLIENT_MULTI_STATEMENTS;
     if (!mysql_real_connect(mysql, host.c_str(), user.c_str(), passwd.c_str(),
                             "", port, NULL, real_connect_option)) {
-      sql_print_warning("tc connect fail: error code is %d, error message: %s",
-                        mysql_errno(mysql), mysql_error(mysql));
+      //sql_print_warning("tc connect fail: error code is %d, error message: %s",
+      //                  mysql_errno(mysql), mysql_error(mysql));
+      sql_print_error("tc connect fail[host : %s, port : %d]: error code is %d, error message: %s",
+                      host.c_str(), port, mysql_errno(mysql), mysql_error(mysql));
       if (mysql)
         mysql_close(mysql);
       if (!connect_retry_count)
@@ -3622,6 +3624,8 @@ bool tc_exec_sql_paral(
     tc_exec_info exec_info = its2->second;
     if (exec_info.err_code > 0)
     {
+      sql_print_error("parallel execute sql, server[%s], exec_sql : %s, err_msg : %s",
+                      ipport_or_servername.c_str(), exec_sql.c_str(), exec_info.err_msg.c_str());
       result = TRUE;
     }
   }
