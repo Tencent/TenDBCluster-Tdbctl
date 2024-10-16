@@ -294,12 +294,10 @@ bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
 
   FOREIGN_SERVER* dump_server = nullptr;
   for(auto it = server_list.begin(); it != server_list.end(); it ++) {
-    if(!strcasecmp((*it)->scheme, lex->server_options.get_scheme())) {
-      if(!(strcasecmp((*it)->host, lex->server_options.get_host()) == 0 &&
-           (*it)->port == lex->server_options.get_port())) {
-        dump_server = *it;
-        break;
-      }
+    if(!(strcasecmp((*it)->host, lex->server_options.get_host()) == 0 &&
+       (*it)->port == lex->server_options.get_port())) {
+      dump_server = *it;
+      break;
     }
   }
 
