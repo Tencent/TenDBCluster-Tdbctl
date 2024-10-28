@@ -3393,7 +3393,7 @@ mysql_execute_command(THD *thd, bool first_level)
         create_info.table_charset = 0;
       }
 
-      if (tc_ignore_partitioning_for_create_table)
+      if ((tc_admin == 1) && tc_ignore_partitioning_for_create_table)
       {
         /*
           Ignore the partitioning definition of a CREATE TABLE query. This is
