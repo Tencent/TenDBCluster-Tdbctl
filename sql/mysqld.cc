@@ -442,6 +442,8 @@ ulong tc_check_availability_interval = 10;
 ulong tc_partition_admin_interval = 86400;
 ulong tc_partition_admin_time = 3600;
 ulong tc_partition_init_interval = 300;
+ulong tc_internal_connection_timeout = 2;
+ulong tc_internal_connection_retry_times = 3;
 my_bool tc_dry_run_log =  false;
 
 int tdbctl_simple_enable_primary(THD *thd);

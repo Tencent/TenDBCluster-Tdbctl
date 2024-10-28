@@ -198,6 +198,8 @@ extern ulong tc_check_availability_interval;
 extern ulong tc_partition_admin_interval;
 extern ulong tc_partition_init_interval;
 extern ulong tc_partition_admin_time;
+extern ulong tc_internal_connection_timeout;
+extern ulong tc_internal_connection_retry_times;
 extern char *tc_skip_dump_db_list;
 extern ulong tc_max_prepared_time;
 extern my_bool opt_old_style_user_limits, trust_function_creators;

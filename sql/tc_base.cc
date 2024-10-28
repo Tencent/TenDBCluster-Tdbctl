@@ -3336,8 +3336,8 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
                        const string &passwd, const string &wrapper) {
   int read_timeout = TC_CONN_READ_TIMEOUT;
   int write_timeout = TC_CONN_WRITE_TIMEOUT;
-  int connect_timeout = TC_CONN_CONNECT_TIMEOUT;
-  uint connect_retry_count = TC_CONN_MAX_RETRIES_ON_FAILS;
+  int connect_timeout = tc_internal_connection_timeout;
+  uint connect_retry_count = tc_internal_connection_retry_times;
   uint real_connect_option = 0;
   uint ssl_mode = SSL_MODE_DISABLED;
   MYSQL *mysql;
@@ -4862,8 +4862,10 @@ bool Cluster_conn_manager::identify_self() {
     /* Check if it is the same as this server's */
     if ((found = !native_strncasecmp(row[0], server_uuid_ptr, UUID_LENGTH))) {
       my_server_name = server_name;
+      mysql_free_result(res);
       break;
     }
+    mysql_free_result(res);
   }
 
   DBUG_RETURN(!found);
