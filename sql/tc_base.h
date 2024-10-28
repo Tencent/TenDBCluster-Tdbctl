@@ -529,7 +529,7 @@ string tcadmin_get_shard_range_by_index(
 
 void tc_parse_spider_create_table(TC_PARSE_RESULT *tc_parse_result_t,
                                   bool is_unsigned_key, size_t part_start);
-void tc_parse_remote_create_table(TC_PARSE_RESULT *tc_parse_result_t);
+void tc_parse_remote_create_table(TC_PARSE_RESULT *tc_parse_result_t, size_t part_start);
 
 
 void tc_parse_spider_rename_table(

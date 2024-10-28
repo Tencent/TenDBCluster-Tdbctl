@@ -1325,12 +1325,22 @@ void tc_parse_result_destory(TC_PARSE_RESULT *parse_result_t)
 }
 
 
-void tc_parse_remote_create_table(TC_PARSE_RESULT *tc_parse_result_t)
+void tc_parse_remote_create_table(TC_PARSE_RESULT *tc_parse_result_t, size_t part_start)
 {
     map<string, string> map;
     ostringstream  sstr;
     string server_name_pre = tdbctl_mysql_wrapper_prefix;
     string create_sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
+
+    if (tc_ignore_partitioning_for_create_table && part_start > 0) {
+    /*
+      PARTITION BY is present and tc_ignore_partitioning_for_create_table is ON, remove it for remote node. 
+      Note that it is assumed (mostly the case) that the PARTITION clause is the last part of the
+      query, so we simply do a substr().
+    */
+      create_sql = create_sql.substr(0, part_start);
+    }
+  
     string db_name = tc_parse_result_t->db_name;
     string db_org1 = " " + db_name + "\\.";
     string db_org2 = "`" + db_name + "`\\.";
@@ -2299,7 +2309,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       //parse spider sql
       tc_parse_spider_create_table(tc_parse_result_t, is_unsigned_key,
                                    lex->partition_start_pos);
-      tc_parse_remote_create_table(tc_parse_result_t);
+      tc_parse_remote_create_table(tc_parse_result_t, lex->partition_start_pos);
       tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
 
       break;
