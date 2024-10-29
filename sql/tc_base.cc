@@ -3386,7 +3386,7 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
              !strcasecmp(wrapper.c_str(), SPIDER_SLAVE_WRAPPER)) {
     /* Disable @@ddl_execute_by_ctl for Spider connections */
     if (mysql_real_query(
-            mysql, C_STRING_WITH_LEN("SET SESSION ddl_execute_by_ctl=0"))) {
+            mysql, C_STRING_WITH_LEN("/*!50600 SET SESSION ddl_execute_by_ctl=0 */"))) {
       /*
         ER_UNKNOWN_SYSTEM_VARIABLE can occur when dealing with lower versions
         of Spider.
