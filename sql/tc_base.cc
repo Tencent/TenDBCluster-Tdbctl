@@ -3346,8 +3346,8 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
                        const string &passwd, const string &wrapper) {
   int read_timeout = TC_CONN_READ_TIMEOUT;
   int write_timeout = TC_CONN_WRITE_TIMEOUT;
-  int connect_timeout = TC_CONN_CONNECT_TIMEOUT;
-  uint connect_retry_count = TC_CONN_MAX_RETRIES_ON_FAILS;
+  int connect_timeout = tc_internal_connection_timeout;
+  uint connect_retry_count = tc_internal_connection_retry_times;
   uint real_connect_option = 0;
   uint ssl_mode = SSL_MODE_DISABLED;
   MYSQL *mysql;
@@ -3366,8 +3366,10 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
     real_connect_option = CLIENT_INTERACTIVE | CLIENT_MULTI_STATEMENTS;
     if (!mysql_real_connect(mysql, host.c_str(), user.c_str(), passwd.c_str(),
                             "", port, NULL, real_connect_option)) {
-      sql_print_warning("tc connect fail: error code is %d, error message: %s",
-                        mysql_errno(mysql), mysql_error(mysql));
+      //sql_print_warning("tc connect fail: error code is %d, error message: %s",
+      //                  mysql_errno(mysql), mysql_error(mysql));
+      sql_print_error("tc connect fail[host : %s, port : %d]: error code is %d, error message: %s",
+                      host.c_str(), port, mysql_errno(mysql), mysql_error(mysql));
       if (mysql)
         mysql_close(mysql);
       if (!connect_retry_count)
@@ -3632,6 +3634,8 @@ bool tc_exec_sql_paral(
     tc_exec_info exec_info = its2->second;
     if (exec_info.err_code > 0)
     {
+      sql_print_error("parallel execute sql, server[%s], exec_sql : %s, err_msg : %s",
+                      ipport_or_servername.c_str(), exec_sql.c_str(), exec_info.err_msg.c_str());
       result = TRUE;
     }
   }
@@ -4868,8 +4872,10 @@ bool Cluster_conn_manager::identify_self() {
     /* Check if it is the same as this server's */
     if ((found = !native_strncasecmp(row[0], server_uuid_ptr, UUID_LENGTH))) {
       my_server_name = server_name;
+      mysql_free_result(res);
       break;
     }
+    mysql_free_result(res);
   }
 
   DBUG_RETURN(!found);

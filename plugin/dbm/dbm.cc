@@ -55,8 +55,10 @@ using std::string;
 /* Indices of columns from SHOW SLAVE STATUS results */
 #define MASTER_HOST_IDX 1        /* Master_Host */
 #define MASTER_PORT_IDX 3        /* Master_Port */
+#define RELAY_MASTER_LOG_FILE_IDX 9 /* Relay_Master_Log_File */
 #define SLAVE_IO_RUNNING_IDX 10  /* Slave_IO_Running */
 #define SLAVE_SQL_RUNNING_IDX 11 /* Slave_SQL_Running */
+#define EXEC_MASTER_LOG_POS_IDX 21 /* Exec_Master_Log_Pos */
 
 #define enable_primary_error(A, B)                                             \
   do {                                                                         \
@@ -86,6 +88,8 @@ ST_FIELD_INFO tdbctl_nodes_fields_info[] = {
      SKIP_OPEN_TABLE},
     {"STATUS", 64, MYSQL_TYPE_STRING, 0, 0, "Status", SKIP_OPEN_TABLE},
     {"MESSAGE", 512, MYSQL_TYPE_STRING, 0, 0, "Message", SKIP_OPEN_TABLE},
+    {"REPLICATION_INFO", 1024, MYSQL_TYPE_JSON, 0, 0,
+     "Replication_info", SKIP_OPEN_TABLE},
     {0, 0, MYSQL_TYPE_NULL, 0, 0, 0, 0}};
 
 /*
@@ -150,7 +154,8 @@ static void examine_tdbctl_node(THD *thd, Cluster_conn_manager *conn_mgr,
                                 const std::string &server_name, MYSQL *mysql,
                                 std::string &repl_master_name,
                                 std::string &cluster_role, std::string &status,
-                                std::string &message) {
+                                std::string &message,
+                                std::string &repl_info) {
   MYSQL_ROW row;
   MYSQL_RES *res;
   ulonglong row_count;
@@ -164,6 +169,7 @@ static void examine_tdbctl_node(THD *thd, Cluster_conn_manager *conn_mgr,
   cluster_role.clear();
   status.clear();
   message.clear();
+  repl_info.clear();
 
   if (mysql) {
     /* STAGE 1: Execute SHOW SLAVE STATUS to gain replication info */
@@ -193,6 +199,27 @@ static void examine_tdbctl_node(THD *thd, Cluster_conn_manager *conn_mgr,
                    mysql_fetch_lengths(res)[SLAVE_IO_RUNNING_IDX]),
             string(row[SLAVE_SQL_RUNNING_IDX],
                    mysql_fetch_lengths(res)[SLAVE_SQL_RUNNING_IDX]));
+        // repl_info store the replication info in json format
+        repl_info += "{";
+        repl_info += "\"Master_Host\" : \"" +
+                     string(row[MASTER_HOST_IDX],
+                            mysql_fetch_lengths(res)[MASTER_HOST_IDX]) + "\", ";
+        repl_info += "\"Master_Port\" : " +
+                     string(row[MASTER_PORT_IDX],
+                            mysql_fetch_lengths(res)[MASTER_PORT_IDX]) + ", ";
+        repl_info += "\"Slave_IO_Running\" : \"" +
+                     string(row[SLAVE_IO_RUNNING_IDX],
+                            mysql_fetch_lengths(res)[SLAVE_IO_RUNNING_IDX]) + "\", ";
+        repl_info += "\"Slave_SQL_Running\" : \"" +
+                     string(row[SLAVE_SQL_RUNNING_IDX],
+                            mysql_fetch_lengths(res)[SLAVE_SQL_RUNNING_IDX]) + "\", ";
+        repl_info += "\"Relay_Master_Log_File\" : \"" +
+                     string(row[RELAY_MASTER_LOG_FILE_IDX],
+                            mysql_fetch_lengths(res)[RELAY_MASTER_LOG_FILE_IDX]) + "\", ";
+        repl_info += "\"Exec_Master_Log_Pos\" : \"" +
+                     string(row[EXEC_MASTER_LOG_POS_IDX],
+                            mysql_fetch_lengths(res)[EXEC_MASTER_LOG_POS_IDX]) + "\"";
+        repl_info += '}';
       }
       mysql_free_result(res);
     }
@@ -255,7 +282,7 @@ static int check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
   map<string, MYSQL *>::const_iterator conn_it;
   uint replica_cnt = 0;
   string this_server;
-  string repl_master_name, cluster_role, status, message;
+  string repl_master_name, cluster_role, status, message, repl_info;
 
   if (conn_mgr->identify_self()) {
     enable_primary_error(thd, ERR_IDENTIFY_SELF_STR);
@@ -268,7 +295,7 @@ static int check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
   /* Check self first */
   {
     examine_tdbctl_node(thd, conn_mgr, this_server, conns[this_server],
-                        repl_master_name, cluster_role, status, message);
+                        repl_master_name, cluster_role, status, message, repl_info);
     if (cluster_role == CLUSTER_ROLE_PRIMARY_STR)
       /* Already a Primary, do nothing */
       return 0;
@@ -298,7 +325,7 @@ static int check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
       continue;
 
     examine_tdbctl_node(thd, conn_mgr, server_name, mysql, repl_master_name,
-                        cluster_role, status, message);
+                        cluster_role, status, message, repl_info);
 
     /* ERROR: Already exists another Primary */
     if (cluster_role == CLUSTER_ROLE_PRIMARY_STR ||
@@ -351,13 +378,13 @@ int i_s_tdbctl_nodes_fill(THD *thd, TABLE_LIST *tables, Item *cond) {
   auths = conn_mgr->get_auth_map(NODE_TYPE_CTL);
   conns = conn_mgr->get_conn_map(NODE_TYPE_CTL);
   for (conn_it = conns.begin(); conn_it != conns.end(); ++conn_it) {
-    string repl_master_name, cluster_role, status, message;
+    string repl_master_name, cluster_role, status, message, repl_info;
     const string &server_name = conn_it->first;
     MYSQL *mysql = conn_it->second;
     AUTH_INFO auth = auths[server_name];
 
     examine_tdbctl_node(thd, conn_mgr, server_name, mysql, repl_master_name,
-                        cluster_role, status, message);
+                        cluster_role, status, message, repl_info);
 
     restore_record(table, s->default_values);
     /* SERVER_NAME */
@@ -380,6 +407,9 @@ int i_s_tdbctl_nodes_fill(THD *thd, TABLE_LIST *tables, Item *cond) {
     /* MESSAGE (could be empty) */
     table->field[6]->store(message.c_str(), message.length(),
                            system_charset_info);
+    /* Replication info */
+    table->field[7]->store(repl_info.c_str(), repl_info.length(),
+                           &my_charset_bin);
     schema_table_store_record(thd, table);
   }
 
@@ -426,7 +456,7 @@ int dbm_get_primary(THD *thd) {
   map<string, MYSQL *> conns;
   map<string, MYSQL *>::const_iterator conn_it, found_primary;
   string this_server;
-  string repl_master_name, cluster_role, status, message;
+  string repl_master_name, cluster_role, status, message, repl_info;
 
   field_list.push_back(new Item_empty_string("SERVER_NAME", NAME_CHAR_LEN));
   field_list.push_back(new Item_empty_string("HOST", NAME_CHAR_LEN));
@@ -459,7 +489,7 @@ int dbm_get_primary(THD *thd) {
     MYSQL *mysql = conn_it->second;
 
     examine_tdbctl_node(thd, conn_mgr, server_name, mysql, repl_master_name,
-                        cluster_role, status, message);
+                        cluster_role, status, message, repl_info);
 
     if (cluster_role == CLUSTER_ROLE_PRIMARY_STR &&
         status == NODE_STATUS_ONLINE_STR) { /* Found a valid Primary */

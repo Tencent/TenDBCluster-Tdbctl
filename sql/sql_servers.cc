@@ -1526,6 +1526,7 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
 
   replace_sql_all.erase(replace_sql_all.end() - 1);
   replace_sql_all += ";commit";
+  replace_sql_all += ";flush tables with no block;";
   mysql_rwlock_unlock(&THR_LOCK_servers);
   return replace_sql_all;
 }

@@ -6555,3 +6555,15 @@ static Sys_var_mybool Sys_tc_ignore_partitioning_for_create_table(
     "tc_ignore_partitioning_for_create_table",
     "Whether to ignore the PARTITION clause when creating a table under non-admin mode.",
     TDBCTL GLOBAL_VAR(tc_ignore_partitioning_for_create_table), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+static Sys_var_ulong Sys_tc_internal_connection_timeout(
+        "tc_internal_connection_timeout",
+        "set the timeout of the internal connections connected to remote/spider nodes",
+        TDBCTL GLOBAL_VAR(tc_internal_connection_timeout), CMD_LINE(REQUIRED_ARG),
+        VALID_RANGE(0, 3600), DEFAULT(2), BLOCK_SIZE(1));
+
+static Sys_var_ulong Sys_tc_internal_connection_retry_times(
+        "tc_internal_connection_retry_times",
+        "set the retry times of the internal connections connected to remote/spider nodes",
+        TDBCTL GLOBAL_VAR(tc_internal_connection_retry_times), CMD_LINE(REQUIRED_ARG),
+        VALID_RANGE(0, 60), DEFAULT(3), BLOCK_SIZE(1));

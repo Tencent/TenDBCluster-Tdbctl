@@ -55,7 +55,7 @@ enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 
 #define TC_CONN_READ_TIMEOUT 600
 #define TC_CONN_WRITE_TIMEOUT 600
-#define TC_CONN_CONNECT_TIMEOUT 60
+#define TC_CONN_CONNECT_TIMEOUT 5
 #define TC_CONN_MAX_RETRIES_ON_FAILS 3
 
 //all spider node(include spider slave node) need execute sql
