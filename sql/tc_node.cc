@@ -195,7 +195,7 @@ int tc_restore_to_node(
       my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
       return 1;
     }
-    sql = "/*!set global ddl_execute_by_ctl=0*/";
+    sql = "/*!50600 set global ddl_execute_by_ctl=0*/";
     if(tc_exec_sql_without_result(conn, sql, &exec_info))
     {
       my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
