@@ -64,9 +64,9 @@ public:
             HA_READ_ORDER | HA_KEYREAD_ONLY);
   }
   /* The following defines can be increased if necessary */
-#define TOKUDB_MAX_KEY	64		/* Max allowed keys */
+#define TOKUDB_MAX_KEY	MAX_KEY		/* Max allowed keys */
 #define TOKUDB_MAX_KEY_SEG	16		/* Max segments for key */
-#define TOKUDB_MAX_KEY_LENGTH 1000
+#define TOKUDB_MAX_KEY_LENGTH UINT_MAX32
   uint max_supported_keys()          const { return TOKUDB_MAX_KEY; }
   uint max_supported_key_length()    const { return TOKUDB_MAX_KEY_LENGTH; }
   uint max_supported_key_part_length() const { return TOKUDB_MAX_KEY_LENGTH; }
