@@ -2782,6 +2782,20 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
   mysql_mutex_unlock(&mi->data_lock);
 
   /*
+    We added "set tc_admin=0;" here to prevent the master-slave replication threads on the tdbctl node 
+    from forwarding behaviors during the execution of the "set" command, 
+    which could result in execution errors on the spider node or redundant connection issues.
+  */
+  if (mysql_real_query(mysql, STRING_WITH_LEN("SET TC_ADMIN=0")) != 0) {
+    mi->report(WARNING_LEVEL, mysql_errno(mysql),
+                "Notifying master by SET TC_ADMIN=0 failed with "
+                "error: %s", mysql_error(mysql));
+    mysql_free_result(mysql_store_result(mysql));
+    goto err;
+  }
+  mysql_free_result(mysql_store_result(mysql));
+
+  /*
     Compare the master and slave's clock. Do not die if master's clock is
     unavailable (very old master not supporting UNIX_TIMESTAMP()?).
   */
@@ -3095,15 +3109,6 @@ when it try to get the value of TIME_ZONE global variable from master.";
   if (DBUG_EVALUATE_IF("simulate_slave_unaware_checksum", 0, 1))
   {
     int rc;
-    rc= mysql_real_query(mysql, STRING_WITH_LEN("SET TC_ADMIN=0"));
-    if (rc != 0) {
-      mi->report(WARNING_LEVEL, mysql_errno(mysql),
-                 "Notifying master by SET TC_ADMIN=0 failed with "
-                 "error: %s", mysql_error(mysql));
-      mysql_free_result(mysql_store_result(mysql));
-      goto err;
-    }
-    mysql_free_result(mysql_store_result(mysql));
     const char query[]= "SET @master_binlog_checksum= @@global.binlog_checksum";
     master_res= NULL;
     //initially undefined
