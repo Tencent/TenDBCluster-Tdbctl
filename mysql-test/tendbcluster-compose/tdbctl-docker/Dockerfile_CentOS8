@@ -1,4 +1,6 @@
-FROM centos:7
+# If your compiler is based on CentOS8, use this dockerfile.
+
+FROM centos:8
 #MAINTAINER TenDB Development <jamxia@tencent.com>
 
 RUN groupadd -r mysql -g 202 && useradd -m -r -g 202 -d /home/mysql -G users -u 30019 mysql
@@ -18,9 +20,15 @@ COPY init-sql/* /docker-entrypoint-initdb.d/
 COPY healthcheck.sh /usr/bin/healthcheck.sh
 COPY ps-entry.sh /docker-entrypoint.sh
 
-RUN rpm -ivh http://mirrors.tencent.com/centos/7/os/x86_64/Packages/wget-1.14-18.el7_6.1.x86_64.rpm  \
-    && mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup \
-    && wget -O /etc/yum.repos.d/CentOS-Base.repo https://mirrors.tencent.com/repo/centos7_base.repo \
+RUN rpm -ivh https://mirrors.tencent.com/centos/8/BaseOS/x86_64/os/Packages/publicsuffix-list-dafsa-20180723-1.el8.noarch.rpm \
+    && rpm -ivh https://mirrors.tencent.com/centos/8/BaseOS/x86_64/os/Packages/libpsl-0.20.2-6.el8.x86_64.rpm \
+    && rpm -ivh https://mirrors.tencent.com/centos/8/AppStream/x86_64/os/Packages/wget-1.19.5-10.el8.x86_64.rpm \
+    && rm -rf /etc/yum.repos.d/* \
+    # && mv /etc/yum.repos.d/CentOS-Linux-BaseOS.repo /etc/yum.repos.d/CentOS-Linux-BaseOS.repo.backup \
+    # && wget -O /etc/yum.repos.d/CentOS-Linux-BaseOS.repo https://mirrors.tencent.com/repo/centos8_base.repo \
+    # && wget -O /etc/yum.repos.d/CentOS-Linux-AppStream.repo https://mirrors.tencent.com/repo/centos8-stream.repo \
+    # && wget -O /etc/yum.repos.d/CentOS-Linux-centos-vaultplus.repo https://mirrors.tencent.com/repo/centos8_vault_8.5.2111.repo \
+    && wget -O /etc/yum.repos.d/CentOS-Linux-BaseOS.repo https://mirrors.tencent.com/repo/centos8_base.repo.bak \
     && yum clean all \
     && yum makecache \
     && yum install -y \

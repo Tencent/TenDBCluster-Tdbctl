@@ -381,6 +381,8 @@ our $opt_xml_report;
 select(STDOUT);
 $| = 1; # Automatically flush STDOUT
 
+my $opt_dockerfile_name="Dockerfile";
+
 main();
 
 sub is_core_dump {
@@ -1319,7 +1321,8 @@ sub command_line_setup {
       # tdbctl-test
       'tdbctl-test'                     => \$opt_tdbctl_test,
       'skip-compilation-for-tdbctl'     => \$opt_skip_compilation_for_tdbctl,
-      'skip-build-docker-for-tdbctl'    => \$opt_skip_build_docker_for_tdbctl
+      'skip-build-docker-for-tdbctl'    => \$opt_skip_build_docker_for_tdbctl, 
+      'dockerfile=s'                    => \$opt_dockerfile_name
            );
 
   GetOptions(%options) or usage("Can't read options");
@@ -3830,12 +3833,13 @@ sub check_ports_free ($)
 
 sub remove_docker_compose {
   my $rm_compose_cmd = "cd tendbcluster-compose && docker-compose down && rm -r ./data && cd ..";
+  # my $rm_compose_cmd = "cd tendbcluster-compose && docker-compose down && sudo rm -r ./data && cd ..";  # try this if you have no permission to remove './dara' directory.
   my $result = system($rm_compose_cmd);
 
   if ($result == 0) {
-    print "命令执行成功\n";
+    print "remove_docker_compose执行成功\n";
   } else {
-    print "命令执行失败\n";
+    print "remove_docker_compose执行失败\n";
   }
 }
 
@@ -3860,7 +3864,7 @@ sub initialize_docker_compose {
   # produce docker image for tdbctl
   if(!$opt_skip_build_docker_for_tdbctl) {
     my $docker_cmd = "cd ./tendbcluster-compose/tdbctl-docker &&
-                  docker build . -t tendbcluster/tdbctl:test --network=host";
+                  docker build -f ./$opt_dockerfile_name -t tendbcluster/tdbctl:test --network=host .";
     $result = system($docker_cmd);
     if ($result == 0) {
       print "produce docker image for tdbctl 命令执行成功\n";
@@ -3878,6 +3882,21 @@ sub initialize_docker_compose {
 
   my $init_compose_cmd = "cd tendbcluster-compose && docker-compose up -d";
   $result = system($init_compose_cmd);
+
+  # The command "docker-compose up -d" may return before the entry script "init-cluster.sh" of the last container, clustersetup, is finished.
+  # This could cause subsequent test programs to run before the cluster initialization is complete, ultimately leading to test failures. 
+  # Therefore, we add the following code segment to make the program wait until the initialization work of the clustersetup container is completed before continuing execution.
+  my $initial_cluster_container = "clustersetup";  # container 'clustersetup' do initialization work for the cluster.
+
+  if($result == 0) {
+    my $exit_code = `docker wait $initial_cluster_container`;  # Wait until the status of "clustersetup" changes to "Exited".
+    if ($exit_code == 0) {
+        print "cluster initialization work is finished.\n";
+    } else {
+        print "Failed to wait for container $initial_cluster_container\n";
+        $result = 1;
+    }
+  }
 
   if ($result == 0) {
     print "initialize docker_compose 命令执行成功\n";
