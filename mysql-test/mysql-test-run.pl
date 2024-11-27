@@ -3887,9 +3887,9 @@ sub initialize_docker_compose {
   # This could cause subsequent test programs to run before the cluster initialization is complete, ultimately leading to test failures. 
   # Therefore, we add the following code segment to make the program wait until the initialization work of the clustersetup container is completed before continuing execution.
   my $initial_cluster_container = "clustersetup";  # container 'clustersetup' do initialization work for the cluster.
-
+  my $wait_initial_cmd = "docker wait $initial_cluster_container";
   if($result == 0) {
-    my $exit_code = `docker wait $initial_cluster_container`;  # Wait until the status of "clustersetup" changes to "Exited".
+    my $exit_code = system($wait_initial_cmd);  # Wait until the status of "clustersetup" changes to "Exited".
     if ($exit_code == 0) {
         print "cluster initialization work is finished.\n";
     } else {
