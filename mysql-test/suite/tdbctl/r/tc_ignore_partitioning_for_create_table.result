@@ -1,0 +1,174 @@
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SELECT @@session.tc_admin INTO @origin_tc_admin;
+SELECT @@global.tc_ignore_partitioning_for_create_table INTO @origin_tc_ignore_partition;
+SET tc_admin=0;
+SET GLOBAL tc_ignore_partitioning_for_create_table=1;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE tb1 (
+id INT NOT NULL,
+value INT NOT NULL
+) PARTITION BY KEY (id) PARTITIONS 2;
+SHOW CREATE TABLE tb1;
+Table	Create Table
+tb1	CREATE TABLE `tb1` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+/*!50100 PARTITION BY KEY (id)
+PARTITIONS 2 */
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb1';
+TABLE_NAME	PARTITION_METHOD	PARTITION_EXPRESSION	PARTITION_DESCRIPTION
+tb1	KEY	`id`	NULL
+tb1	KEY	`id`	NULL
+SET tc_admin=1;
+SET GLOBAL tc_ignore_partitioning_for_create_table=1;
+CREATE DATABASE test2;
+USE test2;
+CREATE TABLE tb2 (
+id INT NOT NULL,
+value INT NOT NULL,
+PRIMARY KEY(`id`)
+)ENGINE=SPIDER DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test2_0", table "tb2", server "SPT0"' ENGINE = SPIDER, 
+PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test2_1", table "tb2", server "SPT1"' ENGINE = SPIDER);
+SHOW CREATE TABLE tb2;
+Table	Create Table
+tb2	CREATE TABLE `tb2` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb2';
+TABLE_NAME	PARTITION_METHOD	PARTITION_EXPRESSION	PARTITION_DESCRIPTION
+tb2	NULL	NULL	NULL
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test2.tb2';
+Table	Create Table
+tb2	CREATE TABLE `tb2` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=SPIDER DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+ PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test2_0", table "tb2", server "SPT0"' ENGINE = SPIDER,
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test2_1", table "tb2", server "SPT1"' ENGINE = SPIDER)
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test2_0.tb2';
+Table	Create Table
+tb2	CREATE TABLE `tb2` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+CREATE TABLE tb3 (
+id INT NOT NULL,
+value INT NOT NULL,
+PRIMARY KEY(`id`)
+);
+SHOW CREATE TABLE tb3;
+Table	Create Table
+tb3	CREATE TABLE `tb3` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+TDBCTL CONNECT NODE SPIDER1 EXECUTE 'SHOW CREATE TABLE test2.tb3';
+Table	Create Table
+tb3	CREATE TABLE `tb3` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=SPIDER DEFAULT CHARSET=utf8
+ PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test2_0", table "tb3", server "SPT0"' ENGINE = SPIDER,
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test2_1", table "tb3", server "SPT1"' ENGINE = SPIDER)
+TDBCTL CONNECT NODE SPT1 EXECUTE 'SHOW CREATE TABLE test2_1.tb3';
+Table	Create Table
+tb3	CREATE TABLE `tb3` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+SET tc_admin=1;
+SET GLOBAL tc_ignore_partitioning_for_create_table=0;
+CREATE DATABASE test3;
+USE test3;
+CREATE TABLE tb4 (
+id INT NOT NULL,
+value INT NOT NULL,
+PRIMARY KEY(`id`)
+)ENGINE=SPIDER DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb4", server "SPT0"' ENGINE = SPIDER, 
+PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb4", server "SPT1"' ENGINE = SPIDER);
+ERROR HY000: This partition function is not allowed
+SELECT COUNT(*) AS tb4_exists_on_ctl0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb4';
+tb4_exists_on_ctl0
+0
+TDBCTL CONNECT NODE SPIDER0 EXECUTE "SELECT COUNT(*) AS tb4_exists_on_spider0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb4'";
+tb4_exists_on_spider0
+0
+TDBCTL CONNECT NODE SPT0 EXECUTE "SELECT COUNT(*) AS tb4_exists_on_remote0 FROM information_schema.tables WHERE table_schema = 'test3_0' AND table_name = 'tb4'";
+tb4_exists_on_remote0
+0
+CREATE TABLE tb5 (
+id INT NOT NULL,
+value INT NOT NULL,
+PRIMARY KEY(`id`)
+) PARTITION BY RANGE (id % 2) (
+PARTITION `p0` VALUES LESS THAN (1),
+PARTITION `p1` VALUES LESS THAN (2)
+);
+SHOW CREATE TABLE tb5;
+Table	Create Table
+tb5	CREATE TABLE `tb5` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+/*!50100 PARTITION BY RANGE (id % 2)
+(PARTITION p0 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (2) ENGINE = InnoDB) */
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb5';
+TABLE_NAME	PARTITION_METHOD	PARTITION_EXPRESSION	PARTITION_DESCRIPTION
+tb5	RANGE	id % 2	1
+tb5	RANGE	id % 2	2
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test3.tb5';
+Table	Create Table
+tb5	CREATE TABLE `tb5` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=SPIDER DEFAULT CHARSET=utf8
+ PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb5", server "SPT0"' ENGINE = SPIDER,
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb5", server "SPT1"' ENGINE = SPIDER)
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test3_0.tb5';
+Table	Create Table
+tb5	CREATE TABLE `tb5` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+/*!50100 PARTITION BY RANGE (id % 2)
+(PARTITION p0 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (2) ENGINE = InnoDB) */
+DROP DATABASE if exists test3;
+DROP DATABASE if exists test2;
+DROP DATABASE if exists test1;
+SET @@global.tc_ignore_partitioning_for_create_table = @origin_tc_ignore_partition;
+SET @@session.tc_admin = @origin_tc_admin;
