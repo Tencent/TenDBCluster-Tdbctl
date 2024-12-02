@@ -348,6 +348,7 @@ services:
       ctl2:
         condition: service_healthy
     restart: "no"
+    container_name: clustersetup
     volumes:
       - ./cluster-init/:/cluster-init
     entrypoint: ["bash", "/cluster-init/init-cluster.sh"]  
