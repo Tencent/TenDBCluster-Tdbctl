@@ -1,0 +1,112 @@
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+
+SELECT @@session.tc_admin INTO @origin_tc_admin;
+SELECT @@global.tc_ignore_partitioning_for_create_table INTO @origin_tc_ignore_partition;
+
+# case 1: when tc_admin=0, tc_ignore_partitioning_for_create_table has no effect.
+
+SET tc_admin=0;
+SET GLOBAL tc_ignore_partitioning_for_create_table=1;
+
+CREATE DATABASE test1;
+USE test1;
+
+CREATE TABLE tb1 (
+    id INT NOT NULL,
+    value INT NOT NULL
+) PARTITION BY KEY (id) PARTITIONS 2;
+
+SHOW CREATE TABLE tb1;
+
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb1';
+
+# case 2: when tc_admin=1 and tc_ignore_partitioning_for_create_table=1, 'PARTITION BY' will be ignored; 
+
+SET tc_admin=1;
+SET GLOBAL tc_ignore_partitioning_for_create_table=1;
+
+CREATE DATABASE test2;
+USE test2;
+
+--disable_warnings
+CREATE TABLE tb2 (
+    id INT NOT NULL,
+    value INT NOT NULL,
+    PRIMARY KEY(`id`)
+)ENGINE=SPIDER DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test2_0", table "tb2", server "SPT0"' ENGINE = SPIDER, 
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test2_1", table "tb2", server "SPT1"' ENGINE = SPIDER);
+--enable_warnings
+
+SHOW CREATE TABLE tb2;
+
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb2';
+
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test2.tb2';
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test2_0.tb2';
+
+CREATE TABLE tb3 (
+    id INT NOT NULL,
+    value INT NOT NULL,
+    PRIMARY KEY(`id`)
+);
+
+SHOW CREATE TABLE tb3;
+
+TDBCTL CONNECT NODE SPIDER1 EXECUTE 'SHOW CREATE TABLE test2.tb3';
+TDBCTL CONNECT NODE SPT1 EXECUTE 'SHOW CREATE TABLE test2_1.tb3';
+
+# case 3: when tc_admin=1 and tc_ignore_partitioning_for_create_table=0, 'PARTITION BY' clause of spider engine is not allowed on tdbctl node.
+
+SET tc_admin=1;
+SET GLOBAL tc_ignore_partitioning_for_create_table=0;
+
+CREATE DATABASE test3;
+USE test3;
+
+--error ER_PARTITION_FUNCTION_IS_NOT_ALLOWED
+CREATE TABLE tb4 (
+    id INT NOT NULL,
+    value INT NOT NULL,
+    PRIMARY KEY(`id`)
+)ENGINE=SPIDER DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb4", server "SPT0"' ENGINE = SPIDER, 
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb4", server "SPT1"' ENGINE = SPIDER);
+
+SELECT COUNT(*) AS tb4_exists_on_ctl0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb4';
+
+TDBCTL CONNECT NODE SPIDER0 EXECUTE "SELECT COUNT(*) AS tb4_exists_on_spider0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb4'";
+TDBCTL CONNECT NODE SPT0 EXECUTE "SELECT COUNT(*) AS tb4_exists_on_remote0 FROM information_schema.tables WHERE table_schema = 'test3_0' AND table_name = 'tb4'";
+
+# case 4: when tc_admin=1 and tc_ignore_partitioning_for_create_table=0, general 'PARTITION BY' clause on tdbctl node is allowed.
+
+CREATE TABLE tb5 (
+    id INT NOT NULL,
+    value INT NOT NULL,
+    PRIMARY KEY(`id`)
+) PARTITION BY RANGE (id % 2) (
+    PARTITION `p0` VALUES LESS THAN (1),
+    PARTITION `p1` VALUES LESS THAN (2)
+);
+
+SHOW CREATE TABLE tb5;
+
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb5';
+
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test3.tb5';
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test3_0.tb5';
+
+DROP DATABASE if exists test3;
+DROP DATABASE if exists test2;
+DROP DATABASE if exists test1;
+
+SET @@global.tc_ignore_partitioning_for_create_table = @origin_tc_ignore_partition;
+SET @@session.tc_admin = @origin_tc_admin;
