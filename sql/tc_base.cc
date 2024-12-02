@@ -2128,7 +2128,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (tdbctl_is_primary)
       {
         tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
-        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE | TC_SPIDER_NEED_EXECUTE;
       }
       else
         tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;

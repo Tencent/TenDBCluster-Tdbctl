@@ -1,0 +1,98 @@
+# If you want to check forwarding rules for specific commands, add test cases in this file.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+
+--echo
+--echo # Set general_log output to table.
+--connection tdbctl0
+SET tc_admin=OFF;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection spider0
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection spider1
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection spider2
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection remote_master0
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection remote_master1
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+
+--echo
+--echo # check forwarding rules for SQLCOM_SET_OPTION command.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # execute SQLCOM_SET_OPTION command.
+--connection tdbctl0
+SET tc_admin=ON;
+--disable_warnings
+SET @old_level = @@SESSION.tx_isolation;
+SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SET SESSION tx_isolation = @old_level;
+--enable_warnings
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+
+--echo
+--echo # check forwarding rules for SQLCOM_LOCK_TABLES and SQLCOM_UNLOCK_TABLES command.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # execute SQLCOM_LOCK_TABLES and SQLCOM_UNLOCK_TABLES command.
+--connection tdbctl0
+SET tc_admin=ON;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE t1( id INT PRIMARY KEY );
+CREATE TABLE t2( id INT PRIMARY KEY );
+LOCK TABLES t1 READ, t2 WRITE;
+UNLOCK TABLES;
+DROP DATABASE test1;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+SET tc_admin=OFF;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection spider0
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection spider1
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection spider2
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection remote_master0
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection remote_master1
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection tdbctl0
+SET @@SESSION.tc_admin = @origin_tc_admin;
