@@ -927,6 +927,13 @@ void error_log_print(enum loglevel level, const char *format, va_list args)
   MY_ATTRIBUTE((format(printf, 2, 0)));
 
 /**
+  Writes a char buffer to the error log.
+  This function does the same thing as 'error_log_print' function, 
+  but there is no limit to the length of the output string.
+*/
+void error_log_write(enum loglevel level, const char *buff, size_t length);
+
+/**
   Initialize structures (e.g. mutex) needed by the error log.
 
   @note This function accesses shared resources without protection, so
