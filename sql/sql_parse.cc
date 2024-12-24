@@ -2645,6 +2645,7 @@ mysql_execute_command(THD *thd, bool first_level)
   bool tc_admin = thd->variables.tc_admin;
   bool tc_dry_run = thd->variables.tc_dry_run;
   tc_parse_result parse_result;
+  Exec_Flag execute_flag = 0;
   tc_execute_result exec_result;
   Query_exec_manager query_exec_manager(thd);
 
@@ -2988,6 +2989,7 @@ mysql_execute_command(THD *thd, bool first_level)
   }
 
   tc_parse_result_init(&parse_result);
+  execute_flag = thd->forward_rule_mgr.get_sql_execute_flag(thd, lex, lex->sql_command);
 
   // When enable tdbctl management mode, the sql_command from 
   // slave_sql_thread should skip tcadmin parsing.
@@ -3006,16 +3008,25 @@ mysql_execute_command(THD *thd, bool first_level)
 
     if (!tc_command_convert(thd, lex, &parse_result))
       goto error;
+    
+    // Check whether the rewritten sqls is complete
+    Exec_Flag ret_flag = check_rewritten_sql(execute_flag, &parse_result);
+    if (ret_flag > 0)
+    {
+      std::string err_flag_str = exec_flag_to_string(ret_flag);
+      my_error(ER_LACK_REWRITTEN_SQL, MYF(0), get_stmt_type_str(lex->sql_command), err_flag_str.c_str());
+      goto error;
+    }
 
     if (tc_dry_run && lex->sql_command != SQLCOM_SET_OPTION) {
-      if (tc_dry_run_command(thd, &parse_result))
+      if (tc_dry_run_command(thd, &parse_result, execute_flag))
         goto finish;
       else
         goto error;
     }
 
     if (tc_dry_run_log) {
-      if(!tc_dry_run_log_file(thd, &parse_result))
+      if(!tc_dry_run_log_file(thd, &parse_result, execute_flag))
         goto error;
     }
   }
@@ -3023,9 +3034,9 @@ mysql_execute_command(THD *thd, bool first_level)
   /* There are three cases that sql_command need to be handled by tdbctl itself.
    1) Tdbctl management mode is disabled
    2) The sql_command from slave_sql_thread
-   3) When tdbctl management mode is enabled, some sql_command need to be handled by tdbctl itself. This will be indicated by parse_result.execute_flag, which are set in tc_command_convert()
+   3) When tdbctl management mode is enabled, some sql_command need to be handled by tdbctl itself. This will be indicated by execute_flag.
   */ 
-  if (tc_admin == 0 || thd->rli_slave || (parse_result.execute_flag & TC_TDBCTL_NEED_EXECUTE))
+  if (tc_admin == 0 || thd->rli_slave || (execute_flag & TC_TDBCTL_NEED_EXECUTE))
   {
 
     switch (lex->sql_command)
@@ -5635,10 +5646,10 @@ mysql_execute_command(THD *thd, bool first_level)
     }
   }
 
-  //if parse_result.execute_flag is set to TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE,
+  // if execute_flag is set to TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE,
   // this means that tc_admin need to send query to spider or remote node
   if (!thd->is_error() && tc_admin == 1 && 
-    (parse_result.execute_flag & (TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE|TC_ONLY_ONE_SPIDER_NEED_EXECUTE|TC_DESIGNATED_NODE_NEED_EXECUTE)))
+    (execute_flag & (TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE|TC_ONLY_ONE_SPIDER_NEED_EXECUTE|TC_DESIGNATED_NODE_NEED_EXECUTE)))
   {
     thd->get_stmt_da()->reset_diagnostics_area();
     /*
@@ -5652,8 +5663,8 @@ mysql_execute_command(THD *thd, bool first_level)
       goto error;
 
     query_exec_manager.reset_error();
-    query_exec_manager.set_exec_flag(parse_result.execute_flag);
-    if (parse_result.execute_flag & TC_SPIDER_NEED_EXECUTE)
+    query_exec_manager.set_exec_flag(execute_flag);
+    if (execute_flag & TC_SPIDER_NEED_EXECUTE)
     {
       if (thd->cluster_conn_manager->connect(NODE_TYPE_SPIDER, false) ||
           thd->cluster_conn_manager->connect(NODE_TYPE_SPIDER_SLAVE, false))
@@ -5661,7 +5672,7 @@ mysql_execute_command(THD *thd, bool first_level)
       query_exec_manager.store_exec_query(parse_result.spider_sql, NODE_TYPE_SPIDER);
       query_exec_manager.store_exec_query(parse_result.spider_sql, NODE_TYPE_SPIDER_SLAVE);
     }
-    else if (parse_result.execute_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE)
+    else if (execute_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE)
     {
       list<FOREIGN_SERVER *> server_list;
       get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
@@ -5673,13 +5684,13 @@ mysql_execute_command(THD *thd, bool first_level)
         query_exec_manager.store_exec_query(srv_name, parse_result.spider_sql, NODE_TYPE_SPIDER);
       }
     }
-    if (parse_result.execute_flag & TC_REMOTE_NEED_EXECUTE)
+    if (execute_flag & TC_REMOTE_NEED_EXECUTE)
     {
       if(thd->cluster_conn_manager->connect(NODE_TYPE_REMOTE, false))
         goto error;
       query_exec_manager.store_exec_query(parse_result.remote_sql_map, NODE_TYPE_REMOTE);
     }
-    if (parse_result.execute_flag & TC_DESIGNATED_NODE_NEED_EXECUTE)
+    if (execute_flag & TC_DESIGNATED_NODE_NEED_EXECUTE)
     {
       FOREIGN_SERVER *server =
             get_server_by_name(thd->mem_root, lex->server_options.m_server_name.str, NULL);

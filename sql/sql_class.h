@@ -40,6 +40,7 @@
 #include "sql_locale.h"                   // MY_LOCALE
 #include "sql_profile.h"                  // PROFILING
 #include "sys_vars_resource_mgr.h"        // Session_sysvar_resource_manager
+#include "tc_forwarding_rule_mgr.h"       // Forwarding_rule_mgr
 #include "transaction_info.h"             // Ha_trx_info
 
 #include <pfs_stage_provider.h>
@@ -630,6 +631,8 @@ typedef struct system_variables
   my_bool tc_dry_run;
   my_bool tc_force_execute;
   my_bool tc_auto_fix_conns;
+  
+  char *tc_forwarding_rules;
 
   uint  threadpool_high_prio_tickets;
   ulong threadpool_high_prio_mode;
@@ -4829,6 +4832,8 @@ public:
 
   Session_tracker session_tracker;
   Session_sysvar_resource_manager session_sysvar_res_mgr;
+
+  Forwarding_rule_mgr forward_rule_mgr;
 
   void parse_error_at(const YYLTYPE &location, const char *s= NULL);
 
