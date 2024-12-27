@@ -1200,7 +1200,10 @@ bool produce_sent_sql(Query_exec_manager* query_exec_manager, std::string server
   std::string real_query;
   if(!query_exec_manager->get_real_query(server_name, real_query, node_type))
   {
-    sql_print_error("node_name: %s, sent sql: %s", server_name.c_str(), real_query.c_str());
+    std::stringstream ss;
+    ss << "node_name: " << server_name << ", sent sql: " << real_query;
+    std::string long_err_msg = ss.str();
+    error_log_write(ERROR_LEVEL, long_err_msg.c_str(), long_err_msg.length());
   } else {
     sql_print_error("failed to produce repair sql");
   }
