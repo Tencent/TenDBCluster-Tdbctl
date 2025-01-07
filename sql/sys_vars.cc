@@ -6348,8 +6348,13 @@ static Sys_var_ulong Sys_max_dryrun_log_files(
 
 static bool check_forwarding_rules(sys_var *self, THD *thd, set_var *var) {
   DBUG_ENTER("check_forwarding_rules");
-  bool is_valid = Forwarding_rule_mgr::check_forwarding_rules(thd, var);
-  DBUG_RETURN(!is_valid);
+  std::string err_msg;
+  bool check_pass = Forwarding_rule_mgr::check_forwarding_rules(thd, var, err_msg);
+  if(!check_pass) {
+    my_error(ER_FORWARDING_RULES_CHECK_UNPASS, MYF(0), err_msg.c_str());
+    DBUG_RETURN(true);
+  }
+  DBUG_RETURN(false);
 }
 
 static bool update_forwarding_rules(sys_var *self, THD *thd, enum_var_type type) {
@@ -6369,6 +6374,40 @@ static Sys_var_charptr Sys_tc_forwarding_rules(
        NOT_IN_BINLOG,
        ON_CHECK(check_forwarding_rules),
        ON_UPDATE(update_forwarding_rules)
+);
+
+
+static bool check_var_rules(sys_var *self, THD *thd, set_var *var) {
+  DBUG_ENTER("check_var_rules");
+  std::string err_msg, warn_msg;
+  bool check_pass = Forwarding_rule_mgr::check_var_rules(thd, var, err_msg, warn_msg);
+  if(!check_pass) {
+    my_error(ER_VAR_RULES_CHECK_UNPASS, MYF(0), err_msg.c_str());
+    DBUG_RETURN(true);
+  }
+  if(!warn_msg.empty()) {
+    push_warning_printf(thd, Sql_condition::SL_WARNING, WARN_VAR_RULES_CHECK, 
+      ER(WARN_VAR_RULES_CHECK), warn_msg.c_str());
+  }
+  DBUG_RETURN(false);
+}
+
+static bool update_var_rules(sys_var *self, THD *thd, enum_var_type type) {
+  DBUG_ENTER("update_var_rules");
+  bool ret = Forwarding_rule_mgr::update_var_rules(thd, type);
+  DBUG_RETURN(!ret);
+}
+
+static Sys_var_charptr Sys_tc_var_rules(
+       "tc_var_rules",
+       "A json string that respecifies the forwarding rules of system variables.",
+       TDBCTL SESSION_VAR(tc_var_rules), CMD_LINE(REQUIRED_ARG),
+       IN_FS_CHARSET, 
+       DEFAULT("{}"), 
+       NO_MUTEX_GUARD,
+       NOT_IN_BINLOG,
+       ON_CHECK(check_var_rules),
+       ON_UPDATE(update_var_rules)
 );
 
 static bool fix_dry_run_log_state(sys_var *self, THD *thd, enum_var_type type)

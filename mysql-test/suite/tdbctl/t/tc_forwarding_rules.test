@@ -10,33 +10,31 @@ SELECT @@SESSION.tc_forwarding_rules INTO @origin_session_rules;
 --echo
 --echo # Test invalid forwarding rules.
 --connection tdbctl0
---error ER_WRONG_VALUE_FOR_VAR  # Invalid json string.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '""';
---error ER_WRONG_VALUE_FOR_VAR  # Invalid json string.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}';
---error ER_WRONG_VALUE_FOR_VAR  # Invalid json string.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}';
---error ER_WRONG_VALUE_FOR_VAR  # The value should be a string.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": 123}';
---error ER_WRONG_VALUE_FOR_VAR  # Unknown sql command.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLE": "TDBCTL"}';
---error ER_WRONG_VALUE_FOR_VAR  # Setting forwarding rules for some sql commands is forbidden.
-SET tc_forwarding_rules = '{"SQLCOM_SET_OPTION": "TDBCTL, SPIDER_ALL"}';
---error ER_WRONG_VALUE_FOR_VAR  # Setting forwarding rules for some sql commands is forbidden.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_CREATE_TABLE": "TDBCTL, SPIDER_ALL"}';
---error ER_WRONG_VALUE_FOR_VAR  # Duplicate sql command.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL, SPIDER_ALL", "sqlcom_lock_tables": "TDBCTL, SPIDER_ALL"}';
---error ER_WRONG_VALUE_FOR_VAR  # Empty string value is not allowed.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": ""}';
---error ER_WRONG_VALUE_FOR_VAR  # Invalid execute flag.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL_ALL"}';
---error ER_WRONG_VALUE_FOR_VAR  # This flag cannot be specified.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "DESIGNATED_ONE"}';
---error ER_WRONG_VALUE_FOR_VAR  # Duplicate execute flag.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ALL"}';
---error ER_WRONG_VALUE_FOR_VAR  # Conflicting execute flags exist.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}';
---error ER_WRONG_VALUE_FOR_VAR  # Out-of-range flags exist.
+--error ER_FORWARDING_RULES_CHECK_UNPASS
 SET tc_forwarding_rules = '{"SQLCOM_GRANT": "TDBCTL, SPIDER_ALL"}';
 
 --echo

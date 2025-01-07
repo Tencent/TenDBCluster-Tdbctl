@@ -1,0 +1,471 @@
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@GLOBAL.tc_forwarding_rules INTO @origin_global_sql_rules;
+SELECT @@SESSION.tc_forwarding_rules INTO @origin_session_sql_rules;
+SELECT @@GLOBAL.tc_var_rules INTO @origin_global_var_rules;
+SELECT @@SESSION.tc_var_rules INTO @origin_session_var_rules;
+
+# Test invalid variable forwarding rules.
+SET tc_var_rules = '""';
+ERROR HY000: Failed to set variable-level forwarding rules: Only allow json text of type J_OBJECT
+SET tc_var_rules = '{"max_connections", "TDBCTL", "time_zone", "TDBCTL"}';
+ERROR HY000: Failed to set variable-level forwarding rules: Parsing json text '{"max_connections", "TDBCTL", "time_zone", "TDBCTL"}', error: Invalid json string: '{"max_connections", "TDBCTL", "time_zone", "TDBCTL"}'
+SET tc_var_rules = '{max_connections: "TDBCTL", time_zone: "TDBCTL"}';
+ERROR HY000: Failed to set variable-level forwarding rules: Parsing json text '{max_connections: "TDBCTL", time_zone: "TDBCTL"}', error: Invalid json string: '{max_connections: "TDBCTL", time_zone: "TDBCTL"}'
+SET tc_var_rules = '{"time_zone": 123}';
+ERROR HY000: Failed to set variable-level forwarding rules: The value set to the key 'time_zone' is not a string
+SET tc_var_rules = '{"tc_admin": "TDBCTL, SPIDER_ALL"}';
+ERROR HY000: Failed to set variable-level forwarding rules: Setting forwarding rule for system variable 'tc_admin' is forbidden (tips: system variable 'tc_admin' is a tdbctl variable)
+SET tc_var_rules = '{"time_zone": ""}';
+ERROR HY000: Failed to set variable-level forwarding rules: Empty string for key 'time_zone'
+SET tc_var_rules = '{"time_zone": "TDBCTL_ALL"}';
+ERROR HY000: Failed to set variable-level forwarding rules: Invalid execute flag 'TDBCTL_ALL'
+SET tc_var_rules = '{"time_zone": "DESIGNATED_ONE"}';
+ERROR HY000: Failed to set variable-level forwarding rules: This flag cannot be specified by users: 'DESIGNATED_ONE'
+SET tc_var_rules = '{"time_zone": "SPIDER_ALL, TDBCTL, SPIDER_ALL"}';
+ERROR HY000: Failed to set variable-level forwarding rules: Duplicate execute flag 'SPIDER_ALL'
+SET tc_var_rules = '{"time_zone": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}';
+ERROR HY000: Failed to set variable-level forwarding rules: Conflicting execute flags exist for 'time_zone'
+SET tc_var_rules = '{"Unknown_sys_var": "TDBCTL"}';
+Warnings:
+Warning	12056	When setting variable-level forwarding rules: unknown system variables: Unknown_sys_var
+SHOW VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{"Unknown_sys_var": "TDBCTL"}
+SET tc_var_rules = '{}';
+
+# Set global tc_var_rules. Only new sessions will be affected.
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{}
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{}
+SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{}
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{}
+SET GLOBAL tc_var_rules = '{"time_zone": "TDBCTL", "max_connections": "TDBCTL, SPIDER_ONE"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{"time_zone": "TDBCTL", "max_connections": "TDBCTL, SPIDER_ONE"}
+SET @@GLOBAL.tc_var_rules = JSON_SET(@@GLOBAL.tc_var_rules, '$.net_read_timeout', 'TDBCTL, REMOTE_ALL');
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{"time_zone": "TDBCTL", "max_connections": "TDBCTL, SPIDER_ONE", "net_read_timeout": "TDBCTL, REMOTE_ALL"}
+SET @@GLOBAL.tc_var_rules = JSON_REMOVE(@@GLOBAL.tc_var_rules, '$.max_connections');
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{"time_zone": "TDBCTL", "net_read_timeout": "TDBCTL, REMOTE_ALL"}
+SET @@GLOBAL.tc_var_rules = JSON_SET(@@GLOBAL.tc_var_rules, '$.net_read_timeout', 'NO_EXEC');
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{"time_zone": "TDBCTL", "net_read_timeout": "NO_EXEC"}
+SELECT JSON_EXTRACT(@@GLOBAL.tc_var_rules, '$.net_read_timeout') AS rule_of_net_read_timeout;
+rule_of_net_read_timeout
+"NO_EXEC"
+SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{}
+
+# Create new connection.
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{}
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{}
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{"time_zone": "TDBCTL", "net_read_timeout": "NO_EXEC"}
+SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{"time_zone": "TDBCTL", "net_read_timeout": "NO_EXEC"}
+
+# Set general_log output to table.
+SET tc_admin=OFF;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+
+# Check default forwarding rule for the SQLCOM_SET_OPTION command.
+# Truncate general_log.
+SET tc_admin=OFF;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+# Execute SQLCOM_SET_OPTION commands of different variable types.
+# Still in the old session.
+SET tc_admin = ON;
+SET @origin_time_zone = @@SESSION.time_zone;
+SET time_zone = '+00:00';
+SET time_zone = @origin_time_zone;
+SET @origin_net_read_timeout = @@SESSION.net_read_timeout;
+show variables like 'net_read_timeout';
+Variable_name	Value
+net_read_timeout	30
+SET net_read_timeout = 600;
+show variables like 'net_read_timeout';
+Variable_name	Value
+net_read_timeout	600
+SET net_read_timeout = @origin_net_read_timeout;
+SET @origin_max_connections = @@GLOBAL.max_connections;
+SET GLOBAL max_connections = 64;
+SET GLOBAL max_connections = @origin_max_connections;
+SET tc_admin = OFF, time_zone = default;
+ERROR HY000: Execution failed: can't set variables with different execution flags at the same time
+# Show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin = ON
+SET @origin_time_zone = @@SESSION.time_zone
+SET time_zone = '+00:00'
+SET time_zone = @origin_time_zone
+SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+show variables like 'net_read_timeout'
+SET net_read_timeout = 600
+show variables like 'net_read_timeout'
+SET net_read_timeout = @origin_net_read_timeout
+SET @origin_max_connections = @@GLOBAL.max_connections
+SET GLOBAL max_connections = 64
+SET GLOBAL max_connections = @origin_max_connections
+SET tc_admin = OFF, time_zone = default
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone = @origin_time_zone
+SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = @origin_net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone = @origin_time_zone
+SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = @origin_net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone = @origin_time_zone
+SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = @origin_net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+--------------------
+
+# Check modified forwarding rules for SQLCOM_SET_OPTION commands of system variables.
+# Truncate general_log.
+SET tc_admin=OFF;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+# Execute SQLCOM_SET_OPTION commands of different variable types.
+# Go to the new session.
+SET tc_admin=ON;
+SET @origin_time_zone = @@SESSION.time_zone;
+SET time_zone = '+00:00';
+SET time_zone = @origin_time_zone;
+SET @origin_net_read_timeout = @@SESSION.net_read_timeout;
+show variables like 'net_read_timeout';
+Variable_name	Value
+net_read_timeout	30
+SET net_read_timeout = 600;
+show variables like 'net_read_timeout';
+Variable_name	Value
+net_read_timeout	30
+SET net_read_timeout = @origin_net_read_timeout;
+SET @origin_max_connections = @@GLOBAL.max_connections;
+SET GLOBAL max_connections = 64;
+SET GLOBAL max_connections = @origin_max_connections;
+SET tc_admin = OFF, time_zone = default;
+ERROR HY000: Execution failed: can't set tdbctl-only var and common var at the same time
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+SET @origin_time_zone = @@SESSION.time_zone
+SET time_zone = '+00:00'
+SET time_zone = @origin_time_zone
+SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+show variables like 'net_read_timeout'
+SET net_read_timeout = 600
+show variables like 'net_read_timeout'
+SET net_read_timeout = @origin_net_read_timeout
+SET @origin_max_connections = @@GLOBAL.max_connections
+SET GLOBAL max_connections = 64
+SET GLOBAL max_connections = @origin_max_connections
+SET tc_admin = OFF, time_zone = default
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+--------------------
+
+# Set session tc_var_rules and tc_forwarding_rules. Only the current session will be affected.
+# Go to the new session.
+SET SESSION tc_forwarding_rules = '{"SQLCOM_SET_OPTION": "TDBCTL"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{}
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{"SQLCOM_SET_OPTION": "TDBCTL"}
+SET SESSION tc_var_rules = '{"time_zone": "TDBCTL, SPIDER_ALL, REMOTE_ALL", "net_read_timeout": "TDBCTL, SPIDER_ALL"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{"time_zone": "TDBCTL", "net_read_timeout": "NO_EXEC"}
+SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+Variable_name	Value
+tc_var_rules	{"time_zone": "TDBCTL, SPIDER_ALL, REMOTE_ALL", "net_read_timeout": "TDBCTL, SPIDER_ALL"}
+
+# Check default forwarding rule for the SQLCOM_SET_OPTION command.
+# Truncate general_log.
+SET tc_admin=OFF;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+# Execute SQLCOM_SET_OPTION commands of different variable types.
+# Still in the old session.
+SET tc_admin = ON;
+SET time_zone = '+00:00';
+SET time_zone = default;
+SET net_read_timeout = 600, net_write_timeout = 600;
+SET net_read_timeout = default, net_write_timeout = default;
+SET @origin_max_connections = @@GLOBAL.max_connections;
+SET GLOBAL max_connections = 64;
+SET GLOBAL max_connections = @origin_max_connections;
+# Show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin = ON
+SET time_zone = '+00:00'
+SET time_zone = default
+SET net_read_timeout = 600, net_write_timeout = 600
+SET net_read_timeout = default, net_write_timeout = default
+SET @origin_max_connections = @@GLOBAL.max_connections
+SET GLOBAL max_connections = 64
+SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone = default
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600, net_write_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = default, net_write_timeout = default
+SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone = default
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600, net_write_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = default, net_write_timeout = default
+SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone = default
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600, net_write_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET net_read_timeout = default, net_write_timeout = default
+SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+--------------------
+
+# Check modified forwarding rules for SQLCOM_SET_OPTION commands of system variables.
+# Truncate general_log.
+SET tc_admin=OFF;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+# Execute SQLCOM_SET_OPTION commands of different variable types.
+# Go to the new session.
+SET tc_admin = ON;
+SET time_zone = '+00:00';
+SET time_zone = default;
+SET net_read_timeout = 600, net_write_timeout = 600;
+ERROR HY000: Execution failed: can't set variables with different execution flags at the same time
+SET net_read_timeout = default, net_write_timeout = default;
+ERROR HY000: Execution failed: can't set variables with different execution flags at the same time
+SET @origin_max_connections = @@GLOBAL.max_connections;
+SET GLOBAL max_connections = 64;
+SET GLOBAL max_connections = @origin_max_connections;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin = ON
+SET time_zone = '+00:00'
+SET time_zone = default
+SET net_read_timeout = 600, net_write_timeout = 600
+SET net_read_timeout = default, net_write_timeout = default
+SET @origin_max_connections = @@GLOBAL.max_connections
+SET GLOBAL max_connections = 64
+SET GLOBAL max_connections = @origin_max_connections
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone = default
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone = default
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone = default
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+SET NAMES latin1;
+SET sql_mode='';
+SET time_zone = '+00:00'
+SET NAMES latin1;
+SET sql_mode='';
+SET time_zone = default
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+SET NAMES latin1;
+SET sql_mode='';
+SET time_zone = '+00:00'
+SET NAMES latin1;
+SET sql_mode='';
+SET time_zone = default
+--------------------
+
+# Restore to the initial state.
+SET tc_admin=OFF;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET @@SESSION.tc_var_rules = @origin_session_var_rules;
+SET @@GLOBAL.tc_var_rules = @origin_global_var_rules;
+SET @@SESSION.tc_forwarding_rules = @origin_session_sql_rules;
+SET @@GLOBAL.tc_forwarding_rules = @origin_global_sql_rules;
+SET @@SESSION.tc_admin = @origin_tc_admin;

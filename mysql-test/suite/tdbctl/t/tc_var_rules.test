@@ -1,0 +1,232 @@
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@GLOBAL.tc_forwarding_rules INTO @origin_global_sql_rules;
+SELECT @@SESSION.tc_forwarding_rules INTO @origin_session_sql_rules;
+SELECT @@GLOBAL.tc_var_rules INTO @origin_global_var_rules;
+SELECT @@SESSION.tc_var_rules INTO @origin_session_var_rules;
+
+--echo
+--echo # Test invalid variable forwarding rules.
+--connection tdbctl0
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_var_rules = '""';
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_var_rules = '{"max_connections", "TDBCTL", "time_zone", "TDBCTL"}';
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_var_rules = '{max_connections: "TDBCTL", time_zone: "TDBCTL"}';
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_var_rules = '{"time_zone": 123}';
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_var_rules = '{"tc_admin": "TDBCTL, SPIDER_ALL"}';
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_var_rules = '{"time_zone": ""}';
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_var_rules = '{"time_zone": "TDBCTL_ALL"}';
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_var_rules = '{"time_zone": "DESIGNATED_ONE"}';
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_var_rules = '{"time_zone": "SPIDER_ALL, TDBCTL, SPIDER_ALL"}';
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_var_rules = '{"time_zone": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}';
+
+SET tc_var_rules = '{"Unknown_sys_var": "TDBCTL"}';
+SHOW VARIABLES LIKE 'tc_var_rules';
+SET tc_var_rules = '{}';
+
+--echo
+--echo # Set global tc_var_rules. Only new sessions will be affected.
+--connection tdbctl0
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+SET GLOBAL tc_var_rules = '{"time_zone": "TDBCTL", "max_connections": "TDBCTL, SPIDER_ONE"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+SET @@GLOBAL.tc_var_rules = JSON_SET(@@GLOBAL.tc_var_rules, '$.net_read_timeout', 'TDBCTL, REMOTE_ALL');
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+SET @@GLOBAL.tc_var_rules = JSON_REMOVE(@@GLOBAL.tc_var_rules, '$.max_connections');
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+SET @@GLOBAL.tc_var_rules = JSON_SET(@@GLOBAL.tc_var_rules, '$.net_read_timeout', 'NO_EXEC');
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+SELECT JSON_EXTRACT(@@GLOBAL.tc_var_rules, '$.net_read_timeout') AS rule_of_net_read_timeout;
+SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+
+--echo
+--echo # Create new connection.
+--connect (new_session, 127.0.0.1, root, 123, test, 46000,)
+--connection new_session
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+
+--echo
+--echo # Set general_log output to table.
+--connection tdbctl0
+SET tc_admin=OFF;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection spider0
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection spider1
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection spider2
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection remote_master0
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection remote_master1
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+
+
+--echo
+--echo # Check default forwarding rule for the SQLCOM_SET_OPTION command.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Execute SQLCOM_SET_OPTION commands of different variable types.
+--echo # Still in the old session.
+--connection tdbctl0
+SET tc_admin = ON;
+SET @origin_time_zone = @@SESSION.time_zone;
+SET time_zone = '+00:00';
+SET time_zone = @origin_time_zone;
+SET @origin_net_read_timeout = @@SESSION.net_read_timeout;
+show variables like 'net_read_timeout';
+SET net_read_timeout = 600;
+show variables like 'net_read_timeout';
+SET net_read_timeout = @origin_net_read_timeout;
+SET @origin_max_connections = @@GLOBAL.max_connections;
+SET GLOBAL max_connections = 64;
+SET GLOBAL max_connections = @origin_max_connections;
+--error ER_TCADMIN_EXECUTE_ERROR
+SET tc_admin = OFF, time_zone = default;
+--echo # Show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+
+--echo
+--echo # Check modified forwarding rules for SQLCOM_SET_OPTION commands of system variables.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Execute SQLCOM_SET_OPTION commands of different variable types.
+--echo # Go to the new session.
+--connection new_session
+SET tc_admin=ON;
+SET @origin_time_zone = @@SESSION.time_zone;
+SET time_zone = '+00:00';
+SET time_zone = @origin_time_zone;
+SET @origin_net_read_timeout = @@SESSION.net_read_timeout;
+show variables like 'net_read_timeout';
+SET net_read_timeout = 600;
+show variables like 'net_read_timeout';
+SET net_read_timeout = @origin_net_read_timeout;
+SET @origin_max_connections = @@GLOBAL.max_connections;
+SET GLOBAL max_connections = 64;
+SET GLOBAL max_connections = @origin_max_connections;
+--error ER_TCADMIN_EXECUTE_ERROR
+SET tc_admin = OFF, time_zone = default;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+
+--echo
+--echo # Set session tc_var_rules and tc_forwarding_rules. Only the current session will be affected.
+--echo # Go to the new session.
+--connection new_session
+SET SESSION tc_forwarding_rules = '{"SQLCOM_SET_OPTION": "TDBCTL"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+SET SESSION tc_var_rules = '{"time_zone": "TDBCTL, SPIDER_ALL, REMOTE_ALL", "net_read_timeout": "TDBCTL, SPIDER_ALL"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
+SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+
+
+--echo
+--echo # Check default forwarding rule for the SQLCOM_SET_OPTION command.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Execute SQLCOM_SET_OPTION commands of different variable types.
+--echo # Still in the old session.
+--connection tdbctl0
+SET tc_admin = ON;
+SET time_zone = '+00:00';
+SET time_zone = default;
+SET net_read_timeout = 600, net_write_timeout = 600;
+SET net_read_timeout = default, net_write_timeout = default;
+SET @origin_max_connections = @@GLOBAL.max_connections;
+SET GLOBAL max_connections = 64;
+SET GLOBAL max_connections = @origin_max_connections;
+--echo # Show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+
+--echo
+--echo # Check modified forwarding rules for SQLCOM_SET_OPTION commands of system variables.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Execute SQLCOM_SET_OPTION commands of different variable types.
+--echo # Go to the new session.
+--connection new_session
+SET tc_admin = ON;
+SET time_zone = '+00:00';
+SET time_zone = default;
+--error ER_TCADMIN_EXECUTE_ERROR
+SET net_read_timeout = 600, net_write_timeout = 600;
+--error ER_TCADMIN_EXECUTE_ERROR
+SET net_read_timeout = default, net_write_timeout = default;
+SET @origin_max_connections = @@GLOBAL.max_connections;
+SET GLOBAL max_connections = 64;
+SET GLOBAL max_connections = @origin_max_connections;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+--disconnect new_session
+--connection tdbctl0
+SET tc_admin=OFF;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection spider0
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection spider1
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection spider2
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection remote_master0
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection remote_master1
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection tdbctl0
+SET @@SESSION.tc_var_rules = @origin_session_var_rules;
+SET @@GLOBAL.tc_var_rules = @origin_global_var_rules;
+SET @@SESSION.tc_forwarding_rules = @origin_session_sql_rules;
+SET @@GLOBAL.tc_forwarding_rules = @origin_global_sql_rules;
+SET @@SESSION.tc_admin = @origin_tc_admin;

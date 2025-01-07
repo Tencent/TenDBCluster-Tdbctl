@@ -3176,6 +3176,8 @@ void plugin_thdvar_init(THD *thd, bool enable_plugins)
   thd->session_sysvar_res_mgr.init(&thd->variables.track_sysvars_ptr, thd->charset());
   // @@session.tc_forwarding_rules
   thd->session_sysvar_res_mgr.init(&thd->variables.tc_forwarding_rules, thd->charset());
+  // @@session.tc_var_rules
+  thd->session_sysvar_res_mgr.init(&thd->variables.tc_var_rules, thd->charset());
 
   DBUG_VOID_RETURN;
 }

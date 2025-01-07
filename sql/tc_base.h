@@ -567,6 +567,10 @@ void tc_parse_remote_alter_table(
   TC_PARSE_RESULT *tc_parse_result_t
 );
 
+void tc_parse_remote_set_option(
+  TC_PARSE_RESULT *tc_parse_result_t
+);
+
 void tc_parse_spider_create_or_drop_index(
   TC_PARSE_RESULT *tc_parse_result_t
 );

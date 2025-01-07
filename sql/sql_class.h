@@ -633,6 +633,7 @@ typedef struct system_variables
   my_bool tc_auto_fix_conns;
   
   char *tc_forwarding_rules;
+  char *tc_var_rules;
 
   uint  threadpool_high_prio_tickets;
   ulong threadpool_high_prio_mode;

@@ -1686,6 +1686,23 @@ void tc_parse_spider_create_or_drop_index(TC_PARSE_RESULT *tc_parse_result_t)
     tc_parse_result_t->spider_sql = sql;
 }
 
+void tc_parse_remote_set_option(TC_PARSE_RESULT *tc_parse_result_t)
+{
+    ostringstream  sstr;
+    string sql(tc_parse_result_t->query_string.str, tc_parse_result_t->query_string.length);
+    string server_name_pre = tdbctl_mysql_wrapper_prefix;
+
+    for (int i = 0; i < tc_parse_result_t->shard_count; i++)
+    {
+        string remote_sql = sql;
+        sstr.str("");
+        sstr << i;
+        string hash_value = sstr.str();
+        string server = server_name_pre + hash_value;
+
+        tc_parse_result_t->remote_sql_map.insert(pair<string, string>(server, remote_sql));
+    }
+}
 
 void tc_parse_remote_create_or_drop_index(TC_PARSE_RESULT *tc_parse_result_t)
 {
@@ -2115,6 +2132,8 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (tdbctl_is_primary)
       {
         tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
+        tc_parse_result_t->query_string = thd->query();
+        tc_parse_remote_set_option(tc_parse_result_t);
       }
       break;
     case SQLCOM_UNLOCK_TABLES:

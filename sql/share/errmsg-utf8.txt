@@ -7917,6 +7917,15 @@ ER_SERVERS_LOAD
 ER_LACK_REWRITTEN_SQL
   eng "Falied to convert command. For sql command %s, these flags lack rewritten sql: %s"
 
+ER_FORWARDING_RULES_CHECK_UNPASS
+  eng "Failed to set sql-level forwarding rules: %s"
+
+ER_VAR_RULES_CHECK_UNPASS
+  eng "Failed to set variable-level forwarding rules: %s"
+
+WARN_VAR_RULES_CHECK
+  eng "When setting variable-level forwarding rules: %s"
+
 #
 # End of MyRocks specific messages
 #
