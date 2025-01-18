@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 
 /* forward declarations */
 class THD;
@@ -190,6 +191,31 @@ class Plugin_Locker {
   ~Plugin_Locker() {
     unlock_plugin_mutex();
   }
+};
+
+/**
+  Session_rules_resource_mgr
+  -------------------------------
+  When a session (THD) gets initialized, it receives a shallow copy of all
+  global system variables.
+  thd->variables= global_system_variables; (see plugin_thdvar_init())
+
+  In case of Sys_var_forwarding_rule variables, we need to maintain a separate copy for
+  each session though so that global and session variables can be altered
+  independently.
+
+  This class is responsible for alloc|dealloc-ating memory for Sys_var_forwarding_rule
+  variables for every session.
+*/
+class Session_rules_resource_mgr
+{
+private:
+  std::set<char *> m_charptr_set; 
+public:
+  bool init(char **var);
+  bool update(char **var, char *val, size_t val_len);
+  void deinit();
+  void claim_memory_ownership();
 };
 
 #endif /* TC_FORWARDING_RULE_MGR_INCLUDED */

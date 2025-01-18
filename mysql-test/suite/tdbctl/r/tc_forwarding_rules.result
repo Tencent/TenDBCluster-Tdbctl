@@ -18,9 +18,9 @@ SELECT @@SESSION.tc_forwarding_rules INTO @origin_session_rules;
 SET tc_forwarding_rules = '""';
 ERROR HY000: Failed to set sql-level forwarding rules: Only allow json text of type J_OBJECT
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}';
-ERROR HY000: Failed to set sql-level forwarding rules: Parsing json text '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}', error: Invalid json string: '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Error when parsing json text: Invalid json string: '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}'
 SET tc_forwarding_rules = '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}';
-ERROR HY000: Failed to set sql-level forwarding rules: Parsing json text '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}', error: Invalid json string: '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Error when parsing json text: Invalid json string: '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}'
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": 123}';
 ERROR HY000: Failed to set sql-level forwarding rules: The value set to the key 'SQLCOM_LOCK_TABLES' is not a string
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLE": "TDBCTL"}';

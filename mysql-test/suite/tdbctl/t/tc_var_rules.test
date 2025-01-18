@@ -6,54 +6,57 @@ SELECT * FROM mysql.servers;
 SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
 SELECT @@GLOBAL.tc_forwarding_rules INTO @origin_global_sql_rules;
 SELECT @@SESSION.tc_forwarding_rules INTO @origin_session_sql_rules;
-SELECT @@GLOBAL.tc_var_rules INTO @origin_global_var_rules;
-SELECT @@SESSION.tc_var_rules INTO @origin_session_var_rules;
+SELECT @@GLOBAL.tc_set_forwarding_rules INTO @origin_global_var_rules;
+SELECT @@SESSION.tc_set_forwarding_rules INTO @origin_session_var_rules;
 
 --echo
 --echo # Test invalid variable forwarding rules.
 --connection tdbctl0
 --error ER_VAR_RULES_CHECK_UNPASS
-SET tc_var_rules = '""';
+SET tc_set_forwarding_rules = NULL;
 --error ER_VAR_RULES_CHECK_UNPASS
-SET tc_var_rules = '{"max_connections", "TDBCTL", "time_zone", "TDBCTL"}';
+SET tc_set_forwarding_rules = '""';
 --error ER_VAR_RULES_CHECK_UNPASS
-SET tc_var_rules = '{max_connections: "TDBCTL", time_zone: "TDBCTL"}';
+SET tc_set_forwarding_rules = '{"max_connections", "TDBCTL", "time_zone", "TDBCTL"}';
 --error ER_VAR_RULES_CHECK_UNPASS
-SET tc_var_rules = '{"time_zone": 123}';
+SET tc_set_forwarding_rules = '{max_connections: "TDBCTL", time_zone: "TDBCTL"}';
 --error ER_VAR_RULES_CHECK_UNPASS
-SET tc_var_rules = '{"tc_admin": "TDBCTL, SPIDER_ALL"}';
+SET tc_set_forwarding_rules = '{"time_zone": 123}';
 --error ER_VAR_RULES_CHECK_UNPASS
-SET tc_var_rules = '{"time_zone": ""}';
+SET tc_set_forwarding_rules = '{"tc_admin": "TDBCTL, SPIDER_ALL"}';
 --error ER_VAR_RULES_CHECK_UNPASS
-SET tc_var_rules = '{"time_zone": "TDBCTL_ALL"}';
+SET tc_set_forwarding_rules = '{"time_zone": ""}';
 --error ER_VAR_RULES_CHECK_UNPASS
-SET tc_var_rules = '{"time_zone": "DESIGNATED_ONE"}';
+SET tc_set_forwarding_rules = '{"time_zone": "TDBCTL_ALL"}';
 --error ER_VAR_RULES_CHECK_UNPASS
-SET tc_var_rules = '{"time_zone": "SPIDER_ALL, TDBCTL, SPIDER_ALL"}';
+SET tc_set_forwarding_rules = '{"time_zone": "DESIGNATED_ONE"}';
 --error ER_VAR_RULES_CHECK_UNPASS
-SET tc_var_rules = '{"time_zone": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}';
+SET tc_set_forwarding_rules = '{"time_zone": "SPIDER_ALL, TDBCTL, SPIDER_ALL"}';
+--error ER_VAR_RULES_CHECK_UNPASS
+SET tc_set_forwarding_rules = '{"time_zone": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}';
 
-SET tc_var_rules = '{"Unknown_sys_var": "TDBCTL"}';
-SHOW VARIABLES LIKE 'tc_var_rules';
-SET tc_var_rules = '{}';
+SET tc_set_forwarding_rules = '{"Unknown_sys_var": "TDBCTL"}';
+SHOW VARIABLES LIKE 'tc_set_forwarding_rules';
+SET tc_set_forwarding_rules = default;
+SHOW VARIABLES LIKE 'tc_set_forwarding_rules';
 
 --echo
---echo # Set global tc_var_rules. Only new sessions will be affected.
+--echo # Set global tc_set_forwarding_rules. Only new sessions will be affected.
 --connection tdbctl0
 SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
 SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
-SHOW SESSION VARIABLES LIKE 'tc_var_rules';
-SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
-SET GLOBAL tc_var_rules = '{"time_zone": "TDBCTL", "max_connections": "TDBCTL, SPIDER_ONE"}';
-SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
-SET @@GLOBAL.tc_var_rules = JSON_SET(@@GLOBAL.tc_var_rules, '$.net_read_timeout', 'TDBCTL, REMOTE_ALL');
-SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
-SET @@GLOBAL.tc_var_rules = JSON_REMOVE(@@GLOBAL.tc_var_rules, '$.max_connections');
-SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
-SET @@GLOBAL.tc_var_rules = JSON_SET(@@GLOBAL.tc_var_rules, '$.net_read_timeout', 'NO_EXEC');
-SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
-SELECT JSON_EXTRACT(@@GLOBAL.tc_var_rules, '$.net_read_timeout') AS rule_of_net_read_timeout;
-SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+SHOW SESSION VARIABLES LIKE 'tc_set_forwarding_rules';
+SHOW GLOBAL VARIABLES LIKE 'tc_set_forwarding_rules';
+SET GLOBAL tc_set_forwarding_rules = '{"time_zone": "TDBCTL", "max_connections": "TDBCTL, SPIDER_ONE"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_set_forwarding_rules';
+SET @@GLOBAL.tc_set_forwarding_rules = JSON_SET(@@GLOBAL.tc_set_forwarding_rules, '$.net_read_timeout', 'TDBCTL, REMOTE_ALL');
+SHOW GLOBAL VARIABLES LIKE 'tc_set_forwarding_rules';
+SET @@GLOBAL.tc_set_forwarding_rules = JSON_REMOVE(@@GLOBAL.tc_set_forwarding_rules, '$.max_connections');
+SHOW GLOBAL VARIABLES LIKE 'tc_set_forwarding_rules';
+SET @@GLOBAL.tc_set_forwarding_rules = JSON_SET(@@GLOBAL.tc_set_forwarding_rules, '$.net_read_timeout', 'NO_EXEC');
+SHOW GLOBAL VARIABLES LIKE 'tc_set_forwarding_rules';
+SELECT JSON_EXTRACT(@@GLOBAL.tc_set_forwarding_rules, '$.net_read_timeout') AS rule_of_net_read_timeout;
+SHOW SESSION VARIABLES LIKE 'tc_set_forwarding_rules';
 
 --echo
 --echo # Create new connection.
@@ -61,8 +64,8 @@ SHOW SESSION VARIABLES LIKE 'tc_var_rules';
 --connection new_session
 SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
 SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
-SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
-SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+SHOW GLOBAL VARIABLES LIKE 'tc_set_forwarding_rules';
+SHOW SESSION VARIABLES LIKE 'tc_set_forwarding_rules';
 
 --echo
 --echo # Set general_log output to table.
@@ -150,15 +153,15 @@ SET tc_admin = OFF, time_zone = default;
 
 
 --echo
---echo # Set session tc_var_rules and tc_forwarding_rules. Only the current session will be affected.
+--echo # Set session tc_set_forwarding_rules and tc_forwarding_rules. Only the current session will be affected.
 --echo # Go to the new session.
 --connection new_session
 SET SESSION tc_forwarding_rules = '{"SQLCOM_SET_OPTION": "TDBCTL"}';
 SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
 SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
-SET SESSION tc_var_rules = '{"time_zone": "TDBCTL, SPIDER_ALL, REMOTE_ALL", "net_read_timeout": "TDBCTL, SPIDER_ALL"}';
-SHOW GLOBAL VARIABLES LIKE 'tc_var_rules';
-SHOW SESSION VARIABLES LIKE 'tc_var_rules';
+SET SESSION tc_set_forwarding_rules = '{"time_zone": "TDBCTL, SPIDER_ALL, REMOTE_ALL", "net_read_timeout": "TDBCTL, SPIDER_ALL"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_set_forwarding_rules';
+SHOW SESSION VARIABLES LIKE 'tc_set_forwarding_rules';
 
 
 --echo
@@ -200,6 +203,49 @@ SET GLOBAL max_connections = @origin_max_connections;
 --echo # show general_log.
 --source suite/tdbctl/inc/get_cluster_general_log.inc
 
+--echo
+--echo # A case from mysqldump.
+--echo # Go to the new session.
+--connection new_session
+
+--echo # Preparation: Set improper time zone and create database;
+SET SESSION tc_forwarding_rules = '{"SQLCOM_SET_OPTION": "TDBCTL, SPIDER_ALL, REMOTE_ALL"}';
+SET tc_admin = ON;
+SET @origin_time_zone = @@time_zone;
+SET time_zone = '+08:00';
+CREATE DATABASE test_time_zone;
+USE test_time_zone;
+SET SESSION tc_forwarding_rules = default;
+SET SESSION tc_set_forwarding_rules = default;
+
+--echo # Fail to create table
+SET time_zone = '+00:00';
+--error ER_TCADMIN_EXECUTE_ERROR
+CREATE TABLE procmanage_cmd_template (
+  id bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'ID',
+  content text NOT NULL COMMENT '命令的具体内容',
+  create_at timestamp NOT NULL DEFAULT '1970-01-01 00:00:01' COMMENT '创建时间',
+  update_at timestamp NOT NULL DEFAULT '1970-01-01 00:00:01' ON UPDATE CURRENT_TIMESTAMP COMMENT '最后一次修改时间',
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+DROP TABLE IF EXISTS procmanage_cmd_template;
+
+--echo # Success to create table
+SET SESSION tc_set_forwarding_rules = '{"time_zone": "TDBCTL, SPIDER_ALL, REMOTE_ALL"}';
+SET time_zone = '+00:00';
+CREATE TABLE procmanage_cmd_template (
+  id bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'ID',
+  content text NOT NULL COMMENT '命令的具体内容',
+  create_at timestamp NOT NULL DEFAULT '1970-01-01 00:00:01' COMMENT '创建时间',
+  update_at timestamp NOT NULL DEFAULT '1970-01-01 00:00:01' ON UPDATE CURRENT_TIMESTAMP COMMENT '最后一次修改时间',
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--echo # Restore time zone
+SET SESSION tc_forwarding_rules = '{"SQLCOM_SET_OPTION": "TDBCTL, SPIDER_ALL, REMOTE_ALL"}';
+SET time_zone = @origin_time_zone;
+
 
 --echo
 --echo # Restore to the initial state.
@@ -225,8 +271,8 @@ SET GLOBAL general_log = @old_general_log;
 SET GLOBAL log_output = @old_log_output;
 SET GLOBAL general_log = @old_general_log;
 --connection tdbctl0
-SET @@SESSION.tc_var_rules = @origin_session_var_rules;
-SET @@GLOBAL.tc_var_rules = @origin_global_var_rules;
+SET @@SESSION.tc_set_forwarding_rules = @origin_session_var_rules;
+SET @@GLOBAL.tc_set_forwarding_rules = @origin_global_var_rules;
 SET @@SESSION.tc_forwarding_rules = @origin_session_sql_rules;
 SET @@GLOBAL.tc_forwarding_rules = @origin_global_sql_rules;
 SET @@SESSION.tc_admin = @origin_tc_admin;
