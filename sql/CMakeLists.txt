@@ -329,6 +329,7 @@ ADD_COMPILE_FLAGS(
    tc_check_table.cc
    tc_check_routing.cc
    tc_forwarding_rule_mgr.cc
+   sys_vars_resource_mgr.cc
    sql_parse.cc
    sql_connect.cc
    sql_error.cc

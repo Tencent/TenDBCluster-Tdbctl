@@ -868,10 +868,10 @@ public:
   }
 };
 
-class Sys_var_forwarding_rule : public Sys_var_charptr
+class Sys_var_tc_charptr : public Sys_var_charptr
 {
 public:
-  Sys_var_forwarding_rule(const char *name_arg,
+  Sys_var_tc_charptr(const char *name_arg,
           const char *comment, int flag_args, ptrdiff_t off, size_t size,
           CMD_LINE getopt,
           enum charset_enum is_os_charset_arg,
@@ -885,7 +885,7 @@ public:
                       lock, binlog_status_arg, on_check_func, on_update_func, substitute, parse_flag)
   {}
 
-  ~Sys_var_forwarding_rule()
+  ~Sys_var_tc_charptr()
   {}
 
   bool session_update(THD *thd, set_var *var)
@@ -894,7 +894,7 @@ public:
     size_t new_val_len= var->save_result.string_value.length;
     char *ptr= ((char *)&thd->variables + offset);
 
-    return thd->session_rule_res_mgr.update((char **) ptr, new_val,
+    return thd->session_tc_sysvar_res_mgr.update((char **) ptr, new_val,
                                               new_val_len);
   }
 };

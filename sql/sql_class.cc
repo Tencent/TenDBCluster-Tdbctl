@@ -5087,6 +5087,7 @@ void THD::claim_memory_ownership()
     p->claim_memory_ownership();
   session_tracker.claim_memory_ownership();
   session_sysvar_res_mgr.claim_memory_ownership();
+  session_tc_sysvar_res_mgr.claim_memory_ownership();
   my_hash_claim(&user_vars);
 #if defined(ENABLED_DEBUG_SYNC)
   debug_sync_claim_memory_ownership(this);

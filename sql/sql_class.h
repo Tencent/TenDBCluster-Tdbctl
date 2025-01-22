@@ -4833,9 +4833,9 @@ public:
 
   Session_tracker session_tracker;
   Session_sysvar_resource_manager session_sysvar_res_mgr;
+  Session_tc_sysvar_resource_manager session_tc_sysvar_res_mgr;
 
   Forwarding_rule_mgr forward_rule_mgr;
-  Session_rules_resource_mgr session_rule_res_mgr;
 
   void parse_error_at(const YYLTYPE &location, const char *s= NULL);
 

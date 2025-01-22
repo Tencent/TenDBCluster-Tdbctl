@@ -6363,7 +6363,7 @@ static bool update_forwarding_rules(sys_var *self, THD *thd, enum_var_type type)
   DBUG_RETURN(!ret);
 }
 
-static Sys_var_forwarding_rule Sys_tc_forwarding_rules(
+static Sys_var_tc_charptr Sys_tc_forwarding_rules(
        "tc_forwarding_rules",
        "A json string that respecifies the sql command forwarding rules."
        "It has no effect on non-primary tdbctl node.",
@@ -6398,7 +6398,7 @@ static bool update_var_rules(sys_var *self, THD *thd, enum_var_type type) {
   DBUG_RETURN(!ret);
 }
 
-static Sys_var_forwarding_rule Sys_tc_var_rules(
+static Sys_var_tc_charptr Sys_tc_var_rules(
        "tc_set_forwarding_rules",
        "A json string that respecifies the forwarding rules of system variables.",
        TDBCTL SESSION_VAR(tc_var_rules), CMD_LINE(REQUIRED_ARG),

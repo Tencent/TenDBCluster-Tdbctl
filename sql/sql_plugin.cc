@@ -3175,9 +3175,9 @@ void plugin_thdvar_init(THD *thd, bool enable_plugins)
   // @@session.session_track_system_variables
   thd->session_sysvar_res_mgr.init(&thd->variables.track_sysvars_ptr, thd->charset());
   // @@session.tc_forwarding_rules
-  thd->session_rule_res_mgr.init(&thd->variables.tc_forwarding_rules);
+  thd->session_tc_sysvar_res_mgr.init(&thd->variables.tc_forwarding_rules);
   // @@session.tc_var_rules
-  thd->session_rule_res_mgr.init(&thd->variables.tc_var_rules);
+  thd->session_tc_sysvar_res_mgr.init(&thd->variables.tc_var_rules);
 
   DBUG_VOID_RETURN;
 }
@@ -3210,7 +3210,7 @@ static void cleanup_variables(THD *thd, struct system_variables *vars)
     
     plugin_var_memalloc_free(&thd->variables);
     thd->session_sysvar_res_mgr.deinit();
-    thd->session_rule_res_mgr.deinit();
+    thd->session_tc_sysvar_res_mgr.deinit();
   }
   DBUG_ASSERT(vars->table_plugin == NULL);
   DBUG_ASSERT(vars->temp_table_plugin == NULL);
