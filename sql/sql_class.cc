@@ -1689,6 +1689,8 @@ void THD::init(void)
   session_tracker.init(this->charset());
   session_tracker.enable(this);
 
+  forward_rule_mgr.init();
+
   owned_gtid.clear();
   owned_sid.clear();
   owned_gtid.dbug_print(NULL, "set owned_gtid (clear) in THD::init");

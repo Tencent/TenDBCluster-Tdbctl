@@ -1315,7 +1315,6 @@ void tc_parse_result_init(TC_PARSE_RESULT *parse_result_t)
 {
   parse_result_t->shard_func = tspider_shard_func_crc32;
   parse_result_t->shard_type = tspider_shard_type_list;
-  parse_result_t->execute_flag = 0;
   parse_result_t->result_set_flag = 0;
 }
 
@@ -2001,7 +2000,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case SQLCOM_RESET:
         //annotation, e.g: --
     case SQLCOM_EMPTY_QUERY:
-      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     // These commands are not supported in tcadmin primary or secondary mode.
     case SQLCOM_SHOW_PLUGINS:
@@ -2058,11 +2056,8 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (tdbctl_is_primary)
       {
         tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
-        tc_parse_result_t->execute_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
         tc_parse_result_t->result_set_flag |= RETURN_RESULT_SET_FROM_ONE_NODE;
       }
-      else
-        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     // These commands are executed on only one spider node in tcadmin primary mode, 
     // and not allowed to be executed in tcadmin secondary mode.
@@ -2073,7 +2068,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (!tdbctl_is_primary)
         break;
       tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
-      tc_parse_result_t->execute_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
       break;
     case SQLCOM_UPDATE:
     case SQLCOM_UPDATE_MULTI:
@@ -2093,7 +2087,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       else
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->spider_sql = "use " + TC_STR_BACK_QUOTED(tc_parse_result_t->db_name) + ";" + std::string(thd->query().str, thd->query().length);
-      tc_parse_result_t->execute_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
       break;
     // These commands are executed on only one spider node and tdbctl itself in tcadmin primary mode,
     // and not allowed to be executed in tcadmin secondary mode.
@@ -2104,7 +2097,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (!tdbctl_is_primary)
         break;
       tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
-      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
       break;
     case SQLCOM_SET_OPTION:
       // if the sys_var is tdbctl var, we only execute it on tdbctl itself
@@ -2114,12 +2106,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
           tdbctl_var_num++;
         total_var_num++;
       }
-      if (tdbctl_var_num > 0 && tdbctl_var_num == total_var_num)
-      {
-        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
-        break;
-      }
-      else if (tdbctl_var_num > 0 && tdbctl_var_num != total_var_num)
+      if (tdbctl_var_num > 0 && tdbctl_var_num != total_var_num)
       {
         my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "can't set tdbctl-only var and common var at the same time");
         return FALSE;
@@ -2128,17 +2115,13 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (tdbctl_is_primary)
       {
         tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
-        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE | TC_SPIDER_NEED_EXECUTE;
       }
-      else
-        tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_UNLOCK_TABLES:
       secondary_node_allowed = false;
       if (!tdbctl_is_primary)
         break;
       tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_LOCK_TABLES:
     case SQLCOM_CREATE_EVENT:
@@ -2158,7 +2141,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         break;
       tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->spider_sql = "use " + TC_STR_BACK_QUOTED(tc_parse_result_t->db_name) + ";" + std::string(thd->query().str, thd->query().length);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_VIEW:
     case SQLCOM_DROP_VIEW:
@@ -2170,7 +2152,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       else
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
       tc_parse_result_t->spider_sql = "use " + TC_STR_BACK_QUOTED(tc_parse_result_t->db_name) + ";" + std::string(thd->query().str, thd->query().length);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_USER:
     case SQLCOM_DROP_USER:
@@ -2184,7 +2165,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (!tdbctl_is_primary)
         break;
       tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
-      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_CREATE_TABLE:
     {
@@ -2214,7 +2194,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         tc_parse_result_t->query_string = thd->query();
         tc_parse_spider_create_table_like(tc_parse_result_t);
         tc_parse_remote_create_table_like(tc_parse_result_t);
-        tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
         break;
       }
 
@@ -2310,7 +2289,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_spider_create_table(tc_parse_result_t, is_unsigned_key,
                                    lex->partition_start_pos);
       tc_parse_remote_create_table(tc_parse_result_t, lex->partition_start_pos);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
 
       break;
     }
@@ -2325,7 +2303,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       tc_parse_spider_create_or_drop_index(tc_parse_result_t);
       tc_parse_remote_create_or_drop_index(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_ALTER_TABLE:
     {
@@ -2333,8 +2310,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (!tdbctl_is_primary)
         break;
       tc_parse_result_t->query_string = thd->query();
-      if (lex->alter_info.flags == Alter_info::ALTER_DROP_COLUMN)
-        tc_parse_result_t->execute_flag |= TC_SPIDER_EXECUTE_FIRST;
       if (lex->alter_info.flags == Alter_info::ALTER_RENAME)
       {
         tc_parse_result_t->db_name = tc_get_cur_dbname(thd, lex);
@@ -2358,8 +2333,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (!lex->alter_info.has_alter_partitions()) {
         if (lex->alter_info.flags != Alter_info::ALTER_RENAME)
           tc_parse_spider_alter_table(tc_parse_result_t);
-        /* Only non-partitioning operations are allowed to be sent to Spider */
-        tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE;
       } else if (lex->alter_info.has_non_alter_partitions()) {
         /*
           Do not allow a single ALTER query to have both partitioning and
@@ -2375,7 +2348,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       if (lex->alter_info.flags != Alter_info::ALTER_RENAME)
         tc_parse_remote_alter_table(tc_parse_result_t);
 
-      tc_parse_result_t->execute_flag |= TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case SQLCOM_RENAME_TABLE:
@@ -2398,7 +2370,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       }
       tc_parse_spider_rename_table(tc_parse_result_t);
       tc_parse_remote_rename_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE|TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case SQLCOM_DROP_TABLE:
@@ -2411,11 +2382,9 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_result_t->table_name = tc_get_cur_tbname(thd, lex);
       tc_parse_spider_drop_table(tc_parse_result_t);
       tc_parse_remote_drop_table(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE | TC_REMOTE_NEED_EXECUTE | TC_SPIDER_EXECUTE_FIRST | TC_TDBCTL_NEED_EXECUTE;
       break;
     }
     case SQLCOM_CHANGE_DB:
-      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       //do nothing
       break;
     case SQLCOM_CREATE_DB:
@@ -2426,7 +2395,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_result_t->db_name = lex->name.str;
       tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
       tc_parse_remote_create_database(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       break;
     case SQLCOM_DROP_DB:
     case SQLCOM_ALTER_DB:
@@ -2437,12 +2405,10 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
       tc_parse_result_t->db_name = lex->name.str;
       tc_parse_result_t->spider_sql = std::string(thd->query().str, thd->query().length);
       tc_parse_remote_drop_database(tc_parse_result_t);
-      tc_parse_result_t->execute_flag |= TC_SPIDER_NEED_EXECUTE |TC_REMOTE_NEED_EXECUTE | TC_SPIDER_EXECUTE_FIRST | TC_TDBCTL_NEED_EXECUTE;
       break;
     case TC_SQLCOM_CREATE_NODE:
     case TC_SQLCOM_ALTER_NODE:
     case TC_SQLCOM_DROP_NODE:
-      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     case TC_SQLCOM_FLUSH_ROUTING:
     case TC_SQLCOM_CREATE_SERVER:
@@ -2471,7 +2437,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case TC_SQLCOM_ENABLE_PRIMARY:
     case TC_SQLCOM_DISABLE_PRIMARY:
     case TC_SQLCOM_GET_PRIMARY:
-      tc_parse_result_t->execute_flag |= TC_TDBCTL_NEED_EXECUTE;
       break;
     case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
       secondary_node_allowed = false;
@@ -2479,7 +2444,6 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
         break;
       // set names utf8 is for compatibility with remote backend Mysql 8.0
       tc_parse_result_t->designated_node_sql = "set names utf8;" + std::string(lex->sql_statement.str, lex->sql_statement.length);
-      tc_parse_result_t->execute_flag |= TC_DESIGNATED_NODE_NEED_EXECUTE | TC_TDBCTL_NEED_EXECUTE;
       tc_parse_result_t->result_set_flag |= RETURN_RESULT_SET_FROM_ONE_NODE;
       break;
     default:
@@ -2497,8 +2461,35 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
   return TRUE;
 }
 
+/**
+  @brief Check whether the rewritten sql is complete according to the execute flag.
+
+  @param exec_flag          [IN]        The execute flag.
+  @param tc_parse_result_t  [IN]        The object holds rewritten sqls.
+
+  @return
+    0                    complete
+    > 0                  incomplete. return value contains the execute flags that lack rewriten sql.
+*/
+Exec_Flag check_rewritten_sql(Exec_Flag exec_flag, const TC_PARSE_RESULT *parse_result) {
+  Exec_Flag err_flag = 0;
+  if((exec_flag & TC_SPIDER_NEED_EXECUTE) && parse_result->spider_sql.empty()) {
+    err_flag |= TC_SPIDER_NEED_EXECUTE;
+  }
+  if((exec_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE) && parse_result->spider_sql.empty()) {
+    err_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+  }
+  if((exec_flag & TC_REMOTE_NEED_EXECUTE) && parse_result->remote_sql_map.empty()) {
+    err_flag |= TC_REMOTE_NEED_EXECUTE;
+  }
+  if((exec_flag & TC_DESIGNATED_NODE_NEED_EXECUTE) && parse_result->designated_node_sql.empty()) {
+    err_flag |= TC_DESIGNATED_NODE_NEED_EXECUTE;
+  }
+  return err_flag;
+}
+
 //display rewrite sql by parse_result
-bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
+bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result, Exec_Flag exec_flag)
 {
   DBUG_ENTER("tc_dry_run_command");
 
@@ -2528,7 +2519,7 @@ bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
         protocol->store(value.c_str(), value.length(), system_charset_info);
   };
 
-  if (parse_result->execute_flag & TC_DESIGNATED_NODE_NEED_EXECUTE) {
+  if (exec_flag & TC_DESIGNATED_NODE_NEED_EXECUTE) {
     FOREIGN_SERVER *server = get_server_by_name(thd->mem_root, thd->lex->server_options.m_server_name.str, NULL);
     protocol->start_row();
     auto_store(server->server_name);
@@ -2539,27 +2530,29 @@ bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
     protocol->end_row();
   }
 
-  if (parse_result->execute_flag & (TC_SPIDER_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE)) {
+  if (exec_flag & (TC_SPIDER_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE)) {
     protocol->start_row();
     protocol->store(STRING_WITH_LEN(SPIDER_WRAPPER), system_charset_info);
     auto_store(parse_result->db_name);
     auto_store(parse_result->table_name);
     auto_store(parse_result->spider_sql);
-    if (parse_result->execute_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE)
+    if (exec_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE)
       protocol->store(STRING_WITH_LEN("only one spider execute"), system_charset_info);
     else
       protocol->store(STRING_WITH_LEN("all spider execute"), system_charset_info);
     protocol->end_row();
   }
 
-  for (auto &row : parse_result->remote_sql_map) {
-    protocol->start_row();
-    auto_store(row.first);
-    protocol->store_null();
-    protocol->store_null();
-    auto_store(row.second);
-    protocol->store(STRING_WITH_LEN("all remote execute"), system_charset_info);
-    protocol->end_row();
+  if (exec_flag & TC_REMOTE_NEED_EXECUTE) {
+    for (auto &row : parse_result->remote_sql_map) {
+      protocol->start_row();
+      auto_store(row.first);
+      protocol->store_null();
+      protocol->store_null();
+      auto_store(row.second);
+      protocol->store(STRING_WITH_LEN("all remote execute"), system_charset_info);
+      protocol->end_row();
+    }
   }
 
   my_eof(thd);
@@ -2567,17 +2560,17 @@ bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result)
 }
 
 // record dry_run info into log file
-bool tc_dry_run_log_file(THD *thd, TC_PARSE_RESULT *parse_result) {
+bool tc_dry_run_log_file(THD *thd, TC_PARSE_RESULT *parse_result, Exec_Flag exec_flag) {
   DBUG_ENTER("tc_dry_run_log_file");
 
   std::string dry_run_log_content;
-  if (parse_result->execute_flag & TC_TDBCTL_NEED_EXECUTE) {
+  if (exec_flag & TC_TDBCTL_NEED_EXECUTE) {
     dry_run_log_content.append("Server_name: " + std::string(STRING_WITH_LEN(TDBCTL_WRAPPER)) + "\n");
     dry_run_log_content.append("Command: " + std::string(thd->query().str, thd->query().length) + "\n");
     dry_run_log_content.append("Info: tdbctl node execute \n\n");
   }
 
-  if (parse_result->execute_flag & TC_DESIGNATED_NODE_NEED_EXECUTE) {
+  if (exec_flag & TC_DESIGNATED_NODE_NEED_EXECUTE) {
     FOREIGN_SERVER *server = get_server_by_name(thd->mem_root, thd->lex->server_options.m_server_name.str, NULL);
     dry_run_log_content.append("Server_name: " + std::string(server->server_name) + "\n");
     dry_run_log_content.append("Db: \n");
@@ -2586,24 +2579,27 @@ bool tc_dry_run_log_file(THD *thd, TC_PARSE_RESULT *parse_result) {
     dry_run_log_content.append("Info: only specified node execute \n\n");
   }
 
-  if (parse_result->execute_flag & (TC_SPIDER_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE)) {
+  if (exec_flag & (TC_SPIDER_NEED_EXECUTE | TC_ONLY_ONE_SPIDER_NEED_EXECUTE)) {
     dry_run_log_content.append("Server_name: " + std::string(STRING_WITH_LEN(SPIDER_WRAPPER)) + "\n");
     //dry_run_log_content.append("Db: " + parse_result->db_name + "\n");
     //dry_run_log_content.append("Table: " + parse_result->table_name + "\n");
     dry_run_log_content.append("Command: " + parse_result->spider_sql + "\n");
-    if (parse_result->execute_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE)
+    if (exec_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE)
       dry_run_log_content.append("Info: only one spider execute \n\n");
     else
       dry_run_log_content.append("Info: all spider execute \n\n");
   }
 
-  for (auto &row: parse_result->remote_sql_map) {
-    dry_run_log_content.append("Server_name: " + row.first + "\n");
-    //dry_run_log_content.append("Db: \n");
-    //dry_run_log_content.append("Table: \n");
-    dry_run_log_content.append("Command: " + row.second + "\n");
-    dry_run_log_content.append("Info: all remote execute \n\n");
+  if (exec_flag & TC_REMOTE_NEED_EXECUTE) {
+    for (auto &row: parse_result->remote_sql_map) {
+      dry_run_log_content.append("Server_name: " + row.first + "\n");
+      //dry_run_log_content.append("Db: \n");
+      //dry_run_log_content.append("Table: \n");
+      dry_run_log_content.append("Command: " + row.second + "\n");
+      dry_run_log_content.append("Info: all remote execute \n\n");
+    }
   }
+
   if(query_logger.tdbctl_dry_run_log_write(thd, dry_run_log_content.c_str(), dry_run_log_content.size()))
     DBUG_RETURN(FALSE);
 

@@ -160,7 +160,6 @@ typedef struct tc_parse_result
     string spider_sql;
     map<string, string> remote_sql_map;
     string designated_node_sql;
-    int execute_flag;
     int result_set_flag;
 
     string shard_key;
@@ -583,8 +582,9 @@ bool tc_query_parse(
 
 
 bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t);
-bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result);
-bool tc_dry_run_log_file(THD *thd, TC_PARSE_RESULT *parse_result);
+Exec_Flag check_rewritten_sql(Exec_Flag exec_flag, const TC_PARSE_RESULT *tc_parse_result_t);
+bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result, Exec_Flag exec_flag);
+bool tc_dry_run_log_file(THD *thd, TC_PARSE_RESULT *parse_result, Exec_Flag exec_flag);
 
 MYSQL* tc_conn_connect(
   string ipport, 

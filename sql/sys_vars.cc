@@ -62,6 +62,7 @@
 #include "rpl_write_set_handler.h"       // transaction_write_set_hashing_algorithms
 #include "rpl_group_replication.h"       // is_group_replication_running
 #include "threadpool.h"
+#include "tc_forwarding_rule_mgr.h"      // Forwarding_rule_manager
 
 #ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
 #include "../storage/perfschema/pfs_server.h"
@@ -6343,6 +6344,32 @@ static Sys_var_ulong Sys_max_dryrun_log_files(
         TDBCTL GLOBAL_VAR(max_dryrun_log_files),
         CMD_LINE(REQUIRED_ARG), VALID_RANGE(0, 102400),
         DEFAULT(0), BLOCK_SIZE(1));
+
+
+static bool check_forwarding_rules(sys_var *self, THD *thd, set_var *var) {
+  DBUG_ENTER("check_forwarding_rules");
+  bool is_valid = Forwarding_rule_mgr::check_forwarding_rules(thd, var);
+  DBUG_RETURN(!is_valid);
+}
+
+static bool update_forwarding_rules(sys_var *self, THD *thd, enum_var_type type) {
+  DBUG_ENTER("update_forwarding_rules");
+  bool ret = Forwarding_rule_mgr::update_forwarding_rules(thd, type);
+  DBUG_RETURN(!ret);
+}
+
+static Sys_var_charptr Sys_tc_forwarding_rules(
+       "tc_forwarding_rules",
+       "A json string that respecifies the sql command forwarding rules."
+       "It has no effect on non-primary tdbctl node.",
+       TDBCTL SESSION_VAR(tc_forwarding_rules), CMD_LINE(REQUIRED_ARG),
+       IN_FS_CHARSET, 
+       DEFAULT("{}"), 
+       NO_MUTEX_GUARD,
+       NOT_IN_BINLOG,
+       ON_CHECK(check_forwarding_rules),
+       ON_UPDATE(update_forwarding_rules)
+);
 
 static bool fix_dry_run_log_state(sys_var *self, THD *thd, enum_var_type type)
 {

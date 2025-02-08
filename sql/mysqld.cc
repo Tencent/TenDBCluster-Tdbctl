@@ -4400,6 +4400,16 @@ a file name for --log-bin-index option", opt_binlog_index_name);
   }
   if (tmp_str)
     my_free(tmp_str);
+
+  const char *json_text = global_system_variables.tc_forwarding_rules;
+  std::string tc_forwarding_rules_err;
+  if(Forwarding_rule_mgr::server_boot_verify(json_text, strlen(json_text), tc_forwarding_rules_err)) {
+    sql_print_error(tc_forwarding_rules_err.c_str());
+    unireg_abort(MYSQLD_ABORT_EXIT);
+  } else {
+    sql_print_information("set global tc_forwarding_rules=\'%s\'", json_text);
+  }
+
   /* we do want to exit if there are any other unknown options */
   if (remaining_argc > 1)
   {

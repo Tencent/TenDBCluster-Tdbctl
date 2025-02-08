@@ -1,0 +1,521 @@
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@GLOBAL.tc_forwarding_rules INTO @origin_global_rules;
+SELECT @@SESSION.tc_forwarding_rules INTO @origin_session_rules;
+
+# Test invalid forwarding rules.
+SET tc_forwarding_rules = '""';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '""'
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}'
+SET tc_forwarding_rules = '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}'
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": 123}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": 123}'
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLE": "TDBCTL"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLE": "TDBCTL"}'
+SET tc_forwarding_rules = '{"SQLCOM_SET_OPTION": "TDBCTL, SPIDER_ALL"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_SET_OPTION": "TDBCTL, SPIDER_ALL"}'
+SET tc_forwarding_rules = '{"SQLCOM_CREATE_TABLE": "TDBCTL, SPIDER_ALL"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_CREATE_TABLE": "TDBCTL, SPIDER_ALL"}'
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL, SPIDER_ALL", "sqlcom_lock_tables": "TDBCTL, SPIDER_ALL"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": "TDBCTL, SPIDER_ALL", "sqlcom_lock_tables": "TDBCTL, SPIDER_ALL"}'
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": ""}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": ""}'
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL_ALL"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": "TDBCTL_ALL"}'
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "DESIGNATED_ONE"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": "DESIGNATED_ONE"}'
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ALL"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ALL"}'
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}'
+SET tc_forwarding_rules = '{"SQLCOM_GRANT": "TDBCTL, SPIDER_ALL"}';
+ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_GRANT": "TDBCTL, SPIDER_ALL"}'
+
+# Set global tc_forwarding_rules. Only new sessions will be affected.
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{}
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{}
+SET GLOBAL tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL", "SQLCOM_UNLOCK_TABLES": "TDBCTL, SPIDER_ONE", "SQLCOM_FLUSH": "TDBCTL"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{"SQLCOM_LOCK_TABLES": "TDBCTL", "SQLCOM_UNLOCK_TABLES": "TDBCTL, SPIDER_ONE", "SQLCOM_FLUSH": "TDBCTL"}
+SET @@GLOBAL.tc_forwarding_rules = JSON_SET(@@GLOBAL.tc_forwarding_rules, '$.SQLCOM_SELECT', 'NO_EXEC');
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{"SQLCOM_FLUSH": "TDBCTL", "SQLCOM_SELECT": "NO_EXEC", "SQLCOM_LOCK_TABLES": "TDBCTL", "SQLCOM_UNLOCK_TABLES": "TDBCTL, SPIDER_ONE"}
+SET @@GLOBAL.tc_forwarding_rules = JSON_REMOVE(@@GLOBAL.tc_forwarding_rules, '$.SQLCOM_FLUSH');
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{"SQLCOM_SELECT": "NO_EXEC", "SQLCOM_LOCK_TABLES": "TDBCTL", "SQLCOM_UNLOCK_TABLES": "TDBCTL, SPIDER_ONE"}
+SET @@GLOBAL.tc_forwarding_rules = JSON_SET(@@GLOBAL.tc_forwarding_rules, '$.SQLCOM_UNLOCK_TABLES', 'TDBCTL');
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{"SQLCOM_SELECT": "NO_EXEC", "SQLCOM_LOCK_TABLES": "TDBCTL", "SQLCOM_UNLOCK_TABLES": "TDBCTL"}
+SELECT JSON_EXTRACT(@@GLOBAL.tc_forwarding_rules, '$.SQLCOM_UNLOCK_TABLES') AS SQLCOM_UNLOCK_TABLES;
+SQLCOM_UNLOCK_TABLES
+"TDBCTL"
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{}
+
+# Create new connection.
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{"SQLCOM_SELECT": "NO_EXEC", "SQLCOM_LOCK_TABLES": "TDBCTL", "SQLCOM_UNLOCK_TABLES": "TDBCTL"}
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{"SQLCOM_SELECT": "NO_EXEC", "SQLCOM_LOCK_TABLES": "TDBCTL", "SQLCOM_UNLOCK_TABLES": "TDBCTL"}
+
+# Set general_log output to table.
+SET tc_admin=OFF;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+
+# Check default forwarding rules for SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+# Truncate general_log.
+SET tc_admin=OFF;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+# Execute SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+# Still in the old session.
+SET tc_admin=ON;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE t1( id INT PRIMARY KEY );
+CREATE TABLE t2( id INT PRIMARY KEY );
+LOCK TABLES t1 READ, t2 WRITE;
+SELECT * FROM t1;
+id
+UNLOCK TABLES;
+DROP DATABASE test1;
+# Show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+CREATE DATABASE test1
+USE test1
+CREATE TABLE t1( id INT PRIMARY KEY )
+CREATE TABLE t2( id INT PRIMARY KEY )
+LOCK TABLES t1 READ, t2 WRITE
+SELECT * FROM t1
+UNLOCK TABLES
+DROP DATABASE test1
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+SET NAMES latin1;
+SET sql_mode='';
+CREATE DATABASE test1_0
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_0`;
+CREATE TABLE t1( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_0`;
+CREATE TABLE t2( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+DROP DATABASE test1_0
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+SET NAMES latin1;
+SET sql_mode='';
+CREATE DATABASE test1_1
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_1`;
+CREATE TABLE t1( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_1`;
+CREATE TABLE t2( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+DROP DATABASE test1_1
+--------------------
+
+# Check modified forwarding rules for SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+# Truncate general_log.
+SET tc_admin=OFF;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+# Execute SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+# Go to the new session.
+SET tc_admin=ON;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE t1( id INT PRIMARY KEY );
+CREATE TABLE t2( id INT PRIMARY KEY );
+LOCK TABLES t1 READ, t2 WRITE;
+SELECT * FROM t1;
+UNLOCK TABLES;
+DROP DATABASE test1;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+CREATE DATABASE test1
+USE test1
+CREATE TABLE t1( id INT PRIMARY KEY )
+CREATE TABLE t2( id INT PRIMARY KEY )
+LOCK TABLES t1 READ, t2 WRITE
+SELECT * FROM t1
+UNLOCK TABLES
+DROP DATABASE test1
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+SET NAMES latin1;
+SET sql_mode='';
+CREATE DATABASE test1_0
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_0`;
+CREATE TABLE t1( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_0`;
+CREATE TABLE t2( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+DROP DATABASE test1_0
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+SET NAMES latin1;
+SET sql_mode='';
+CREATE DATABASE test1_1
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_1`;
+CREATE TABLE t1( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_1`;
+CREATE TABLE t2( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+DROP DATABASE test1_1
+--------------------
+
+# Set session tc_forwarding_rules. Only the current session will be affected.
+# Go to the new session.
+SET SESSION tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL, SPIDER_ONE", "SQLCOM_UNLOCK_TABLES": "TDBCTL, SPIDER_ONE"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{"SQLCOM_SELECT": "NO_EXEC", "SQLCOM_LOCK_TABLES": "TDBCTL", "SQLCOM_UNLOCK_TABLES": "TDBCTL"}
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+Variable_name	Value
+tc_forwarding_rules	{"SQLCOM_LOCK_TABLES": "TDBCTL, SPIDER_ONE", "SQLCOM_UNLOCK_TABLES": "TDBCTL, SPIDER_ONE"}
+
+# Check default forwarding rules for SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+# Truncate general_log.
+SET tc_admin=OFF;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+# Execute SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+# Still in the old session.
+SET tc_admin=ON;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE t1( id INT PRIMARY KEY );
+CREATE TABLE t2( id INT PRIMARY KEY );
+LOCK TABLES t1 READ, t2 WRITE;
+SELECT * FROM t1;
+id
+UNLOCK TABLES;
+DROP DATABASE test1;
+# Show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+CREATE DATABASE test1
+USE test1
+CREATE TABLE t1( id INT PRIMARY KEY )
+CREATE TABLE t2( id INT PRIMARY KEY )
+LOCK TABLES t1 READ, t2 WRITE
+SELECT * FROM t1
+UNLOCK TABLES
+DROP DATABASE test1
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+SET NAMES latin1;
+SET sql_mode='';
+CREATE DATABASE test1_0
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_0`;
+CREATE TABLE t1( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_0`;
+CREATE TABLE t2( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+DROP DATABASE test1_0
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+SET NAMES latin1;
+SET sql_mode='';
+CREATE DATABASE test1_1
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_1`;
+CREATE TABLE t1( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_1`;
+CREATE TABLE t2( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+DROP DATABASE test1_1
+--------------------
+
+# Check modified forwarding rules for SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+# Truncate general_log.
+SET tc_admin=OFF;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+TRUNCATE TABLE mysql.general_log;
+# Execute SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+# Go to the new session.
+SET tc_admin=ON;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE t1( id INT PRIMARY KEY );
+CREATE TABLE t2( id INT PRIMARY KEY );
+LOCK TABLES t1 READ, t2 WRITE;
+SELECT * FROM t1;
+id
+UNLOCK TABLES;
+DROP DATABASE test1;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+CREATE DATABASE test1
+USE test1
+CREATE TABLE t1( id INT PRIMARY KEY )
+CREATE TABLE t2( id INT PRIMARY KEY )
+LOCK TABLES t1 READ, t2 WRITE
+SELECT * FROM t1
+UNLOCK TABLES
+DROP DATABASE test1
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+SET NAMES latin1;
+SET sql_mode='';
+CREATE DATABASE test1_0
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_0`;
+CREATE TABLE t1( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_0`;
+CREATE TABLE t2( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+DROP DATABASE test1_0
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+SET NAMES latin1;
+SET sql_mode='';
+CREATE DATABASE test1_1
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_1`;
+CREATE TABLE t1( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+use `test1_1`;
+CREATE TABLE t2( id INT PRIMARY KEY )
+SET NAMES latin1;
+SET sql_mode='';
+DROP DATABASE test1_1
+--------------------
+
+# Restore to the initial state.
+SET tc_admin=OFF;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+SET @@SESSION.tc_forwarding_rules = @origin_session_rules;
+SET @@GLOBAL.tc_forwarding_rules = @origin_global_rules;
+SET @@SESSION.tc_admin = @origin_tc_admin;

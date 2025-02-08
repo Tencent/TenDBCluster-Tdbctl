@@ -206,6 +206,7 @@ SET(SQL_SHARED_SOURCES
   tc_show.cc
   tc_check_table.cc
   tc_check_routing.cc
+  tc_forwarding_rule_mgr.cc
   sql_partition.cc
   sql_partition_admin.cc
   sql_planner.cc
@@ -327,6 +328,7 @@ ADD_COMPILE_FLAGS(
    tc_show.cc
    tc_check_table.cc
    tc_check_routing.cc
+   tc_forwarding_rule_mgr.cc
    sql_parse.cc
    sql_connect.cc
    sql_error.cc

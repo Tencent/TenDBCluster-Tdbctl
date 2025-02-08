@@ -1,0 +1,215 @@
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@GLOBAL.tc_forwarding_rules INTO @origin_global_rules;
+SELECT @@SESSION.tc_forwarding_rules INTO @origin_session_rules;
+
+--echo
+--echo # Test invalid forwarding rules.
+--connection tdbctl0
+--error ER_WRONG_VALUE_FOR_VAR  # Invalid json string.
+SET tc_forwarding_rules = '""';
+--error ER_WRONG_VALUE_FOR_VAR  # Invalid json string.
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}';
+--error ER_WRONG_VALUE_FOR_VAR  # Invalid json string.
+SET tc_forwarding_rules = '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}';
+--error ER_WRONG_VALUE_FOR_VAR  # The value should be a string.
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": 123}';
+--error ER_WRONG_VALUE_FOR_VAR  # Unknown sql command.
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLE": "TDBCTL"}';
+--error ER_WRONG_VALUE_FOR_VAR  # Setting forwarding rules for some sql commands is forbidden.
+SET tc_forwarding_rules = '{"SQLCOM_SET_OPTION": "TDBCTL, SPIDER_ALL"}';
+--error ER_WRONG_VALUE_FOR_VAR  # Setting forwarding rules for some sql commands is forbidden.
+SET tc_forwarding_rules = '{"SQLCOM_CREATE_TABLE": "TDBCTL, SPIDER_ALL"}';
+--error ER_WRONG_VALUE_FOR_VAR  # Duplicate sql command.
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL, SPIDER_ALL", "sqlcom_lock_tables": "TDBCTL, SPIDER_ALL"}';
+--error ER_WRONG_VALUE_FOR_VAR  # Empty string value is not allowed.
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": ""}';
+--error ER_WRONG_VALUE_FOR_VAR  # Invalid execute flag.
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL_ALL"}';
+--error ER_WRONG_VALUE_FOR_VAR  # This flag cannot be specified.
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "DESIGNATED_ONE"}';
+--error ER_WRONG_VALUE_FOR_VAR  # Duplicate execute flag.
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ALL"}';
+--error ER_WRONG_VALUE_FOR_VAR  # Conflicting execute flags exist.
+SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}';
+--error ER_WRONG_VALUE_FOR_VAR  # Out-of-range flags exist.
+SET tc_forwarding_rules = '{"SQLCOM_GRANT": "TDBCTL, SPIDER_ALL"}';
+
+--echo
+--echo # Set global tc_forwarding_rules. Only new sessions will be affected.
+--connection tdbctl0
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+SET GLOBAL tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL", "SQLCOM_UNLOCK_TABLES": "TDBCTL, SPIDER_ONE", "SQLCOM_FLUSH": "TDBCTL"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+SET @@GLOBAL.tc_forwarding_rules = JSON_SET(@@GLOBAL.tc_forwarding_rules, '$.SQLCOM_SELECT', 'NO_EXEC');
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+SET @@GLOBAL.tc_forwarding_rules = JSON_REMOVE(@@GLOBAL.tc_forwarding_rules, '$.SQLCOM_FLUSH');
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+SET @@GLOBAL.tc_forwarding_rules = JSON_SET(@@GLOBAL.tc_forwarding_rules, '$.SQLCOM_UNLOCK_TABLES', 'TDBCTL');
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+SELECT JSON_EXTRACT(@@GLOBAL.tc_forwarding_rules, '$.SQLCOM_UNLOCK_TABLES') AS SQLCOM_UNLOCK_TABLES;
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+
+--echo
+--echo # Create new connection.
+--connect (new_session, 127.0.0.1, root, 123, test, 46000,)
+--connection new_session
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+
+--echo
+--echo # Set general_log output to table.
+--connection tdbctl0
+SET tc_admin=OFF;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection spider0
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection spider1
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection spider2
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection remote_master0
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection remote_master1
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+
+
+--echo
+--echo # Check default forwarding rules for SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Execute SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+--echo # Still in the old session.
+--connection tdbctl0
+SET tc_admin=ON;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE t1( id INT PRIMARY KEY );
+CREATE TABLE t2( id INT PRIMARY KEY );
+LOCK TABLES t1 READ, t2 WRITE;
+SELECT * FROM t1;
+UNLOCK TABLES;
+DROP DATABASE test1;
+--echo # Show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+
+--echo
+--echo # Check modified forwarding rules for SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Execute SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+--echo # Go to the new session.
+--connection new_session
+SET tc_admin=ON;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE t1( id INT PRIMARY KEY );
+CREATE TABLE t2( id INT PRIMARY KEY );
+LOCK TABLES t1 READ, t2 WRITE;
+SELECT * FROM t1;
+UNLOCK TABLES;
+DROP DATABASE test1;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+
+--echo
+--echo # Set session tc_forwarding_rules. Only the current session will be affected.
+--echo # Go to the new session.
+--connection new_session
+SET SESSION tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL, SPIDER_ONE", "SQLCOM_UNLOCK_TABLES": "TDBCTL, SPIDER_ONE"}';
+SHOW GLOBAL VARIABLES LIKE 'tc_forwarding_rules';
+SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';
+
+
+--echo
+--echo # Check default forwarding rules for SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Execute SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+--echo # Still in the old session.
+--connection tdbctl0
+SET tc_admin=ON;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE t1( id INT PRIMARY KEY );
+CREATE TABLE t2( id INT PRIMARY KEY );
+LOCK TABLES t1 READ, t2 WRITE;
+SELECT * FROM t1;
+UNLOCK TABLES;
+DROP DATABASE test1;
+--echo # Show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+
+--echo
+--echo # Check modified forwarding rules for SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Execute SQLCOM_LOCK_TABLES, SQLCOM_UNLOCK_TABLES, and SQLCOM_SELECT command.
+--echo # Go to the new session.
+--connection new_session
+SET tc_admin=ON;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE t1( id INT PRIMARY KEY );
+CREATE TABLE t2( id INT PRIMARY KEY );
+LOCK TABLES t1 READ, t2 WRITE;
+SELECT * FROM t1;
+UNLOCK TABLES;
+DROP DATABASE test1;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+--disconnect new_session
+--connection tdbctl0
+SET tc_admin=OFF;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection spider0
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection spider1
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection spider2
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection remote_master0
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection remote_master1
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection tdbctl0
+SET @@SESSION.tc_forwarding_rules = @origin_session_rules;
+SET @@GLOBAL.tc_forwarding_rules = @origin_global_rules;
+SET @@SESSION.tc_admin = @origin_tc_admin;
