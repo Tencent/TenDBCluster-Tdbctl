@@ -3634,8 +3634,10 @@ bool tc_exec_sql_paral(
     tc_exec_info exec_info = its2->second;
     if (exec_info.err_code > 0)
     {
-      sql_print_error("parallel execute sql, server[%s], exec_sql : %s, err_msg : %s",
-                      ipport_or_servername.c_str(), exec_sql.c_str(), exec_info.err_msg.c_str());
+      std::stringstream ss;
+      ss << "parallel execute sql, server[" << ipport_or_servername << "], exec_sql: " << exec_sql << ", err_msg: " << exec_info.err_msg;
+      std::string long_err_msg = ss.str();
+      error_log_write(ERROR_LEVEL, long_err_msg.c_str(), long_err_msg.length());
       result = TRUE;
     }
   }
@@ -3912,10 +3914,44 @@ string concat_result_map(map<string, tc_exec_info> result_map)
   string result;
   std::for_each(result_map.begin(), result_map.end(), [&](std::pair<string, tc_exec_info>its) {
     if (its.second.err_code != 0)
-      result += its.first + its.second.err_msg;
+      result += "\n" + its.first + ": " + its.second.err_msg + ". ";
   });
 
   return result;
+}
+
+void merge_error_info(map<string, tc_exec_info> &prev_result, map<string, tc_exec_info> &cur_result) {
+  using M_It = map<string, tc_exec_info>::iterator;
+  for(M_It cur_it = cur_result.begin(); cur_it != cur_result.end(); ++cur_it) {
+    if(cur_it->second.err_code != 0) {
+      M_It prev_it = prev_result.find(cur_it->first);
+      if(prev_it != prev_result.end()) {
+        if(prev_it->second.err_code == 0) {
+          prev_it->second.err_msg = cur_it->second.err_msg;
+        } else {
+          prev_it->second.err_msg = cur_it->second.err_msg + \
+            ", <prev_error_code: " + std::to_string(prev_it->second.err_code) + ", " + \
+            "prev_error_msg: " + prev_it->second.err_msg + ">";
+        }
+        prev_it->second.err_code = cur_it->second.err_code;
+      }
+    }
+  }
+}
+
+map<string, tc_exec_info> result_map_like(const map<string, tc_exec_info> &result_map) {
+  map<string, tc_exec_info> new_result_map;
+  for (map<string, tc_exec_info>::const_iterator it = result_map.begin(); it !=  result_map.end(); ++it)
+  {
+    tc_exec_info exec_info;
+    exec_info.err_code = 0;
+    exec_info.prepare_sql = false;
+    exec_info.res = NULL;
+    exec_info.err_msg = "";
+    exec_info.row_affect = 0;
+    new_result_map.insert(pair<string, tc_exec_info>(it->first, exec_info));
+  }
+  return new_result_map;
 }
 
 /*

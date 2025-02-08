@@ -752,6 +752,21 @@ void init_result_map(map<string, tc_exec_info>& result_map, set<string> &ipport_
 void init_result_map2(map<string, tc_exec_info>& result_map, map<string, string> &ipport_map);
 string concat_result_map(map<string, tc_exec_info> result_map);
 
+/*
+  merge error information of two result map.
+  note: 
+    Make sure prev_result and cur_result have the same key.
+    If the err_code of cur_result is 0, this function does nothing.
+    Otherwise, cur_result's err_code is assigned to prev_result's err_code,
+      err_msg of cur_result will be appended to prev_result's err_msg.
+*/
+void merge_error_info(map<string, tc_exec_info> &prev_result, map<string, tc_exec_info> &cur_result);
+
+/*
+  Return a result_map with the same key.
+*/
+map<string, tc_exec_info> result_map_like(const map<string, tc_exec_info> &result_map);
+
 string tc_get_variable_value(MYSQL *conn, const char *variable);
 
 enum enum_ident_wrapper_check

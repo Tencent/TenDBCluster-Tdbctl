@@ -2631,6 +2631,26 @@ void error_log_print(enum loglevel level, const char *format, va_list args)
 }
 #endif /* EMBEDDED_LIBRARY */
 
+void error_log_write(enum loglevel level, const char *buff, size_t length)
+{
+  DBUG_ENTER("error_log_write");
+
+  if (static_cast<ulong>(level) < log_error_verbosity)
+  {
+    print_buffer_to_file(level, buff, length);
+
+    if (log_syslog_enabled
+#ifdef _WIN32
+    && !abort_loop // Don't write to the eventlog during shutdown.
+#endif
+      )
+    {
+      my_syslog(system_charset_info, level, buff);
+    }
+  }
+
+  DBUG_VOID_RETURN;
+}
 
 void sql_print_error(const char *format, ...)
 {

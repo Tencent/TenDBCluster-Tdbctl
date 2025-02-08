@@ -1862,20 +1862,26 @@ int tc_flush_routing_by_wrapper(map<string, tc_exec_info> &result_map, map<strin
     if (tc_exec_sql_paral(flush_table_sql, conn_map, result_map) ||
       tc_exec_sql_paral(flush_rdlock_sql, conn_map, result_map))
     {/* unlock tables;*/
-      tc_exec_sql_paral(unlock_sql, conn_map, result_map);
+      map<string, tc_exec_info> new_result_map = result_map_like(result_map);
+      tc_exec_sql_paral(unlock_sql, conn_map, new_result_map);
+      merge_error_info(result_map, new_result_map);
       return 1;
     }
   }
   if (tc_exec_sql_paral(replace_sql, conn_map, result_map))
   {/* unlock tables;*/
-    tc_exec_sql_paral(unlock_sql, conn_map, result_map);
+    map<string, tc_exec_info> new_result_map = result_map_like(result_map);
+    tc_exec_sql_paral(unlock_sql, conn_map, new_result_map);
+    merge_error_info(result_map, new_result_map);
     /* if failed to replace mysql.servers; set changed data node read only */
     tc_set_changed_remote_read_only();
     return 2;
   }
   if (tc_exec_sql_paral(flush_priv_sql, conn_map, result_map))
   {/* unlock tables;*/
-    tc_exec_sql_paral(unlock_sql, conn_map, result_map);
+    map<string, tc_exec_info> new_result_map = result_map_like(result_map);
+    tc_exec_sql_paral(unlock_sql, conn_map, new_result_map);
+    merge_error_info(result_map, new_result_map);
     return 2;
   }
   if (!is_force)
