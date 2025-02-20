@@ -124,6 +124,26 @@ bool tc_flush_routing(LEX *lex, Cluster_conn_manager* conn_mgr);
  * @return false means success
  */
 bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flushed, Cluster_conn_manager* conn_mgr, const char* wrapper);
+/**
+ * @brief flush mysql.servers table to the specific nodes according to wrapper name
+ * 
+ * @param lex 
+ * @param nodes_to_be_flushed 
+ * @param conn_mgr 
+ * @param wrapper 
+ * @return true means failure
+ * @return false means success
+ */
+bool tc_flush_servers_table_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flushed, Cluster_conn_manager* conn_mgr, const char* wrapper);
+enum FLUSH_ROUTING_RESULT {
+  SUCCESS = 0,                   // success
+  UNEXPECTED_WRAPPER,            // node type that cannot flush routing
+  SET_OPTION_FAILURE,            // fail to set option
+  REPLACE_TABLE_FAILURE,         // fail to modify mysql.servers table
+  FLUSH_TABLE_FAILURE,           // fail to execute 'flush tables; flush table with read lock;'
+  FLUSH_PRIV_FAILURE,            // fail to execute 'flush privileges;'
+};
+extern const char *FLUSH_ROUTING_INFO[];
 int tc_check_and_repair_routing();
 void create_check_and_repaire_routing_thread();
 

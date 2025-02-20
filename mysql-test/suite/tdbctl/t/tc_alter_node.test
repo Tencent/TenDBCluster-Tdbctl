@@ -1,0 +1,153 @@
+# Test the command 'TDBCTL ALTER NODE'.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+--echo
+--echo # Original routing table.
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Set general_log output to table.
+--source suite/tdbctl/inc/set_cluster_general_log_to_table.inc
+
+--echo
+--echo # Case 1: TDBCTL ALTER NODE.
+--echo # execute TDBCTL ALTER NODE command.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL ALTER NODE SPIDER0 OPTIONS (host '172.18.0.7', port 3306);
+TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306);
+--echo # tdbctl routing table
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+--echo # spider routing table
+--connection spider0
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Restore mysql.servers;
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Case 2: Success to execute 'TDBCTL ALTER NODE WITH SPIDER_NODES'.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # execute TDBCTL ALTER NODE WITH SPIDER_NODES.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL ALTER NODE SPIDER0 OPTIONS (host '172.18.0.7', port 3306) WITH SPIDER_NODES;
+TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306) WITH SPIDER_NODES;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+--echo # tdbctl routing table
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+--echo # spider routing table
+--connection spider0
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Restore mysql.servers;
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Case 3: Fail to execute 'TDBCTL ALTER NODE WITH SPIDER_NODES'.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Lock mysql.servers of SPIDER0
+--connection spider0
+LOCK TABLES mysql.servers READ;
+--echo # execute TDBCTL ALTER NODE WITH SPIDER_NODES.
+--connection tdbctl0
+SET tc_admin=ON;
+--error ER_TCADMIN_FLUSH_ROUTING_ERROR
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SPIDER_NODES;
+--echo # Unlock mysql.servers of SPIDER0
+--connection spider0
+UNLOCK TABLES;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+--echo # tdbctl routing table
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+--echo # spider routing table
+--connection spider0
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Restore mysql.servers;
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+--disable_warnings
+TDBCTL FLUSH ROUTING;
+--enable_warnings
+
+--echo
+--echo # Case 4: Switch master and slave nodes.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Switch master and slave nodes.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SPIDER_NODES;
+TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SPIDER_NODES;
+--connection spider0
+FLUSH TABLE WITH READ LOCK;
+--connection spider1
+FLUSH TABLE WITH READ LOCK;
+--connection spider2
+FLUSH TABLE WITH READ LOCK;
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING CACHE;
+--connection spider0
+UNLOCK TABLES;
+--connection spider1
+UNLOCK TABLES;
+--connection spider2
+UNLOCK TABLES;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+--echo # tdbctl routing table
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+--echo # spider routing table
+--connection spider0
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Restore mysql.servers;
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+
+--echo
+--echo # Restore to the initial state.
+--source suite/tdbctl/inc/reset_cluster_general_log.inc
+--connection tdbctl0
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@SESSION.tc_admin = @origin_tc_admin;

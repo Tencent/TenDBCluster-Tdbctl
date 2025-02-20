@@ -569,6 +569,7 @@ static const SYMBOL symbols[] = {
   { SYM("SOURCE",                   SOURCE_SYM)},
   { SYM("SPATIAL",                  SPATIAL_SYM)},
   { SYM("SPECIFIC",                 SPECIFIC_SYM)},
+  { SYM("SPIDER_NODES",             SPIDER_NODES_SYM)},
   { SYM("SQL",                      SQL_SYM)},
   { SYM("SQLEXCEPTION",             SQLEXCEPTION_SYM)},
   { SYM("SQLSTATE",                 SQLSTATE_SYM)},

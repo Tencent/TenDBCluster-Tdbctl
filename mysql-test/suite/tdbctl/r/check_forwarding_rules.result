@@ -13,41 +13,11 @@ TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL
 SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
 
 # Set general_log output to table.
-SET tc_admin=OFF;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
+Set general log for all cluster nodes.
 
 # check forwarding rules for SQLCOM_SET_OPTION command.
 # Truncate general_log.
-SET tc_admin=OFF;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
 # execute SQLCOM_SET_OPTION command.
 SET tc_admin=ON;
 SET @old_level = @@SESSION.tx_isolation;
@@ -55,50 +25,44 @@ SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SET SESSION tx_isolation = @old_level;
 # show general_log.
 --------------------
-SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
 tdbctl0_log
 SET tc_admin=ON
 SET @old_level = @@SESSION.tx_isolation
 SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ
 SET SESSION tx_isolation = @old_level
 --------------------
-SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SET NAMES latin1;SET sql_mode='';SET @old_level = @@SESSION.tx_isolation
 SET NAMES latin1;SET sql_mode='';SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ
 SET NAMES latin1;SET sql_mode='';SET SESSION tx_isolation = @old_level
 --------------------
-SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SET NAMES latin1;SET sql_mode='';SET @old_level = @@SESSION.tx_isolation
 SET NAMES latin1;SET sql_mode='';SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ
 SET NAMES latin1;SET sql_mode='';SET SESSION tx_isolation = @old_level
 --------------------
-SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SET NAMES latin1;SET sql_mode='';SET @old_level = @@SESSION.tx_isolation
 SET NAMES latin1;SET sql_mode='';SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ
 SET NAMES latin1;SET sql_mode='';SET SESSION tx_isolation = @old_level
 --------------------
-SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 --------------------
-SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 --------------------
 
 # check forwarding rules for SQLCOM_LOCK_TABLES and SQLCOM_UNLOCK_TABLES command.
 # Truncate general_log.
-SET tc_admin=OFF;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
 # execute SQLCOM_LOCK_TABLES and SQLCOM_UNLOCK_TABLES command.
 SET tc_admin=ON;
 CREATE DATABASE test1;
@@ -110,7 +74,7 @@ UNLOCK TABLES;
 DROP DATABASE test1;
 # show general_log.
 --------------------
-SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
 tdbctl0_log
 SET tc_admin=ON
 CREATE DATABASE test1
@@ -121,7 +85,7 @@ LOCK TABLES t1 READ, t2 WRITE
 UNLOCK TABLES
 DROP DATABASE test1
 --------------------
-SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
 SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
 SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
@@ -130,7 +94,7 @@ SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
 SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
 SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
 --------------------
-SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
 SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
@@ -139,7 +103,7 @@ SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
 SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
 SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
 --------------------
-SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
 SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
@@ -148,7 +112,7 @@ SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
 SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
 SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
 --------------------
-SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 SET NAMES latin1;
 SET sql_mode='';
@@ -165,7 +129,7 @@ SET NAMES latin1;
 SET sql_mode='';
 DROP DATABASE test1_0
 --------------------
-SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 SET NAMES latin1;
 SET sql_mode='';
@@ -184,17 +148,5 @@ DROP DATABASE test1_1
 --------------------
 
 # Restore to the initial state.
-SET tc_admin=OFF;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
+Set general log to original state for all cluster nodes.
 SET @@SESSION.tc_admin = @origin_tc_admin;

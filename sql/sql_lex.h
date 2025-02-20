@@ -3247,10 +3247,12 @@ public:
   bool safe_to_cache_query;
   bool subqueries;
   my_bool tc_force;
+  bool tc_flush_only_cache;  // Only the routing cache is flushed without modifying the routing table.
 	/* whether need do grants when flush routing, for tdbctl statement */
 	bool tc_do_grants;
 	/* whether need do dump/restore schema for new add spider node */
 	bool tc_with_schema;
+  bool tc_with_spider;
   ulong tc_flush_type;
 
   /* start position of the PARTITION BY clause in query */

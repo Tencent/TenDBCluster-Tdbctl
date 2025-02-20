@@ -1,0 +1,381 @@
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+
+# Set general_log output to table.
+Set general log for all cluster nodes.
+
+# Case 1: TDBCTL FLUSH ROUTING.
+# Truncate general_log.
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# execute TDBCTL FLUSH ROUTING command.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+TDBCTL FLUSH ROUTING
+show variables like  'server_uuid'
+
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+flush privileges
+unlock tables
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+flush privileges
+unlock tables
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+flush privileges
+unlock tables
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+--------------------
+
+# Case 2: TDBCTL FLUSH ROUTING FORCE.
+# Truncate general_log.
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# execute TDBCTL FLUSH ROUTING command.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING FORCE;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+TDBCTL FLUSH ROUTING FORCE
+show variables like  'server_uuid'
+
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush privileges
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush privileges
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush privileges
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+--------------------
+
+# Case 3: TDBCTL FLUSH ROUTING CACHE.
+# Truncate general_log.
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# execute TDBCTL FLUSH ROUTING command.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING CACHE;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+TDBCTL FLUSH ROUTING CACHE
+show variables like  'server_uuid'
+
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+flush tables with no block
+flush table with read lock
+flush privileges
+unlock tables
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+flush tables with no block
+flush table with read lock
+flush privileges
+unlock tables
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+flush tables with no block
+flush table with read lock
+flush privileges
+unlock tables
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+--------------------
+
+# Case 4: TDBCTL FLUSH ROUTING CACHE FORCE.
+# Truncate general_log.
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# execute TDBCTL FLUSH ROUTING command.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING CACHE FORCE;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+TDBCTL FLUSH ROUTING CACHE FORCE
+show variables like  'server_uuid'
+
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+flush privileges
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+flush privileges
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+flush privileges
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+--------------------
+
+# Case 5: TDBCTL FLUSH SERVER SPIDER0 ROUTING.
+# Truncate general_log.
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# execute TDBCTL FLUSH ROUTING command.
+SET tc_admin=ON;
+TDBCTL FLUSH SERVER SPIDER0 ROUTING;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+TDBCTL FLUSH SERVER SPIDER0 ROUTING
+show variables like  'server_uuid'
+
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+flush privileges
+unlock tables
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+--------------------
+
+# Case 6: Fail to modify 'mysql.servers'.
+# Truncate general_log.
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# Lock mysql.servers of SPIDER0
+LOCK TABLES mysql.servers READ;
+# execute TDBCTL FLUSH ROUTING command.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+ERROR HY000: failed to flush routing: failed to modify mysql.servers table
+SPIDER0: Lock wait timeout exceeded; try restarting transaction.
+# Unlock mysql.servers of SPIDER0
+UNLOCK TABLES;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+TDBCTL FLUSH ROUTING
+show variables like  'server_uuid'
+
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+--------------------
+# restore cluster routing.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+# Case 7: Fail to execute 'flush tables; flush table with read lock;'.
+# Truncate general_log.
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# Lock test_flush.t1 of SPIDER0
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */;
+CREATE DATABASE test_flush;
+CREATE TABLE test_flush.t1(id INT PRIMARY KEY);
+LOCK TABLES test_flush.t1 READ;
+# execute TDBCTL FLUSH ROUTING command.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+ERROR HY000: failed to flush routing: failed to execute 'flush tables; flush table with read lock;'
+SPIDER0: Lock wait timeout exceeded; try restarting transaction.
+# Unlock test_flush.t1 of SPIDER0
+UNLOCK TABLES;
+DROP DATABASE test_flush;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+TDBCTL FLUSH ROUTING
+show variables like  'server_uuid'
+
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+unlock tables
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+unlock tables
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+unlock tables
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+unlock tables
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+unlock tables
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+unlock tables
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+unlock tables
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+unlock tables
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Wrapper='TDBCTL';replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+unlock tables
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+--------------------
+# restore cluster routing.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+# Restore to the initial state.
+Set general log to original state for all cluster nodes.
+SET @@SESSION.tc_admin = @origin_tc_admin;

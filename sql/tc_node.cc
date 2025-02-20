@@ -75,8 +75,19 @@ int tc_dump_node_schema(
   dump_options += space + "--default-character-set=" + charset;
 
   dump_cmd = dump_bin + space + dump_options;
-  if (system(dump_cmd.c_str()) != 0)
+
+  int ret;
+  if ((ret = system(dump_cmd.c_str())) != 0)
   {
+    // Log the return value of the system function
+    if (ret == -1) {
+      sql_print_error("The function 'system()' failed to execute with a return value of -1.");
+    } else if (WIFEXITED(ret)) {
+      sql_print_error("Command 'mysqldump' exited with status %d.", WEXITSTATUS(ret));
+    } else if (WIFSIGNALED(ret)) {
+      sql_print_error("Command 'mysqldump' terminated by signal %d.", WTERMSIG(ret));
+    }
+
     my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0), file, host, port, err_file.c_str());
     return 1;
   }

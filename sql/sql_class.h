@@ -74,6 +74,7 @@ enum tc_flush_option
 {
   FLUSH_ALL_ROUTING,
   FLUSH_ROUTING_BY_SERVER,
+  FLUSH_SPIDER_SERVERS_TABLE,
 };
 
 class Cluster_conn_manager;

@@ -3624,18 +3624,26 @@ bool tc_exec_sql_paral(
       thread_array[i].join();
   }
 
+  std::stringstream err_ss;
+  bool first_error = true;
   for (its2 = result_map.begin(); its2 != result_map.end(); its2++)
   {/* */
     string ipport_or_servername = its2->first;
     tc_exec_info exec_info = its2->second;
     if (exec_info.err_code > 0)
     {
-      std::stringstream ss;
-      ss << "parallel execute sql, server[" << ipport_or_servername << "], exec_sql: " << exec_sql << ", err_msg: " << exec_info.err_msg;
-      std::string long_err_msg = ss.str();
-      error_log_write(ERROR_LEVEL, long_err_msg.c_str(), long_err_msg.length());
+      if (first_error) {
+        err_ss << "Failed to execute sql in parallel: " << exec_sql << "\n";
+        first_error = false;
+      }
+      err_ss << ipport_or_servername << ": " << exec_info.err_msg << "\n";
       result = TRUE;
     }
+  }
+  if (result) {
+    std::string long_err_msg = err_ss.str();
+    long_err_msg.pop_back();
+    error_log_write(ERROR_LEVEL, long_err_msg.c_str(), long_err_msg.length());
   }
 
   delete[] thread_array;
@@ -3910,7 +3918,7 @@ string concat_result_map(map<string, tc_exec_info> result_map)
   string result;
   std::for_each(result_map.begin(), result_map.end(), [&](std::pair<string, tc_exec_info>its) {
     if (its.second.err_code != 0)
-      result += "\n" + its.first + ": " + its.second.err_msg + ". ";
+      result += its.first + ": " + its.second.err_msg + ".\n";
   });
 
   return result;

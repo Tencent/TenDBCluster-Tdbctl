@@ -83,6 +83,15 @@ enum enum_servers_table_field
   SERVERS_FIELD_OWNER
 };
 
+const char *FLUSH_ROUTING_INFO[] = {
+  "success", 
+  "node type that cannot flush routing", 
+  "failed to set option", 
+  "failed to modify mysql.servers table", 
+  "failed to execute 'flush tables; flush table with read lock;'", 
+  "failed to execute 'flush privileges;'", 
+};
+
 #define RESULT_SUCCEED  0
 #define RESULT_FAILED   1
 #define RESULT_ABNORMAL 0
@@ -1809,16 +1818,14 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
 
 // Generate routing sql by wrapper name
 // And then send these sql to spider/spider_slave/tdbctl nodes
-/* return val
-      0: success
-      1: failed
-      2: mean "flush table with read" is ok, but "replace mysql.servers" or "flush privileges" failed
-*/
-int tc_flush_routing_by_wrapper(map<string, tc_exec_info> &result_map, map<string, MYSQL*>conn_map, bool is_force,
-                                const char* wrapper)
+enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> &result_map, 
+                                                      map<string, MYSQL*>conn_map, 
+                                                      const char* wrapper, 
+                                                      bool is_force, 
+                                                      bool is_flush_only_cache)
 {
   std::string flush_priv_sql = "flush privileges";
-  std::string flush_table_sql = "flush tables";
+  std::string flush_table_sql = "flush tables with no block";
   std::string flush_rdlock_sql = "flush table with read lock";
   std::string set_mdl_timeout_sql = "set lock_wait_timeout = 60";
   std::string set_interactive_timeout_sql = "set wait_timeout = 180";
@@ -1840,24 +1847,35 @@ int tc_flush_routing_by_wrapper(map<string, tc_exec_info> &result_map, map<strin
     replace_sql = generate_routing_sql_for_tdbctl();
   else
   {
-    return 1;
+    return FLUSH_ROUTING_RESULT::UNEXPECTED_WRAPPER;
   }
 
-  if (replace_sql.length() == 0)
-    //empty replace sql
+  if (!is_flush_only_cache && (replace_sql.length() == 0))  //empty replace sql
   {
     if (current_thd)
       push_warning(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_FLUSH_ROUTING_ERROR,
                   "routing sql is null, flush do nothing");
-    return 0;
+    return FLUSH_ROUTING_RESULT::SUCCESS;
   }
 
+  /* SET OPTION */
   if (tc_exec_sql_paral(set_option_sql, conn_map, result_map))
   {
-    return 1;
+    return FLUSH_ROUTING_RESULT::SET_OPTION_FAILURE;
   }
 
-  if (!is_force)
+  /* Modify the mysql.servers table, but the routing information does not take effect. */
+  if (!is_flush_only_cache) {  // If the CACHE option is specified, skip this step. 
+    if (tc_exec_sql_paral(replace_sql, conn_map, result_map))
+    {
+      /* if failed to replace mysql.servers; set changed data node read only */
+      // tc_set_changed_remote_read_only();
+      return FLUSH_ROUTING_RESULT::REPLACE_TABLE_FAILURE;
+    }
+  }
+
+  /* FLUSH TABLE WITH READ LOCK */
+  if (!is_force)  // If the FORCE option is specified, skip this step.
   {
     if (tc_exec_sql_paral(flush_table_sql, conn_map, result_map) ||
       tc_exec_sql_paral(flush_rdlock_sql, conn_map, result_map))
@@ -1865,30 +1883,71 @@ int tc_flush_routing_by_wrapper(map<string, tc_exec_info> &result_map, map<strin
       map<string, tc_exec_info> new_result_map = result_map_like(result_map);
       tc_exec_sql_paral(unlock_sql, conn_map, new_result_map);
       merge_error_info(result_map, new_result_map);
-      return 1;
+      return FLUSH_ROUTING_RESULT::FLUSH_TABLE_FAILURE;
     }
   }
-  if (tc_exec_sql_paral(replace_sql, conn_map, result_map))
-  {/* unlock tables;*/
-    map<string, tc_exec_info> new_result_map = result_map_like(result_map);
-    tc_exec_sql_paral(unlock_sql, conn_map, new_result_map);
-    merge_error_info(result_map, new_result_map);
-    /* if failed to replace mysql.servers; set changed data node read only */
-    tc_set_changed_remote_read_only();
-    return 2;
-  }
+
+  /* FLUSH PRIVILEGES */
   if (tc_exec_sql_paral(flush_priv_sql, conn_map, result_map))
-  {/* unlock tables;*/
-    map<string, tc_exec_info> new_result_map = result_map_like(result_map);
-    tc_exec_sql_paral(unlock_sql, conn_map, new_result_map);
-    merge_error_info(result_map, new_result_map);
-    return 2;
+  {
+      return FLUSH_ROUTING_RESULT::FLUSH_PRIV_FAILURE;
   }
+
+  /* UNLOCK TABLES */
   if (!is_force)
   {
     tc_exec_sql_paral(unlock_sql, conn_map, result_map);
   }
-  return 0;
+
+  return FLUSH_ROUTING_RESULT::SUCCESS;
+}
+
+// Generate routing sql by wrapper name
+// Just modify the mysql.servers table
+enum FLUSH_ROUTING_RESULT tc_flush_servers_table_by_wrapper(map<string, tc_exec_info> &result_map, 
+                                                            map<string, MYSQL*>conn_map, 
+                                                            const char* wrapper)
+{
+  std::string set_mdl_timeout_sql = "set lock_wait_timeout = 60";
+  std::string set_interactive_timeout_sql = "set wait_timeout = 180";
+  std::string set_option_sql = set_mdl_timeout_sql + ";" + set_interactive_timeout_sql;
+  if (!strcasecmp(wrapper, TDBCTL_WRAPPER))
+  {
+    // set sql_log_bin = off is to avoid producing gtid
+    std::string set_sql_log_bin_sql = "set tc_admin=0;set sql_log_bin = off;";
+    set_option_sql = set_sql_log_bin_sql + set_option_sql;
+  }
+  std::string replace_sql;
+  if (!strcasecmp(wrapper, SPIDER_WRAPPER))
+    replace_sql = generate_routing_sql_for_spider(false);
+  else if (!strcasecmp(wrapper, SPIDER_SLAVE_WRAPPER))
+    replace_sql = generate_routing_sql_for_spider(true);
+  else if (!strcasecmp(wrapper, TDBCTL_WRAPPER))
+    replace_sql = generate_routing_sql_for_tdbctl();
+  else
+  {
+    return FLUSH_ROUTING_RESULT::UNEXPECTED_WRAPPER;
+  }
+
+  if (replace_sql.length() == 0)  //empty replace sql
+  {
+    if (current_thd)
+      push_warning(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_FLUSH_ROUTING_ERROR,
+                  "routing sql is null, flush do nothing");
+    return FLUSH_ROUTING_RESULT::SUCCESS;
+  }
+
+  if (tc_exec_sql_paral(set_option_sql, conn_map, result_map))
+  {
+    return FLUSH_ROUTING_RESULT::SET_OPTION_FAILURE;
+  }
+
+  if (tc_exec_sql_paral(replace_sql, conn_map, result_map))
+  {
+    return FLUSH_ROUTING_RESULT::REPLACE_TABLE_FAILURE;
+  }
+
+  return FLUSH_ROUTING_RESULT::SUCCESS;
 }
 
 string tc_get_ipport_from_server_by_wrapper(Server_options* server_options, const char* wrapper_name)
@@ -1982,6 +2041,19 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
     }
     break;
   }
+  case FLUSH_SPIDER_SERVERS_TABLE:
+  {
+    get_server_name_set(&mem_root, spider_nodes, SPIDER_WRAPPER);
+    get_server_name_set(&mem_root, spider_slave_nodes, SPIDER_SLAVE_WRAPPER);
+
+    if (tc_flush_servers_table_to_nodes(lex, spider_nodes, conn_mgr, SPIDER_WRAPPER) ||
+        tc_flush_servers_table_to_nodes(lex, spider_slave_nodes, conn_mgr, SPIDER_SLAVE_WRAPPER))
+    {
+      result = TRUE;
+      break;
+    }
+    break;
+  }
   default:
     break;
   }
@@ -1994,6 +2066,7 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
 {
   bool result = FALSE;
   bool is_force = lex->tc_force;
+  bool is_flush_only_cache = lex->tc_flush_only_cache;
   int retry_times = 3;
   std::set<std::string>::iterator its;
   map<std::string, tc_exec_info> result_map;
@@ -2012,9 +2085,9 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
   std::map<std::string, MYSQL*> needed_conn_map;
   std::map<std::string, MYSQL*>::iterator conn_its;
   int node_type = get_node_type_by_wrapper(wrapper);
+  enum FLUSH_ROUTING_RESULT exec_ret = FLUSH_ROUTING_RESULT::SUCCESS;
   while (retry_times-- > 0)
   {
-    int exec_ret = 0;
     if (conn_mgr->connect((enum_node_type)node_type, false))
     {
       result = TRUE;
@@ -2031,17 +2104,18 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
       }
     }
     if (!nodes_to_be_flushed.empty()){
-      exec_ret = tc_flush_routing_by_wrapper(result_map, needed_conn_map, is_force, wrapper);
+      exec_ret = tc_flush_routing_by_wrapper(result_map, needed_conn_map, wrapper, is_force, is_flush_only_cache);
     }
 
-    if (exec_ret)
+    if (exec_ret != FLUSH_ROUTING_RESULT::SUCCESS)
     {
-      /* exec_ret == 2 mean "flush table with read" is ok,
-      but "replace mysql.servers" or "flush privileges" failed
-      so we just retry --force */
-      if (exec_ret == 2)
-        is_force = TRUE; /* switch force */
-      sleep(1);
+      result = TRUE;
+      sleep(1);  // Wait 1 second and try again
+
+      /* FLUSH_PRIV_FAILURE means "replace mysql.servers" is ok, but "flush privileges" failed.
+      Mean while, the global lock is not unlocked. So we just skip modifying mysql.servers and try again. */
+      if (exec_ret == FLUSH_ROUTING_RESULT::FLUSH_PRIV_FAILURE)
+        is_flush_only_cache = true;
     }
     else
     {
@@ -2049,10 +2123,122 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
       goto finish;
     }
   }
-  if (retry_times == -1)
+  if (result)
   {
-    my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), concat_result_map(result_map).c_str());
-    result = TRUE;
+    std::string nodes_success, nodes_failed; 
+    if (exec_ret == FLUSH_ROUTING_RESULT::FLUSH_PRIV_FAILURE) {
+      /* flush privileges failed again after retry, then we set read_only for the failed nodes. */
+      std::string set_read_only_sql = "set global read_only=1";
+      std::string unlock_sql = "unlock tables";
+      std::map<std::string, MYSQL*> failed_conn_map;
+      map<std::string, tc_exec_info> failed_result_map;
+      for (const auto &result_item: result_map) {  // get failed connection.
+        if (result_item.second.err_code > 0) {
+          failed_conn_map[result_item.first] = needed_conn_map[result_item.first];
+          /* Try to repair a connection that was disconnected due to a timeout. 
+            Prepare for setting read_only. */ 
+          conn_mgr->connect(result_item.first, (enum_node_type)node_type, true);
+        }
+      }
+      tc_exec_sql_paral(set_read_only_sql, failed_conn_map, failed_result_map);  // set read_only
+      for (const auto &result_item: failed_result_map) {  // describe the execution result
+        if (result_item.second.err_code > 0)
+          nodes_failed += result_item.first + ": " + result_item.second.err_msg + "\n";
+        else
+          nodes_success += result_item.first + "\n";
+      }
+
+      /* unlock tables if needed*/
+      if (!is_force)
+      {
+        map<string, tc_exec_info> new_result_map = result_map_like(result_map);
+        tc_exec_sql_paral(unlock_sql, needed_conn_map, new_result_map);
+        merge_error_info(result_map, new_result_map);
+      }
+    }
+
+    std::string failed_step = FLUSH_ROUTING_INFO[exec_ret];
+    std::string error_info = failed_step + "\n" + concat_result_map(result_map);
+    if (exec_ret == FLUSH_ROUTING_RESULT::FLUSH_PRIV_FAILURE) {
+      error_info += "These nodes set read_only successfully:\n" + nodes_success;
+      if (nodes_failed.size() > 0)
+        error_info += "Failed to set read_only on these nodes:\n" + nodes_failed; 
+    }
+    error_info.pop_back();
+    my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), error_info.c_str());
+  }
+
+finish:
+  nodes_to_be_flushed.clear();
+  result_map.clear();
+  return result;
+}
+
+bool tc_flush_servers_table_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flushed, Cluster_conn_manager* conn_mgr, const char* wrapper)
+{
+  bool result = false;
+  enum FLUSH_ROUTING_RESULT exec_ret = FLUSH_ROUTING_RESULT::SUCCESS;
+  std::set<std::string>::iterator its;
+  map<std::string, tc_exec_info> result_map;
+  std::map<std::string, MYSQL*> conn_map;
+  std::map<std::string, MYSQL*> needed_conn_map;
+  std::map<std::string, MYSQL*>::iterator conn_its;
+  int node_type = get_node_type_by_wrapper(wrapper);
+  int retry_times = 3;
+
+  if (nodes_to_be_flushed.empty()){
+    result = false;
+    goto finish;
+  }
+
+  for (its = nodes_to_be_flushed.begin(); its !=  nodes_to_be_flushed.end(); its++)
+  {/* init for exec result: result_map */
+    string server_name = (*its);
+    tc_exec_info exec_info;
+    exec_info.err_code = 0;
+    exec_info.row_affect = 0;
+    exec_info.err_msg = "";
+    result_map.insert(pair<string, tc_exec_info>(server_name, exec_info));
+  }
+
+  while (retry_times-- > 0)
+  {
+    if (conn_mgr->connect((enum_node_type)node_type, false))
+    {
+      result = true;
+      goto finish;
+    }
+
+    // build the needed conn_map
+    conn_map = conn_mgr->get_conn_map((enum_node_type)node_type);
+    for (its = nodes_to_be_flushed.begin(); its != nodes_to_be_flushed.end(); its++)
+    {
+      if((conn_its = conn_map.find(*its)) != conn_map.end())
+      {
+        needed_conn_map.insert(std::make_pair(conn_its->first, conn_its->second));
+      }
+    }
+
+    exec_ret = tc_flush_servers_table_by_wrapper(result_map, needed_conn_map, wrapper);
+
+    if (exec_ret != FLUSH_ROUTING_RESULT::SUCCESS)
+    {
+      result = true;
+      sleep(1);  // Wait 1 second and try again
+    }
+    else
+    {
+      result = false;
+      goto finish;
+    }
+  }
+
+  if (result)
+  {
+    std::string failed_step = FLUSH_ROUTING_INFO[exec_ret];
+    std::string error_info = failed_step + "\n" + concat_result_map(result_map);
+    error_info.pop_back();
+    my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), error_info.c_str());
   }
 
 finish:
