@@ -55,19 +55,19 @@ INSERT INTO mysql.servers SELECT * FROM origin_servers;
 SET tc_admin=ON;
 TDBCTL FLUSH ROUTING;
 
-# Case 2: Success to execute 'TDBCTL ALTER NODE WITH SPIDER_NODES'.
+# Case 2: Success to execute 'TDBCTL ALTER NODE WITH SYNC'.
 # Truncate general_log.
 execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
-# execute TDBCTL ALTER NODE WITH SPIDER_NODES.
+# execute TDBCTL ALTER NODE WITH SYNC.
 SET tc_admin=ON;
-TDBCTL ALTER NODE SPIDER0 OPTIONS (host '172.18.0.7', port 3306) WITH SPIDER_NODES;
-TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306) WITH SPIDER_NODES;
+TDBCTL ALTER NODE SPIDER0 OPTIONS (host '172.18.0.7', port 3306) WITH SYNC;
+TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306) WITH SYNC;
 # show general_log.
 --------------------
 SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
 tdbctl0_log
 SET tc_admin=ON
-TDBCTL ALTER NODE SPIDER0 OPTIONS (host '172.18.0.7', port 3306) WITH SPIDER_NODES
+TDBCTL ALTER NODE SPIDER0 OPTIONS (host '172.18.0.7', port 3306) WITH SYNC
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
 set tc_admin=0
@@ -78,7 +78,7 @@ CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.7' IDENTIFIED WITH 'mysql_native_pas
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.7' WITH GRANT OPTION
 show variables like  'server_uuid'
 
-TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306) WITH SPIDER_NODES
+TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306) WITH SYNC
 set tc_admin=0
 select user,host from mysql.user where user = 'mysql'and host = '172.18.0.6'
 set tc_admin = 0;
@@ -194,15 +194,15 @@ INSERT INTO mysql.servers SELECT * FROM origin_servers;
 SET tc_admin=ON;
 TDBCTL FLUSH ROUTING;
 
-# Case 3: Fail to execute 'TDBCTL ALTER NODE WITH SPIDER_NODES'.
+# Case 3: Fail to execute 'TDBCTL ALTER NODE WITH SYNC'.
 # Truncate general_log.
 execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
 # Lock mysql.servers of SPIDER0
 LOCK TABLES mysql.servers READ;
-# execute TDBCTL ALTER NODE WITH SPIDER_NODES.
+# execute TDBCTL ALTER NODE WITH SYNC.
 SET tc_admin=ON;
-TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SPIDER_NODES;
-ERROR HY000: failed to flush routing: failed to modify mysql.servers table
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC;
+ERROR HY000: ALTER NODE FAILED: with sync option, failed to modify mysql.servers table
 SPIDER0: Lock wait timeout exceeded; try restarting transaction.
 # Unlock mysql.servers of SPIDER0
 UNLOCK TABLES;
@@ -211,7 +211,7 @@ UNLOCK TABLES;
 SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
 tdbctl0_log
 SET tc_admin=ON
-TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SPIDER_NODES
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC
 show variables like  'server_uuid'
 
 --------------------
@@ -286,8 +286,8 @@ TDBCTL FLUSH ROUTING;
 execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
 # Switch master and slave nodes.
 SET tc_admin=ON;
-TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SPIDER_NODES;
-TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SPIDER_NODES;
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC;
+TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC;
 FLUSH TABLE WITH READ LOCK;
 FLUSH TABLE WITH READ LOCK;
 FLUSH TABLE WITH READ LOCK;
@@ -301,10 +301,10 @@ UNLOCK TABLES;
 SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
 tdbctl0_log
 SET tc_admin=ON
-TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SPIDER_NODES
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC
 show variables like  'server_uuid'
 
-TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SPIDER_NODES
+TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC
 show variables like  'server_uuid'
 
 SET tc_admin=ON

@@ -40,14 +40,14 @@ SET tc_admin=ON;
 TDBCTL FLUSH ROUTING;
 
 --echo
---echo # Case 2: Success to execute 'TDBCTL ALTER NODE WITH SPIDER_NODES'.
+--echo # Case 2: Success to execute 'TDBCTL ALTER NODE WITH SYNC'.
 --echo # Truncate general_log.
 --source suite/tdbctl/inc/truncate_cluster_general_log.inc
---echo # execute TDBCTL ALTER NODE WITH SPIDER_NODES.
+--echo # execute TDBCTL ALTER NODE WITH SYNC.
 --connection tdbctl0
 SET tc_admin=ON;
-TDBCTL ALTER NODE SPIDER0 OPTIONS (host '172.18.0.7', port 3306) WITH SPIDER_NODES;
-TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306) WITH SPIDER_NODES;
+TDBCTL ALTER NODE SPIDER0 OPTIONS (host '172.18.0.7', port 3306) WITH SYNC;
+TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306) WITH SYNC;
 --echo # show general_log.
 --source suite/tdbctl/inc/get_cluster_general_log.inc
 --echo # tdbctl routing table
@@ -67,17 +67,17 @@ SET tc_admin=ON;
 TDBCTL FLUSH ROUTING;
 
 --echo
---echo # Case 3: Fail to execute 'TDBCTL ALTER NODE WITH SPIDER_NODES'.
+--echo # Case 3: Fail to execute 'TDBCTL ALTER NODE WITH SYNC'.
 --echo # Truncate general_log.
 --source suite/tdbctl/inc/truncate_cluster_general_log.inc
 --echo # Lock mysql.servers of SPIDER0
 --connection spider0
 LOCK TABLES mysql.servers READ;
---echo # execute TDBCTL ALTER NODE WITH SPIDER_NODES.
+--echo # execute TDBCTL ALTER NODE WITH SYNC.
 --connection tdbctl0
 SET tc_admin=ON;
---error ER_TCADMIN_FLUSH_ROUTING_ERROR
-TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SPIDER_NODES;
+--error ER_TCADMIN_ALTER_NODE_ERROR
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC;
 --echo # Unlock mysql.servers of SPIDER0
 --connection spider0
 UNLOCK TABLES;
@@ -108,8 +108,8 @@ TDBCTL FLUSH ROUTING;
 --echo # Switch master and slave nodes.
 --connection tdbctl0
 SET tc_admin=ON;
-TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SPIDER_NODES;
-TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SPIDER_NODES;
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC;
+TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC;
 --connection spider0
 FLUSH TABLE WITH READ LOCK;
 --connection spider1

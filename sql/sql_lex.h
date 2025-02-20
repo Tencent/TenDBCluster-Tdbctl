@@ -3252,7 +3252,7 @@ public:
 	bool tc_do_grants;
 	/* whether need do dump/restore schema for new add spider node */
 	bool tc_with_schema;
-  bool tc_with_spider;
+  bool tc_with_sync;
   ulong tc_flush_type;
 
   /* start position of the PARTITION BY clause in query */

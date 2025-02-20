@@ -1870,7 +1870,7 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
     {
       /* if failed to replace mysql.servers; set changed data node read only */
       // tc_set_changed_remote_read_only();
-      return FLUSH_ROUTING_RESULT::REPLACE_TABLE_FAILURE;
+      return FLUSH_ROUTING_RESULT::SYNC_SERVERS_FAILURE;
     }
   }
 
@@ -1904,7 +1904,7 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
 
 // Generate routing sql by wrapper name
 // Just modify the mysql.servers table
-enum FLUSH_ROUTING_RESULT tc_flush_servers_table_by_wrapper(map<string, tc_exec_info> &result_map, 
+enum FLUSH_ROUTING_RESULT tc_sync_servers_table_by_wrapper(map<string, tc_exec_info> &result_map, 
                                                             map<string, MYSQL*>conn_map, 
                                                             const char* wrapper)
 {
@@ -1944,7 +1944,7 @@ enum FLUSH_ROUTING_RESULT tc_flush_servers_table_by_wrapper(map<string, tc_exec_
 
   if (tc_exec_sql_paral(replace_sql, conn_map, result_map))
   {
-    return FLUSH_ROUTING_RESULT::REPLACE_TABLE_FAILURE;
+    return FLUSH_ROUTING_RESULT::SYNC_SERVERS_FAILURE;
   }
 
   return FLUSH_ROUTING_RESULT::SUCCESS;
@@ -2041,13 +2041,13 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
     }
     break;
   }
-  case FLUSH_SPIDER_SERVERS_TABLE:
+  case SYNC_SPIDER_ROUTING:
   {
     get_server_name_set(&mem_root, spider_nodes, SPIDER_WRAPPER);
     get_server_name_set(&mem_root, spider_slave_nodes, SPIDER_SLAVE_WRAPPER);
 
-    if (tc_flush_servers_table_to_nodes(lex, spider_nodes, conn_mgr, SPIDER_WRAPPER) ||
-        tc_flush_servers_table_to_nodes(lex, spider_slave_nodes, conn_mgr, SPIDER_SLAVE_WRAPPER))
+    if (tc_flush_routing_to_nodes(lex, spider_nodes, conn_mgr, SPIDER_WRAPPER) ||
+        tc_flush_routing_to_nodes(lex, spider_slave_nodes, conn_mgr, SPIDER_SLAVE_WRAPPER))
     {
       result = TRUE;
       break;
@@ -2103,8 +2103,13 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
         needed_conn_map.insert(std::make_pair(conn_its->first, conn_its->second));
       }
     }
-    if (!nodes_to_be_flushed.empty()){
-      exec_ret = tc_flush_routing_by_wrapper(result_map, needed_conn_map, wrapper, is_force, is_flush_only_cache);
+
+    if (!nodes_to_be_flushed.empty()) {
+      if (lex->tc_flush_type == SYNC_SPIDER_ROUTING) {
+        exec_ret = tc_sync_servers_table_by_wrapper(result_map, needed_conn_map, wrapper);
+      } else {
+        exec_ret = tc_flush_routing_by_wrapper(result_map, needed_conn_map, wrapper, is_force, is_flush_only_cache);
+      }
     }
 
     if (exec_ret != FLUSH_ROUTING_RESULT::SUCCESS)
@@ -2123,6 +2128,7 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
       goto finish;
     }
   }
+  
   if (result)
   {
     std::string nodes_success, nodes_failed; 
@@ -2165,80 +2171,17 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
         error_info += "Failed to set read_only on these nodes:\n" + nodes_failed; 
     }
     error_info.pop_back();
-    my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), error_info.c_str());
-  }
-
-finish:
-  nodes_to_be_flushed.clear();
-  result_map.clear();
-  return result;
-}
-
-bool tc_flush_servers_table_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flushed, Cluster_conn_manager* conn_mgr, const char* wrapper)
-{
-  bool result = false;
-  enum FLUSH_ROUTING_RESULT exec_ret = FLUSH_ROUTING_RESULT::SUCCESS;
-  std::set<std::string>::iterator its;
-  map<std::string, tc_exec_info> result_map;
-  std::map<std::string, MYSQL*> conn_map;
-  std::map<std::string, MYSQL*> needed_conn_map;
-  std::map<std::string, MYSQL*>::iterator conn_its;
-  int node_type = get_node_type_by_wrapper(wrapper);
-  int retry_times = 3;
-
-  if (nodes_to_be_flushed.empty()){
-    result = false;
-    goto finish;
-  }
-
-  for (its = nodes_to_be_flushed.begin(); its !=  nodes_to_be_flushed.end(); its++)
-  {/* init for exec result: result_map */
-    string server_name = (*its);
-    tc_exec_info exec_info;
-    exec_info.err_code = 0;
-    exec_info.row_affect = 0;
-    exec_info.err_msg = "";
-    result_map.insert(pair<string, tc_exec_info>(server_name, exec_info));
-  }
-
-  while (retry_times-- > 0)
-  {
-    if (conn_mgr->connect((enum_node_type)node_type, false))
+    switch (lex->sql_command) 
     {
-      result = true;
-      goto finish;
-    }
-
-    // build the needed conn_map
-    conn_map = conn_mgr->get_conn_map((enum_node_type)node_type);
-    for (its = nodes_to_be_flushed.begin(); its != nodes_to_be_flushed.end(); its++)
-    {
-      if((conn_its = conn_map.find(*its)) != conn_map.end())
-      {
-        needed_conn_map.insert(std::make_pair(conn_its->first, conn_its->second));
-      }
-    }
-
-    exec_ret = tc_flush_servers_table_by_wrapper(result_map, needed_conn_map, wrapper);
-
-    if (exec_ret != FLUSH_ROUTING_RESULT::SUCCESS)
-    {
-      result = true;
-      sleep(1);  // Wait 1 second and try again
-    }
-    else
-    {
-      result = false;
-      goto finish;
-    }
-  }
-
-  if (result)
-  {
-    std::string failed_step = FLUSH_ROUTING_INFO[exec_ret];
-    std::string error_info = failed_step + "\n" + concat_result_map(result_map);
-    error_info.pop_back();
-    my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), error_info.c_str());
+    case TC_SQLCOM_ALTER_NODE:
+      my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), ("with sync option, " + error_info).c_str());
+      break;
+    case TC_SQLCOM_CREATE_NODE:
+      my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), ("with schema option, " + error_info).c_str());
+      break;
+    default:
+      my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), error_info.c_str());
+    }    
   }
 
 finish:
