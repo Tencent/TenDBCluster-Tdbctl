@@ -63,6 +63,8 @@
 #include "rpl_group_replication.h"       // is_group_replication_running
 #include "threadpool.h"
 #include "tc_forwarding_rule_mgr.h"      // Forwarding_rule_manager
+#include "mysql.h"                       // mysql_option
+#include "tc_base.h"                     // Cluster_conn_manager
 
 #ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
 #include "../storage/perfschema/pfs_server.h"
@@ -6633,3 +6635,43 @@ static Sys_var_ulong Sys_tc_internal_connection_retry_times(
         "set the retry times of the internal connections connected to remote/spider nodes",
         TDBCTL GLOBAL_VAR(tc_internal_connection_retry_times), CMD_LINE(REQUIRED_ARG),
         VALID_RANGE(0, 60), DEFAULT(3), BLOCK_SIZE(1));
+
+static bool fix_tc_internal_read_timeout(sys_var *self, THD *thd, enum_var_type type)
+{
+  if (type != OPT_GLOBAL)
+  {
+    if(thd->cluster_conn_manager) {
+      thd->cluster_conn_manager->reset_conn_read_timeout(thd->variables.tc_internal_read_timeout);
+    }
+  }
+  return false;
+}
+
+static Sys_var_ulong Sys_tc_internal_read_timeout(
+       "tc_read_timeout",
+       "Number of seconds to wait for more data from a connection established by tdbctl to other nodes in the cluster"
+       "before aborting the read",
+       TDBCTL SESSION_VAR(tc_internal_read_timeout), CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(1, LONG_TIMEOUT), DEFAULT(TC_CONN_READ_TIMEOUT), BLOCK_SIZE(1),
+       NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+       ON_UPDATE(fix_tc_internal_read_timeout));
+
+static bool fix_tc_internal_write_timeout(sys_var *self, THD *thd, enum_var_type type)
+{
+  if (type != OPT_GLOBAL)
+  {
+    if(thd->cluster_conn_manager) {
+      thd->cluster_conn_manager->reset_conn_write_timeout(thd->variables.tc_internal_write_timeout);
+    }
+  }
+  return false;
+}
+
+static Sys_var_ulong Sys_tc_internal_write_timeout(
+       "tc_write_timeout",
+       "Number of seconds to wait for a block to be written to a connection established by tdbctl to other nodes in the cluster"
+       "before aborting the write",
+       TDBCTL SESSION_VAR(tc_internal_write_timeout), CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(1, LONG_TIMEOUT), DEFAULT(TC_CONN_WRITE_TIMEOUT), BLOCK_SIZE(1),
+       NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+       ON_UPDATE(fix_tc_internal_write_timeout));

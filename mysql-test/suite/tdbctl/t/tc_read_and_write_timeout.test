@@ -1,0 +1,120 @@
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Save the original variable value
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_read_timeout INTO @origin_session_tc_read_timeout;
+SELECT @@SESSION.tc_write_timeout INTO @origin_session_tc_write_timeout;
+SELECT @@GLOBAL.tc_read_timeout INTO @origin_global_tc_read_timeout;
+SELECT @@GLOBAL.tc_write_timeout INTO @origin_global_tc_write_timeout;
+SELECT @@GLOBAL.max_allowed_packet INTO @origin_max_allowed_packet;
+
+--echo
+--echo # Create database and tables
+--connection tdbctl0
+SET tc_admin = ON;
+CREATE DATABASE IF NOT EXISTS test_tc_timeout;
+USE test_tc_timeout;
+CREATE TABLE t1(id INT PRIMARY KEY);
+CREATE TABLE t2(id INT AUTO_INCREMENT PRIMARY KEY, value INT);
+
+--echo
+--echo # Lock tables
+--connection remote_master0
+LOCK TABLES test_tc_timeout_0.t1 READ;
+
+--echo
+--echo # Show global tc_read_timeout and tc_write_timeout
+--connection tdbctl0
+SHOW GLOBAL variables like 'tc_%_timeout';
+SHOW SESSION variables like 'tc_%_timeout';
+--echo # Note the case when timeout is set to zero
+SET SESSION tc_read_timeout = 0;
+SET SESSION tc_write_timeout = 0;
+SHOW SESSION variables like 'tc_%_timeout';
+--echo # The default timeout is one year, which can be considered as no timeout
+SET SESSION tc_read_timeout = default;
+SET GLOBAL tc_read_timeout = default;
+SET SESSION tc_write_timeout = default;
+SET GLOBAL tc_write_timeout = default;
+SHOW SESSION variables like 'tc_%_timeout';
+SHOW GLOBAL variables like 'tc_%_timeout';
+SET GLOBAL max_allowed_packet = 100 * 1024 * 1024;
+
+--echo
+--echo # Create new session to make max_allowed_packet be valid
+--connect (new_session, 127.0.0.1, root, 123, test, 46000,)
+--connection new_session
+SHOW VARIABLES LIKE 'max_allowed_packet';
+
+--echo
+--echo # Set tc_read_timeout and tc_write_timeout
+SET tc_read_timeout = 3;
+SET tc_write_timeout = 1;
+
+--echo
+--echo # Block by lock
+SET tc_admin = ON;
+SELECT NOW() INTO @start_time;
+--error ER_TCADMIN_EXECUTE_ERROR
+DROP TABLE test_tc_timeout.t1;
+SELECT TIMESTAMPDIFF(SECOND, @start_time, NOW()) AS query_time;
+
+--echo
+--echo # Construct a very long insert statement
+SET tc_admin = OFF;
+SET @elem_count = 500000;
+SET @insert_statement = CONCAT(
+    'INSERT INTO test_tc_timeout.t2(value) VALUES ',
+    REPEAT('(0),(1),', @elem_count),
+    '(2);'
+);
+let $insert_sql = query_get_value(SELECT @insert_statement, @insert_statement, 1);
+
+--echo
+--echo # Block by complex sql
+SET tc_admin = ON;
+--echo INSERT INTO test_tc_timeout.t2(value) VALUES (0),(1), ... (0),(1),(2);
+--disable_query_log
+--error ER_TCADMIN_EXECUTE_ERROR
+eval $insert_sql;
+--enable_query_log
+
+--echo
+--echo # No timeout
+SET tc_read_timeout = default;
+SET tc_admin = ON;
+--echo INSERT INTO test_tc_timeout.t2(value) VALUES (0),(1), ... (0),(1),(2);
+--disable_query_log
+eval $insert_sql;
+--enable_query_log
+
+--echo
+--echo # Disconnect new session
+--disconnect new_session
+
+--echo
+--echo # Unlock tables
+--connection remote_master0
+UNLOCK TABLES;
+
+--echo
+--echo # Drop databases and tables
+--connection tdbctl0
+SET tc_read_timeout = default;
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_tc_timeout;
+
+--echo 
+--echo # Recovery variable value
+--connection tdbctl0
+SET tc_admin = OFF;
+SET @@GLOBAL.max_allowed_packet = @origin_max_allowed_packet;
+SET @@GLOBAL.tc_write_timeout = @origin_global_tc_write_timeout;
+SET @@GLOBAL.tc_read_timeout = @origin_global_tc_read_timeout;
+SET @@SESSION.tc_write_timeout = @origin_session_tc_write_timeout;
+SET @@SESSION.tc_read_timeout = @origin_session_tc_read_timeout;
+SET @@SESSION.tc_admin = @origin_tc_admin;
