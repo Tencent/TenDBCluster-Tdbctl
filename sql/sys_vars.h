@@ -868,6 +868,37 @@ public:
   }
 };
 
+class Sys_var_tc_charptr : public Sys_var_charptr
+{
+public:
+  Sys_var_tc_charptr(const char *name_arg,
+          const char *comment, int flag_args, ptrdiff_t off, size_t size,
+          CMD_LINE getopt,
+          enum charset_enum is_os_charset_arg,
+          const char *def_val, PolyLock *lock= 0,
+          enum binlog_status_enum binlog_status_arg= VARIABLE_NOT_IN_BINLOG,
+          on_check_function on_check_func= 0,
+          on_update_function on_update_func= 0,
+          const char *substitute= 0,
+          int parse_flag= PARSE_NORMAL)
+    : Sys_var_charptr(name_arg, comment, flag_args, off, size, getopt, is_os_charset_arg, def_val, 
+                      lock, binlog_status_arg, on_check_func, on_update_func, substitute, parse_flag)
+  {}
+
+  ~Sys_var_tc_charptr()
+  {}
+
+  bool session_update(THD *thd, set_var *var)
+  {
+    char *new_val=  var->save_result.string_value.str;
+    size_t new_val_len= var->save_result.string_value.length;
+    char *ptr= ((char *)&thd->variables + offset);
+
+    return thd->session_tc_sysvar_res_mgr.update((char **) ptr, new_val,
+                                              new_val_len);
+  }
+};
+
 
 class Sys_var_proxy_user: public sys_var
 {

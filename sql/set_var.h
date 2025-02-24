@@ -243,6 +243,17 @@ protected:
 class set_var_base :public Sql_alloc
 {
 public:
+  /*
+    Help us to distinguish between different variable types set by the set command
+  */
+  enum enum_set_var_type {
+    SET_VAR_SYS,
+    SET_VAR_USER,
+    SET_VAR_PASSWORD,
+    SET_VAR_COLLATION_CLIENT
+  };
+
+public:
   set_var_base() {}
   virtual ~set_var_base() {}
   virtual int check(THD *thd)=0;           /* To check privileges etc. */
@@ -252,6 +263,10 @@ public:
   virtual void print(THD *thd, String *str)=0;	/* To self-print */
   /// @returns whether this variable is @@@@optimizer_trace.
   virtual bool is_var_optimizer_trace() const { return false; }
+  /**
+    @return the type corresponding to the actual set_var_base subclass
+  */
+  virtual enum_set_var_type var_type() const= 0;
 };
 
 
@@ -290,6 +305,7 @@ public:
     return var == Sys_optimizer_trace_ptr;
   }
 #endif
+  enum_set_var_type var_type() const { return SET_VAR_SYS; }
 };
 
 
@@ -305,6 +321,7 @@ public:
   int update(THD *thd);
   int light_check(THD *thd);
   void print(THD *thd, String *str);	/* To self-print */
+  enum_set_var_type var_type() const { return SET_VAR_USER; }
 };
 
 /* For SET PASSWORD */
@@ -320,6 +337,7 @@ public:
   int check(THD *thd);
   int update(THD *thd);
   void print(THD *thd, String *str);	/* To self-print */
+  enum_set_var_type var_type() const { return SET_VAR_PASSWORD; }
 };
 
 
@@ -345,6 +363,7 @@ public:
   int check(THD *thd);
   int update(THD *thd);
   void print(THD *thd, String *str);	/* To self-print */
+  enum_set_var_type var_type() const { return SET_VAR_COLLATION_CLIENT; }
 };
 
 

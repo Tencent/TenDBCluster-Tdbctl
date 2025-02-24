@@ -6,17 +6,23 @@
 #include "log.h"                   // sql_print_error
 
 
+/* Removes whitespace at the beginning and end of the string. */
+std::string string_strip(const std::string &str) {
+  std::string result = str;
+  int lpos = 0, rpos = result.size() - 1;
+  while(lpos < result.size() && isspace(result[lpos]))
+    ++lpos;
+  while(rpos >= 0 && isspace(result[rpos]))
+    --rpos;
+  if(lpos > rpos)
+    return "";
+  result = result.substr(lpos, rpos - lpos + 1);
+  return result;
+}
+
 /* Removes whitespace at the beginning and end of the string and converts English letters to uppercase. */
 std::string trim_and_uppercase(const std::string &str) {
-    std::string result = str;
-    int lpos = 0, rpos = result.size() - 1;
-    while(lpos < result.size() && isspace(result[lpos]))
-      ++lpos;
-    while(rpos >= 0 && isspace(result[rpos]))
-      --rpos;
-    if(lpos > rpos)
-      return "";
-    result = result.substr(lpos, rpos - lpos + 1);
+    std::string result = string_strip(str);
     for(int i = 0; i < result.size(); ++i) {
       result[i] = toupper(result[i]);
     }
@@ -110,7 +116,7 @@ Supported_SQL_Command supported_sql_commands[] = {
   {"SQLCOM_ROLLBACK_TO_SAVEPOINT", SQLCOM_ROLLBACK_TO_SAVEPOINT, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, false, ""},
   {"SQLCOM_SAVEPOINT", SQLCOM_SAVEPOINT, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, false, ""},
   {"SQLCOM_SELECT", SQLCOM_SELECT, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, false, ""},
-  {"SQLCOM_SET_OPTION", SQLCOM_SET_OPTION, TC_TDBCTL_NEED_EXECUTE | TC_SPIDER_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE | TC_SPIDER_NEED_EXECUTE, true, "Not supported yet, it will be implemented in next version."},
+  {"SQLCOM_SET_OPTION", SQLCOM_SET_OPTION, TC_TDBCTL_NEED_EXECUTE | TC_SPIDER_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE | TC_SPIDER_NEED_EXECUTE | TC_REMOTE_NEED_EXECUTE, false, ""},
   {"SQLCOM_SHOW_BINLOGS", SQLCOM_SHOW_BINLOGS, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, false, ""},
   {"SQLCOM_SHOW_BINLOG_EVENTS", SQLCOM_SHOW_BINLOG_EVENTS, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, false, ""},
   {"SQLCOM_SHOW_CHARSETS", SQLCOM_SHOW_CHARSETS, TC_ONLY_ONE_SPIDER_NEED_EXECUTE, TC_TDBCTL_NEED_EXECUTE, TC_ONLY_ONE_SPIDER_NEED_EXECUTE, false, ""},
@@ -268,6 +274,16 @@ bool check_exec_flag_range(std::vector<Exec_Flag> &exec_flag_list, Exec_Flag max
   return true;
 }
 
+bool is_sys_var_unchangeable(sys_var *sysvar, std::string *tips) {
+  if(sysvar->is_tdbctl()) {
+    if(tips) {
+      *tips = "system variable \'" + std::string(sysvar->name.str) + "\' is a tdbctl variable";
+    }
+    return true;
+  }
+  return false;
+}
+
 std::string to_sql_command_name(enum_sql_command sql) {
   for(Supported_SQL_Command supported_sql: supported_sql_commands) {
     if(sql == supported_sql.sql_type) {
@@ -299,21 +315,65 @@ std::string exec_flag_to_string(Exec_Flag flag, const char *separater) {
   return str;
 }
 
-Forwarding_rule_mgr::Rule_Cache Forwarding_rule_mgr::m_global_rules_cache;
+Forwarding_rule_mgr::SQL_Rule_Cache Forwarding_rule_mgr::m_global_rules_cache;
+Forwarding_rule_mgr::SQL_Rule_Cache Forwarding_rule_mgr::m_global_rules_valid_cache;
+Forwarding_rule_mgr::Var_Rule_Cache Forwarding_rule_mgr::m_global_var_rules_cache;
+Forwarding_rule_mgr::Var_Rule_Cache Forwarding_rule_mgr::m_global_var_rules_valid_cache;
 
 Forwarding_rule_mgr::Forwarding_rule_mgr():m_primary_rules(SQLCOM_END, 0), m_secondary_rules(SQLCOM_END, 0) {
   m_session_rules_cache.reserve(supported_sql_count);
+  Forwarding_rule_mgr::m_global_rules_cache.reserve(supported_sql_count);
+  reset_primary_rules();
   for(Supported_SQL_Command supported_sql: supported_sql_commands) {
-    m_primary_rules[supported_sql.sql_type] = supported_sql.primary_default_rule;
     m_secondary_rules[supported_sql.sql_type] = supported_sql.secondary_default_rule;
   }
+  reset_primary_var_rules();
 }
 
-/* 
-  Return execute flag of current sql command.  
+/**
+  @brief get execution flag of a variable being set using the SET command.  
+
+  @param var        [IN]        The variable being set using the SET command.
+
+  @return
+    the execution flag.
 */
-Exec_Flag Forwarding_rule_mgr::get_sql_execute_flag(THD *thd, LEX *lex, enum_sql_command sql_cmd) {
-  Exec_Flag execute_flag = 0;
+Exec_Flag Forwarding_rule_mgr::get_var_execute_flag(set_var_base *var) {
+
+  if((!var) || var->check_tdbctl_var()) {
+    return TC_TDBCTL_NEED_EXECUTE;
+  }
+
+  if (tdbctl_is_primary) {
+    if(var->var_type() == set_var_base::SET_VAR_SYS) {
+      set_var *sysvar = down_cast<set_var *>(var);
+      if(sysvar) {
+        Var_Rule_Hash::iterator it = m_primary_var_rules.end();
+        if((it = m_primary_var_rules.find(sysvar->var->name.str)) != m_primary_var_rules.end()) {
+          return it->second;
+        }
+      }
+    }
+    return m_primary_rules[SQLCOM_SET_OPTION];
+  }
+  
+  return m_secondary_rules[SQLCOM_SET_OPTION];
+}
+
+/**
+  @brief get execute flag of the current sql command.  
+
+  @param thd        [IN]        The thd handler.
+  @param lex        [IN]        Containing LEX object.
+  @param sql_cmd    [IN]        Sql command type.
+  @param flag       [OUT]       Execution flag.
+
+  @return
+  true      Success,
+  false     Error
+*/
+bool Forwarding_rule_mgr::get_sql_execute_flag(THD *thd, LEX *lex, enum_sql_command sql_cmd, Exec_Flag &execute_flag) {
+  execute_flag = 0;
   switch (sql_cmd)
   {
     /*
@@ -321,18 +381,18 @@ Exec_Flag Forwarding_rule_mgr::get_sql_execute_flag(THD *thd, LEX *lex, enum_sql
     */
     case SQLCOM_SET_OPTION:
     {
-      if (tdbctl_is_primary)
-        execute_flag = TC_TDBCTL_NEED_EXECUTE | TC_SPIDER_NEED_EXECUTE;
-      else
-        execute_flag = TC_TDBCTL_NEED_EXECUTE;
-      
       List_iterator_fast<set_var_base> var_it(lex->var_list);
-      set_var_base *var;
-      // if any sys_var is tdbctl var, we only execute it on tdbctl itself
-      while ((var = var_it++)) {
-        if(var->check_tdbctl_var()) {
-          execute_flag = TC_TDBCTL_NEED_EXECUTE;
-          break;
+      set_var_base *first_var, *var;
+      Exec_Flag unique_flag = 0;
+      if((first_var = var_it++)) {  // get the first variable's execution flag
+        execute_flag = get_var_execute_flag(first_var);
+        unique_flag = execute_flag;
+      }
+      while ((var = var_it++)) {  // get the rest of variables' execution flag
+        execute_flag = get_var_execute_flag(var);
+        if(execute_flag != unique_flag) {
+          my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "can't set variables with different execution flags at the same time");
+          return false;
         }
       }
       break;
@@ -368,7 +428,7 @@ Exec_Flag Forwarding_rule_mgr::get_sql_execute_flag(THD *thd, LEX *lex, enum_sql
       break;
     }
   }
-  return execute_flag;
+  return true;
 }
 
 inline void Forwarding_rule_mgr::reset_primary_rules() {
@@ -378,34 +438,30 @@ inline void Forwarding_rule_mgr::reset_primary_rules() {
 }
 
 /**
-  @brief Check whether the forwarding rules are valid.
+  @brief Check whether the sql-level forwarding rules are valid.
 
   @note This function is called from the ON_CHECK() function of the session variable
         'tc_forwarding_rules'.
 
-  @param thd    [IN]        The thd handler.
-  @param var    [IN]        A pointer to set_var holding the specified json text of forwarding rules.
+  @param thd        [IN]        The thd handler.
+  @param var        [IN]        A pointer to set_var holding the specified json text of forwarding rules.
+  @param err_msg    [OUT]       Send an error message when the check fails.
 
   @return
     true                    Success
     false                   Error
 */
-bool Forwarding_rule_mgr::check_forwarding_rules(THD *thd, set_var *var) {
+bool Forwarding_rule_mgr::check_forwarding_rules(THD *thd, set_var *var, std::string &err_msg) {
   char *json_text = var->save_result.string_value.str;
   size_t json_text_len = var->save_result.string_value.length;
 
-  std::string err_str, rectified_json_str;
-  if(var->type == OPT_GLOBAL){
-    Rule_Cache global_rules_cache;
-    global_rules_cache.reserve(supported_sql_count);
-    if(!parse_forwarding_rules(json_text, json_text_len, err_str, &global_rules_cache, &rectified_json_str)) {
-      sql_print_error("<tc_forwarding_rules> %s.", err_str.c_str());
+  std::string rectified_json_str;
+  if(var->type == OPT_GLOBAL) {
+    if(!parse_forwarding_rules(json_text, json_text_len, err_msg, &(Forwarding_rule_mgr::m_global_rules_cache), &rectified_json_str)) {
       return false;
     }
-    Forwarding_rule_mgr::m_global_rules_cache = global_rules_cache;
   } else {
-    if(!parse_forwarding_rules(json_text, json_text_len, err_str, &(thd->forward_rule_mgr.m_session_rules_cache), &rectified_json_str)) {
-      sql_print_error("<tc_forwarding_rules> %s.", err_str.c_str());
+    if(!parse_forwarding_rules(json_text, json_text_len, err_msg, &(thd->forward_rule_mgr.m_session_rules_cache), &rectified_json_str)) {
       return false;
     }
   }
@@ -413,7 +469,7 @@ bool Forwarding_rule_mgr::check_forwarding_rules(THD *thd, set_var *var) {
   /*
     print the rectified forwarding rules to be set.
   */
-  sql_print_information("<tc_forwarding_rules> set %s forwarding rules: \'%s\', rectified forwarding rules: \'%s\'.", 
+  sql_print_information("<tc_forwarding_rules> pass check: %s sql-level forwarding rules: \'%s\', rectified forwarding rules: \'%s\'.", 
     var->type == OPT_GLOBAL ? "global" : "session", json_text, rectified_json_str.c_str());
 
   return true;
@@ -430,43 +486,57 @@ bool Forwarding_rule_mgr::check_forwarding_rules(THD *thd, set_var *var) {
   @return   false           Success
             true            failure
 */
-bool Forwarding_rule_mgr::server_boot_verify(const char *json_text, size_t json_text_len, std::string &err_str) {
-  Rule_Cache global_rules_cache;
-  global_rules_cache.reserve(supported_sql_count);
-  if(!parse_forwarding_rules(json_text, json_text_len, err_str, &global_rules_cache)) {
-    err_str = "<server_boot_verify @@tc_forwarding_rules>: " + err_str;
+bool Forwarding_rule_mgr::server_boot_verify_forwarding_rules(const char *json_text, size_t json_text_len, std::string &err_str) {
+  if(!parse_forwarding_rules(json_text, json_text_len, err_str, &(Forwarding_rule_mgr::m_global_rules_cache))) {
     return true;
   }
-  Forwarding_rule_mgr::m_global_rules_cache = global_rules_cache;
+  Forwarding_rule_mgr::m_global_rules_valid_cache = Forwarding_rule_mgr::m_global_rules_cache;
   return false;
 }
 
 /**
-  @brief Parse forwarding rules expressed as json text.
+  @brief Method called during the server startup to verify the contents
+         of @@tc_var_rules.
 
   @param json_text        [IN]        json string describing the forwarding rules.
   @param json_text_len    [IN]        length of json string.
   @param err_str          [OUT]       Pass an error message when parsing fails.
-  @param rules_cache      [OUT]       If it is not a null pointer, the parsed forwarding rules will be stored in it.
-  @param new_json_str     [OUT]       If it is not a null pointer, the rectified json text describing the forwarding rules will be stored in it.
+
+  @return   false           Success
+            true            failure
+*/
+bool Forwarding_rule_mgr::server_boot_verify_variable_rules(const char *json_text, size_t json_text_len, std::string &err_str, std::string &wrn_str) {
+  if(!parse_sysvar_rules(json_text, json_text_len, err_str, wrn_str, 0, &(Forwarding_rule_mgr::m_global_var_rules_cache))) {
+    return true;
+  }
+  Forwarding_rule_mgr::m_global_var_rules_valid_cache = Forwarding_rule_mgr::m_global_var_rules_cache;
+  return false;
+}
+
+/**
+  @brief Parse json text to json dom.
+
+  @param json_text        [IN]        json string describing the forwarding rules.
+  @param json_text_len    [IN]        length of json string.
+  @param err_str          [OUT]       Pass an error message when parsing fails.
 
   @return
-    true                    Success
-    false                   Error
+    NULL                    Error,
+    not NULL                Success
 */
-bool Forwarding_rule_mgr::parse_forwarding_rules(const char *json_text, size_t json_text_len, std::string &err_str, Rule_Cache *rules_cache, std::string *new_json_str) {
+Json_dom * Forwarding_rule_mgr::parse_json_text_to_dom(const char *json_text, size_t json_text_len, std::string &err_str) {
   err_str.clear();
 
   /* 
     Check if it is a valid json string.
   */
   if(!json_text) {
-    err_str = "Get a null pointer of json text: \'" + std::string(json_text) + "\'";
-    return false;
+    err_str = "Get a null pointer of json text";
+    return NULL;
   }
   if(!is_valid_json_syntax(json_text, json_text_len)) {
     err_str = "Invalid json string: \'" + std::string(json_text) + "\'";
-    return false;
+    return NULL;
   }
 
   /* 
@@ -479,14 +549,106 @@ bool Forwarding_rule_mgr::parse_forwarding_rules(const char *json_text, size_t j
       only the first key makes sence, others will not be retained. 
     */
   Json_dom *json_dom = Json_dom::parse(json_text, json_text_len, &parse_err, &err_offset);
-  if (json_dom == NULL && parse_err != NULL)
+  if (json_dom == NULL) {
+    if(parse_err != NULL) {
+      err_str = parse_err;
+    } else {
+      err_str = "unknown error";
+    }
+  }
+  return json_dom;
+}
+
+/**
+  @brief Convert a comma-separated flag text to a Exec_Flag vector.
+
+  @param text             [IN]        comma-separated string describing the execution flags.
+  @param text_len         [IN]        length of string.
+  @param err_str          [OUT]       Pass an error message when parsing fails.
+  @param exec_flag_list   [OUT]       Exec_Flag vector.
+  @param new_str          [OUT]       If it is not a null pointer, the rectified text describing the execution flags will be stored in it.
+
+  @return
+    true                    Success,
+    false                   Error
+*/
+bool Forwarding_rule_mgr::parse_exec_flag_list(const char *text, size_t text_len, std::string &err_str, 
+                                              std::vector<Exec_Flag> &exec_flag_list, std::string *new_str) {
+  err_str.clear();
+  if(new_str) {
+    *new_str = "";
+  }
+  exec_flag_list.clear();
+  exec_flag_list.reserve(settable_flag_count);
+
+  std::unique_ptr<char> rule_list_str(new(std::nothrow) char[text_len + 1]);
+  if(rule_list_str.get() == nullptr) {
+    err_str = "Error when execute \'new(std::nothrow) char[text_len + 1]\'";
+    return false;
+  }
+  strncpy(rule_list_str.get(), text, text_len);
+  rule_list_str.get()[text_len] = '\0';
+
+  char *token = NULL, *lasts = NULL;
+  string new_token = "";
+  Supported_Exec_Flag exec_flag_item;
+  token = my_strtok_r(rule_list_str.get(), ",", &lasts);
+  while(token)
   {
-    err_str = "Parsing json text \'" + std::string(json_text) + "\', error: " + std::string(parse_err) + "";
+    new_token = trim_and_uppercase(string(token));
+    if(!get_execute_flag_by_name(new_token.c_str(), exec_flag_item)) {
+      err_str = "Invalid execute flag \'" + std::string(token) + "\'";
+      return false;
+    }
+    if(exec_flag_item.cannot_set) {
+      err_str = "This flag cannot be specified by users: \'" + std::string(exec_flag_item.name) + "\'";
+      return false;
+    }
+    if(std::find(exec_flag_list.begin(), exec_flag_list.end(), exec_flag_item.single_flag) != exec_flag_list.end()) {
+      err_str = "Duplicate execute flag \'" + std::string(exec_flag_item.name) + "\'";
+      return false;
+    }
+    if(new_str) {
+      *new_str += new_token + ", ";
+    }
+    exec_flag_list.push_back(exec_flag_item.single_flag);
+    token = my_strtok_r(NULL, ",", &lasts);
+  }
+
+  if(new_str && (new_str->size() > 1)) {
+    *new_str = new_str->substr(0, new_str->size() - 2);  // remove needless ', '.
+  }
+  return true;
+}
+
+/**
+  @brief Parse sql-level forwarding rules expressed as json text.
+
+  @param json_text        [IN]        json string describing the forwarding rules.
+  @param json_text_len    [IN]        length of json string.
+  @param err_str          [OUT]       Pass an error message when parsing fails.
+  @param rules_cache      [OUT]       If it is not a null pointer, the parsed forwarding rules will be stored in it.
+  @param new_json_str     [OUT]       If it is not a null pointer, the rectified json text describing the forwarding rules will be stored in it.
+
+  @return
+    true                    Success
+    false                   Error
+*/
+bool Forwarding_rule_mgr::parse_forwarding_rules(const char *json_text, size_t json_text_len, std::string &err_str, SQL_Rule_Cache *rules_cache, std::string *new_json_str) {
+  err_str.clear();
+
+  /* 
+    Parse Json text to DOM.
+  */
+  std::string parse_err;
+  Json_dom *json_dom = parse_json_text_to_dom(json_text, json_text_len, parse_err);
+  if (json_dom == NULL) {
+    err_str = "Error when parsing json text: " + std::string(parse_err);
     return false;
   }
   Json_wrapper json_dom_mgr(json_dom);  // help us to manage json_dom resource.
   if (json_dom->json_type() != Json_dom::J_OBJECT) {
-    err_str = "The variable tc_forwarding_rules only allows json text of type J_OBJECT";
+    err_str = "Only allow json text of type J_OBJECT";
     return false;
   }
 
@@ -535,44 +697,15 @@ bool Forwarding_rule_mgr::parse_forwarding_rules(const char *json_text, size_t j
       err_str = "Empty string for key \'" + key + "\'";
       return false;
     }
-    std::unique_ptr<char> rule_list_str(new(std::nothrow) char[value.size() + 1]);
-    if(rule_list_str.get() == nullptr) {
-      err_str = "Error when execute \'new(std::nothrow) char[value.size() + 1]\'";
-      return false;
-    }
-    strncpy(rule_list_str.get(), value.c_str(), value.size());
-    rule_list_str.get()[value.size()] = '\0';
-
-    char *token = NULL, *lasts = NULL;
-    string new_value = "", new_token = "";
-    Supported_Exec_Flag exec_flag_item;
     vector<Exec_Flag> exec_flag_list;
-    exec_flag_list.reserve(settable_flag_count);
-    token = my_strtok_r(rule_list_str.get(), ",", &lasts);
-    while(token)
-    {
-      new_token = trim_and_uppercase(string(token));
-      if(!get_execute_flag_by_name(new_token.c_str(), exec_flag_item)) {
-        err_str = "Invalid execute flag \'" + std::string(token) + "\'";
-        return false;
-      }
-      if(exec_flag_item.cannot_set) {
-        err_str = "This flag cannot be specified by users: \'" + std::string(exec_flag_item.name) + "\'";
-        return false;
-      }
-      if(std::find(exec_flag_list.begin(), exec_flag_list.end(), exec_flag_item.single_flag) != exec_flag_list.end()) {
-        err_str = "Duplicate execute flag \'" + std::string(exec_flag_item.name) + "\'";
-        return false;
-      }
-      new_value += new_token + ", ";
-      exec_flag_list.push_back(exec_flag_item.single_flag);
-      token = my_strtok_r(NULL, ",", &lasts);
+    std::string new_value;
+    if(!parse_exec_flag_list(value.c_str(), value.size(), parse_err, exec_flag_list, &new_value)) {
+      err_str = parse_err;
+      return false;
     }
     if (exec_flag_list.size() == 0) {
       err_str = "No valid execute flag for sql command \'" + key + "\'";
       return false;
-    } else {
-      new_value = new_value.substr(0, new_value.size() - 2);  // remove needless ', '.
     }
     if(!check_conflict_exec_flag(exec_flag_list)){
       err_str = "Conflicting execute flags exist for \'" + key + "\'";
@@ -610,7 +743,148 @@ bool Forwarding_rule_mgr::parse_forwarding_rules(const char *json_text, size_t j
 }
 
 /**
-  @brief update forwarding rules.
+  @brief Parse system variables forwarding rules expressed as json text.
+
+  @param json_text        [IN]        json string describing the forwarding rules.
+  @param json_text_len    [IN]        length of json string.
+  @param err_str          [OUT]       Pass an error message when parsing fails.
+  @param wrn_str          [OUT]       Pass an warning message.
+  @param thd              [OUT]       The thd handler needed by 'find_sys_var' function.
+  @param rules_cache      [OUT]       If it is not a null pointer, the parsed forwarding rules will be stored in it.
+  @param new_json_str     [OUT]       If it is not a null pointer, the rectified json text describing the forwarding rules will be stored in it.
+
+  @return
+    true                    Success
+    false                   Error
+*/
+bool Forwarding_rule_mgr::parse_sysvar_rules(const char *json_text, 
+                                            size_t json_text_len, 
+                                            std::string &err_str, 
+                                            std::string &wrn_str, 
+                                            THD *thd,
+                                            Var_Rule_Cache *rules_cache, 
+                                            std::string *new_json_str) {
+  err_str.clear();
+  wrn_str.clear();
+  std::vector<std::string> unknown_vars;
+
+  /* 
+    Parse Json text to DOM.
+  */
+  std::string parse_err;
+  Json_dom *json_dom = parse_json_text_to_dom(json_text, json_text_len, parse_err);
+  if (json_dom == NULL) {
+    err_str = "Error when parsing json text: " + std::string(parse_err);
+    return false;
+  }
+  Json_wrapper json_dom_mgr(json_dom);  // help us to manage json_dom resource.
+  if (json_dom->json_type() != Json_dom::J_OBJECT) {
+    err_str = "Only allow json text of type J_OBJECT";
+    return false;
+  }
+
+  /*
+    Check forwarding rules set by user carefully, and store them into rules_cache if rules_cache is not NULL.
+  */
+  if(rules_cache) {
+    rules_cache->clear();
+  }
+  Json_object *rectified_json_object = NULL;
+  if((rectified_json_object = new(std::nothrow) Json_object()) == NULL) {
+    err_str = "Error when execute \'new(std::nothrow) Json_object()\'";
+    return false;
+  }
+  Json_wrapper rectified_json_wrapper(rectified_json_object);  // help us to manage rectified_json_object.
+  Json_object *origin_json_object = down_cast<Json_object *>(json_dom);
+
+  {  // Limit the scope of plugin_locker
+  
+  Plugin_Locker plugin_locker();  // help us to lock/unlock LOCK_plugin
+
+  for (Json_object::const_iterator it = origin_json_object->begin(); it != origin_json_object->end(); ++it) {
+    /* get key and value */
+    const std::string &key = it->first;
+    Json_dom *value_dom = it->second;
+    if (value_dom->json_type() != Json_dom::J_STRING) {
+      err_str = "The value set to the key \'" + key + "\' is not a string";
+      return false;
+    }
+    const std::string &value = down_cast<Json_string *>(value_dom)->value();
+
+    /* check one key(system variable) */
+    std::string var_name = string_strip(key);
+    sys_var *sysvar = NULL;
+    if(!(sysvar = find_sys_var_ex(thd, var_name.c_str(), var_name.size(), true, true))) {
+      unknown_vars.push_back(var_name);
+    } else {
+      std::string unchangeable_tips;
+      if(is_sys_var_unchangeable(sysvar, &unchangeable_tips)) {
+        err_str = "Setting forwarding rule for system variable \'" + var_name + "\' is forbidden (tips: " + unchangeable_tips + ")";
+        return false;
+      }
+      if(rectified_json_object->get(var_name) != NULL){
+        err_str = "Duplicate system variable \'" + var_name + "\'";
+        return false;
+      }
+    }
+    
+    /* check values(forwarding rules) */
+    if(value.size() == 0) {
+      err_str = "Empty string for key \'" + key + "\'";
+      return false;
+    }
+    vector<Exec_Flag> exec_flag_list;
+    std::string new_value;
+    if(!parse_exec_flag_list(value.c_str(), value.size(), parse_err, exec_flag_list, &new_value)) {
+      err_str = parse_err;
+      return false;
+    }
+    if (exec_flag_list.size() == 0) {
+      err_str = "No valid execute flag for system variable \'" + key + "\'";
+      return false;
+    }
+    if(!check_conflict_exec_flag(exec_flag_list)){
+      err_str = "Conflicting execute flags exist for \'" + key + "\'";
+      return false;
+    }
+    if(rectified_json_object->add_alias(var_name, new(std::nothrow) Json_string(new_value))) {
+      err_str = "Error when execute \'add_alias\'";
+      return false;
+    }
+
+    /* store a rule */
+    if(rules_cache) {
+      rules_cache->push_back({var_name, exec_flag_list});
+    }
+  }
+
+  }  // Limit the scope of plugin_locker
+
+  /*
+    Get the rectified json text describing the forwarding rules.
+  */
+  if(new_json_str) {
+    String buffer;
+    if(rectified_json_wrapper.to_string(&buffer, true, "check_var_rules")) {
+      err_str = "Error when execute \'Json_wrapper::to_string\'";
+      return false;
+    }
+    *new_json_str = std::string(buffer.c_ptr(), buffer.length());
+  }
+
+  if(unknown_vars.size() > 0) {
+    wrn_str = "unknown system variables:";
+    for(std::string elm: unknown_vars) {
+      wrn_str += " " + elm + ",";
+    }
+    wrn_str.pop_back();
+  }
+
+  return true;
+}
+
+/**
+  @brief update sql-level forwarding rules.
 
   @note This function is called from the ON_UPDATE() function of the session variable
         'tc_forwarding_rules'.
@@ -626,18 +900,19 @@ bool Forwarding_rule_mgr::update_forwarding_rules(THD *thd, enum_var_type type) 
   if(type != OPT_GLOBAL) {
     thd->forward_rule_mgr.reset_primary_rules();
     thd->forward_rule_mgr.cover_primary_forwarding_rules(thd->forward_rule_mgr.m_session_rules_cache);
+  } else {
+    Forwarding_rule_mgr::m_global_rules_valid_cache = Forwarding_rule_mgr::m_global_rules_cache;
   }
   return true;
 }
 
 /**
-  @brief cover thread's primary forwarding rules by given rules cache.
+  @brief cover thread's primary sql-level forwarding rules by given rules cache.
 
-  @param rules_cache    [IN]        new forwarding rules specified by the user.
+  @param rules_cache    [IN]        verified new forwarding rules.
 */
-void Forwarding_rule_mgr::cover_primary_forwarding_rules(const Rule_Cache &rules_cache) {
-  std::pair<enum enum_sql_command, std::vector<Exec_Flag> > one_rule;
-  for(one_rule: rules_cache) {
+void Forwarding_rule_mgr::cover_primary_forwarding_rules(const SQL_Rule_Cache &rules_cache) {
+  for(SQL_Rule one_rule: rules_cache) {
     Exec_Flag exec_flag = 0;
     std::string rule_str = "";
     for(Exec_Flag rule_item: one_rule.second) {
@@ -647,18 +922,108 @@ void Forwarding_rule_mgr::cover_primary_forwarding_rules(const Rule_Cache &rules
     if(one_rule.second.size() > 0) {
       rule_str = rule_str.substr(0, rule_str.length() - 3);
     }
-    DBUG_ASSERT(one_rule.first >= 0 && one_rule.first < SQLCOM_END);
     m_primary_rules[one_rule.first] = exec_flag;
     // sql_print_information("new forwarding rules for \'%s\': \'%s\'.", 
-    //   to_sql_command_name(one_rule.first).c_str(), rule_str.c_str());
+    // to_sql_command_name(one_rule.first).c_str(), rule_str.c_str());
+  }
+}
+
+inline void Forwarding_rule_mgr::reset_primary_var_rules() {
+  m_primary_var_rules.clear();
+}
+
+/**
+  @brief cover thread's primary variable-level forwarding rules by given rules cache.
+
+  @param rules_cache    [IN]        verified new forwarding rules.
+*/
+void Forwarding_rule_mgr::cover_primary_var_rules(const Var_Rule_Cache &rules_cache) {
+  for(Sys_Var_Rule one_rule: rules_cache) {
+    Exec_Flag exec_flag = 0;
+    std::string rule_str = "";
+    for(Exec_Flag rule_item: one_rule.second) {
+      exec_flag |= rule_item;
+      rule_str += to_single_exec_flag_name(rule_item) + " | ";
+    }
+    if(one_rule.second.size() > 0) {
+      rule_str = rule_str.substr(0, rule_str.length() - 3);
+    }
+    m_primary_var_rules[one_rule.first] = exec_flag;
+    // sql_print_information("new forwarding rules for variable \'%s\': \'%s\'.", 
+    //   one_rule.first.c_str(), rule_str.c_str());
   }
 }
 
 /**
-  Initialize the forwarding rules for the thread during session initialization.
+  @brief Check whether the system variables' forwarding rules are valid.
+
+  @note This function is called from the ON_CHECK() function of the session variable
+        'tc_var_rules'.
+
+  @param thd         [IN]        The thd handler.
+  @param var         [IN]        A pointer to set_var holding the specified json text of forwarding rules.
+  @param err_msg     [OUT]       Send an error message when the check fails.
+  @param warn_msg    [OUT]       Pass a warning message.
+
+  @return
+    true                    Success
+    false                   Error
+*/
+bool Forwarding_rule_mgr::check_var_rules(THD *thd, set_var *var, std::string &err_msg, std::string &warn_msg) {
+  char *json_text = var->save_result.string_value.str;
+  size_t json_text_len = var->save_result.string_value.length;
+
+  std::string err_str, wrn_str, rectified_json_str;
+  if(var->type == OPT_GLOBAL){
+    if(!parse_sysvar_rules(json_text, json_text_len, err_msg, warn_msg, thd, 
+      &(Forwarding_rule_mgr::m_global_var_rules_cache), &rectified_json_str)) {
+      return false;
+    }
+  } else {
+    if(!parse_sysvar_rules(json_text, json_text_len, err_msg, warn_msg, thd, 
+      &(thd->forward_rule_mgr.m_session_var_rules_cache), &rectified_json_str)) {
+      return false;
+    }
+  }
+  
+  /*
+    print the rectified forwarding rules to be set.
+  */
+  sql_print_information("<tc_var_rules> pass check: %s variable-level forwarding rules: \'%s\', rectified forwarding rules: \'%s\'.", 
+    var->type == OPT_GLOBAL ? "global" : "session", json_text, rectified_json_str.c_str());
+
+  return true;
+}
+
+/**
+  @brief update variable-level forwarding rules.
+
+  @note This function is called from the ON_UPDATE() function of the session variable
+        'tc_var_rules'.
+
+  @param thd    [IN]        The thd handler.
+  @param type   [IN]        Specifies whether it is global or session.
+
+  @return
+    true                    Success
+    false                   Error
+*/
+bool Forwarding_rule_mgr::update_var_rules(THD *thd, enum_var_type type) {
+  if(type != OPT_GLOBAL) {
+    thd->forward_rule_mgr.reset_primary_var_rules();
+    thd->forward_rule_mgr.cover_primary_var_rules(thd->forward_rule_mgr.m_session_var_rules_cache);
+  } else {
+    Forwarding_rule_mgr::m_global_var_rules_valid_cache = Forwarding_rule_mgr::m_global_var_rules_cache;
+  }
+  return true;
+}
+
+/**
+  Initialize the sql-level and variable-level forwarding rules for the thread during session initialization.
 */
 void Forwarding_rule_mgr::init() {
   reset_primary_rules();
-  cover_primary_forwarding_rules(Forwarding_rule_mgr::m_global_rules_cache);
+  cover_primary_forwarding_rules(Forwarding_rule_mgr::m_global_rules_valid_cache);
+  reset_primary_var_rules();
+  cover_primary_var_rules(Forwarding_rule_mgr::m_global_var_rules_valid_cache);
 }
-

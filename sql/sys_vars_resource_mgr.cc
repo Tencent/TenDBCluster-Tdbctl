@@ -16,6 +16,7 @@
 #include "sys_vars_resource_mgr.h"
 #include <set_var.h>
 #include "mysqld.h"
+#include "template_utils.h"           // pointer_cast
 
 /**
   Returns the member that contains the given key (address).
@@ -221,4 +222,94 @@ uchar *Session_sysvar_resource_manager::sysvars_mgr_get_key(const char *entry,
   key= (char *) ((sys_var_ptr *) entry)->data;
   *length= strlen(key);
   return (uchar *) key;
+}
+
+
+/**
+  Allocates memory for Sys_var_tc_charptr session variable during session
+  initialization.
+
+  @param var         The variable.
+
+  @return
+  Success - false
+  Failure - true
+*/
+
+bool Session_tc_sysvar_resource_manager::init(char **var) {
+  if (*var) {
+    char *ptr = my_strdup(key_memory_THD_Session_sysvar_resource_manager, *var,
+                          MYF(MY_WME));
+    if (ptr == nullptr) return true; /* Error */
+    m_sysvar_string_alloc_hash.emplace(var, ptr);
+
+    /* Update the variable to point to the newly allocated copy. */
+    *var = ptr;
+  }
+  return false;
+}
+
+/**
+  Frees the old allocated memory, memdup()'s the given val to a new memory
+  address & updates the session variable pointer.
+
+  @param var         The variable.
+  @param val         The new value.
+  @param val_len     Length of the new value.
+
+  @return
+  Success - false
+  Failure - true
+*/
+
+bool Session_tc_sysvar_resource_manager::update(char **var, char *val,
+                                             size_t val_len) {
+  char *ptr = nullptr;
+
+  // Memory allocation for the new value of the variable.
+  if (val) {
+    ptr = pointer_cast<char *>(
+        my_memdup(PSI_NOT_INSTRUMENTED, val, val_len + 1, MYF(MY_WME)));
+    if (ptr == nullptr) return true;
+    ptr[val_len] = 0;
+  }
+
+  if (ptr == nullptr)
+    m_sysvar_string_alloc_hash.erase(var);
+  else {
+    auto it = m_sysvar_string_alloc_hash.find(var);
+    if((it != m_sysvar_string_alloc_hash.end()) && it->second) {
+      my_free(it->second);
+    }
+    m_sysvar_string_alloc_hash[var] = ptr;
+  }
+
+  /*
+    Update the variable to point to the newly allocated copy.
+
+    If current value and the new value are both nullptr,
+    this function effectively does nothing.
+  */
+  *var = ptr;
+  return false;
+}
+
+void Session_tc_sysvar_resource_manager::claim_memory_ownership() {
+  /* Release Sys_var_charptr resources here. */
+  for (const auto &key_and_value : m_sysvar_string_alloc_hash) {
+    my_claim(key_and_value.second);
+  }
+}
+
+/**
+  @brief Frees the memory allocated for Sys_var_tc_charptr session variables.
+*/
+
+void Session_tc_sysvar_resource_manager::deinit() {
+  for (const auto &key_and_value : m_sysvar_string_alloc_hash) {
+    if(key_and_value.second) {
+       my_free(key_and_value.second);
+    }
+  }
+  m_sysvar_string_alloc_hash.clear();
 }

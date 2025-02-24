@@ -16,33 +16,31 @@ SELECT @@SESSION.tc_forwarding_rules INTO @origin_session_rules;
 
 # Test invalid forwarding rules.
 SET tc_forwarding_rules = '""';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '""'
+ERROR HY000: Failed to set sql-level forwarding rules: Only allow json text of type J_OBJECT
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Error when parsing json text: Invalid json string: '{"SQLCOM_LOCK_TABLES", "TDBCTL", "SQLCOM_UNLOCK_TABLES", "TDBCTL"}'
 SET tc_forwarding_rules = '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Error when parsing json text: Invalid json string: '{SQLCOM_LOCK_TABLES: "TDBCTL", SQLCOM_UNLOCK_TABLES: "TDBCTL"}'
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": 123}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": 123}'
+ERROR HY000: Failed to set sql-level forwarding rules: The value set to the key 'SQLCOM_LOCK_TABLES' is not a string
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLE": "TDBCTL"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLE": "TDBCTL"}'
-SET tc_forwarding_rules = '{"SQLCOM_SET_OPTION": "TDBCTL, SPIDER_ALL"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_SET_OPTION": "TDBCTL, SPIDER_ALL"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Unknown sql command 'SQLCOM_LOCK_TABLE'
 SET tc_forwarding_rules = '{"SQLCOM_CREATE_TABLE": "TDBCTL, SPIDER_ALL"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_CREATE_TABLE": "TDBCTL, SPIDER_ALL"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Setting forwarding rule for sql command 'SQLCOM_CREATE_TABLE' is forbidden (tips: Cannot change forwarding rules for DDL sql commands.)
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL, SPIDER_ALL", "sqlcom_lock_tables": "TDBCTL, SPIDER_ALL"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": "TDBCTL, SPIDER_ALL", "sqlcom_lock_tables": "TDBCTL, SPIDER_ALL"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Duplicate sql command 'SQLCOM_LOCK_TABLES'
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": ""}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": ""}'
+ERROR HY000: Failed to set sql-level forwarding rules: Empty string for key 'SQLCOM_LOCK_TABLES'
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "TDBCTL_ALL"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": "TDBCTL_ALL"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Invalid execute flag 'TDBCTL_ALL'
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "DESIGNATED_ONE"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": "DESIGNATED_ONE"}'
+ERROR HY000: Failed to set sql-level forwarding rules: This flag cannot be specified by users: 'DESIGNATED_ONE'
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ALL"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ALL"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Duplicate execute flag 'SPIDER_ALL'
 SET tc_forwarding_rules = '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_LOCK_TABLES": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Conflicting execute flags exist for 'SQLCOM_LOCK_TABLES'
 SET tc_forwarding_rules = '{"SQLCOM_GRANT": "TDBCTL, SPIDER_ALL"}';
-ERROR 42000: Variable 'tc_forwarding_rules' can't be set to the value of '{"SQLCOM_GRANT": "TDBCTL, SPIDER_ALL"}'
+ERROR HY000: Failed to set sql-level forwarding rules: Out-of-range flags exist for 'SQLCOM_GRANT', max supported rule is 'TDBCTL'
 
 # Set global tc_forwarding_rules. Only new sessions will be affected.
 SHOW SESSION VARIABLES LIKE 'tc_forwarding_rules';

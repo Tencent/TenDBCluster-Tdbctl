@@ -634,6 +634,7 @@ typedef struct system_variables
   my_bool tc_auto_fix_conns;
   
   char *tc_forwarding_rules;
+  char *tc_var_rules;
 
   uint  threadpool_high_prio_tickets;
   ulong threadpool_high_prio_mode;
@@ -4833,6 +4834,7 @@ public:
 
   Session_tracker session_tracker;
   Session_sysvar_resource_manager session_sysvar_res_mgr;
+  Session_tc_sysvar_resource_manager session_tc_sysvar_res_mgr;
 
   Forwarding_rule_mgr forward_rule_mgr;
 

@@ -2989,7 +2989,6 @@ mysql_execute_command(THD *thd, bool first_level)
   }
 
   tc_parse_result_init(&parse_result);
-  execute_flag = thd->forward_rule_mgr.get_sql_execute_flag(thd, lex, lex->sql_command);
 
   // When enable tdbctl management mode, the sql_command from 
   // slave_sql_thread should skip tcadmin parsing.
@@ -3003,6 +3002,10 @@ mysql_execute_command(THD *thd, bool first_level)
       goto error;
 
     query_exec_manager.build_server_maps(thd->cluster_conn_manager);
+
+    if (!thd->forward_rule_mgr.get_sql_execute_flag(thd, lex, lex->sql_command, execute_flag)) {
+      goto error;
+    }
 
     parse_result.shard_count = thd->cluster_conn_manager->get_shard_count();
 

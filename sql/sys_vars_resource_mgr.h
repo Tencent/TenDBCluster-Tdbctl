@@ -1,6 +1,10 @@
 #ifndef SYS_VARS_RESOURCE_MGR_INCLUDED
 #define SYS_VARS_RESOURCE_MGR_INCLUDED
 #include <hash.h>
+#include "mysqld.h"                   // key_memory_THD_Session_sysvar_resource_manager
+#include "malloc_allocator.h"         // Malloc_allocator
+#include <map>
+
 /* Copyright (c) 2014, 2016, Oracle and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
@@ -100,6 +104,61 @@ public:
   void deinit();
 };
 
+
+/**
+  std::map, but with my_malloc, so that you can track the memory
+  used using PSI memory keys.
+*/
+template <class Key, class Value, class Compare = std::less<Key> >
+class malloc_map
+    : public std::map<Key, Value, Compare, Malloc_allocator<std::pair<const Key, Value> > > {
+ public:
+  malloc_map(PSI_memory_key psi_key)
+      : std::map<Key, Value, Compare, Malloc_allocator<std::pair<const Key, Value> > >(
+             Compare(), Malloc_allocator<std::pair<const Key, Value> >(psi_key)) {}
+};
+
+/**
+  Session_tc_sysvar_resource_manager
+  -------------------------------
+  When a session (THD) gets initialized, it receives a shallow copy of all
+  global system variables.
+  thd->variables= global_system_variables; (see plugin_thdvar_init())
+
+  In case of Sys_var_tc_charptr variables, we need to maintain a separate copy for
+  each session though so that global and session variables can be altered
+  independently.
+
+  This class is responsible for alloc|dealloc-ating memory for Sys_var_tc_charptr
+  variables for every session.
+*/
+class Session_tc_sysvar_resource_manager {
+ private:
+  // The value always contains the string that the key points to.
+  malloc_map<char **, char *> m_sysvar_string_alloc_hash{key_memory_THD_Session_sysvar_resource_manager};
+ public:
+  /**
+    Allocates memory for Sys_var_charptr session variable during session
+    initialization.
+  */
+  bool init(char **var);
+
+  /**
+    Frees the old allocated memory, memdup()'s the given val to a new memory
+    address & updates the session variable pointer.
+  */
+  bool update(char **var, char *val, size_t val_len);
+
+  /**
+   * Parameter "bool claim" is removed.
+  */
+  void claim_memory_ownership();
+
+  /**
+    Frees the memory allocated for Sys_var_charptr session variables.
+  */
+  void deinit();
+};
 #endif /* SYS_VARS_RESOURCE_MGR_INCLUDED */
 
 
