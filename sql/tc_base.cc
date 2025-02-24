@@ -3312,8 +3312,9 @@ string tc_get_user_name(
 /* TODO: get rid of this */
 MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 {
-  int read_timeout = 600;
-  int write_timeout = 600;
+  THD *thd = current_thd;
+  uint read_timeout = thd->variables.tc_internal_read_timeout;
+  uint write_timeout = thd->variables.tc_internal_write_timeout;
   int connect_timeout = 60;
   ulong pos = ipport.find("#");
   string hosts = ipport.substr(0, pos);
@@ -3359,8 +3360,9 @@ MYSQL *tc_conn_connect(const AUTH_INFO &auth) {
 
 MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
                        const string &passwd, const string &wrapper) {
-  int read_timeout = TC_CONN_READ_TIMEOUT;
-  int write_timeout = TC_CONN_WRITE_TIMEOUT;
+  THD *thd = current_thd;
+  uint read_timeout = thd->variables.tc_internal_read_timeout;
+  uint write_timeout = thd->variables.tc_internal_write_timeout;
   int connect_timeout = tc_internal_connection_timeout;
   uint connect_retry_count = tc_internal_connection_retry_times;
   uint real_connect_option = 0;
@@ -4979,6 +4981,30 @@ int Cluster_conn_manager::ping(MYSQL *mysql) {
   if (res == CR_SERVER_LOST && mysql->reconnect)
     res = simple_command(mysql, COM_PING, 0, 0, 0);
   DBUG_RETURN(res);
+}
+
+void Cluster_conn_manager::reset_conn_read_timeout(ulong timeout) {
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_END; ++i) {
+    std::map<string, MYSQL *>::iterator it;
+    for (it = server_conns[i].begin(); it != server_conns[i].end(); ++it) {
+      MYSQL *mysql = it->second;
+      if(mysql) {
+        my_net_set_read_timeout(&(mysql->net), timeout);
+      }
+    }
+  }
+}
+
+void Cluster_conn_manager::reset_conn_write_timeout(ulong timeout) {
+  for (int i = ENUM_NODE_TYPE_BEGIN; i < ENUM_NODE_TYPE_END; ++i) {
+    std::map<string, MYSQL *>::iterator it;
+    for (it = server_conns[i].begin(); it != server_conns[i].end(); ++it) {
+      MYSQL *mysql = it->second;
+      if(mysql) {
+        my_net_set_write_timeout(&(mysql->net), timeout);
+      }
+    }
+  }
 }
 
 bool init_cluster_conn_manager(THD *thd, bool force_refresh, bool no_connect,

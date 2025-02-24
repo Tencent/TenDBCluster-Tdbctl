@@ -506,9 +506,11 @@ typedef struct system_variables
   ulong net_buffer_length;
   ulong net_interactive_timeout;
   ulong net_read_timeout;
+  ulong tc_internal_read_timeout;
   ulong net_retry_count;
   ulong net_wait_timeout;
   ulong net_write_timeout;
+  ulong tc_internal_write_timeout;
   ulong optimizer_prune_level;
   ulong optimizer_search_depth;
   ulonglong parser_max_mem_size;

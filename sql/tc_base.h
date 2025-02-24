@@ -53,8 +53,8 @@ enum tspider_shard_func {
 };
 enum tspider_shard_type { tspider_shard_type_list, tspider_shard_type_range };
 
-#define TC_CONN_READ_TIMEOUT 600
-#define TC_CONN_WRITE_TIMEOUT 600
+#define TC_CONN_READ_TIMEOUT ((ulong) 3600L*24L*365L)
+#define TC_CONN_WRITE_TIMEOUT ((ulong) 3600L*24L*365L)
 #define TC_CONN_CONNECT_TIMEOUT 5
 #define TC_CONN_MAX_RETRIES_ON_FAILS 3
 
@@ -423,6 +423,16 @@ public:
     Check if every server of any type is registered in the query exec manager
   */
   bool check_query_manager_validity(Query_exec_manager *query_mgr);
+
+  /*
+    reset read timeout for connections established by tdbctl to other nodes in the cluster
+  */
+  void reset_conn_read_timeout(ulong timeout);
+
+  /*
+    reset write timeout for connections established by tdbctl to other nodes in the cluster
+  */
+  void reset_conn_write_timeout(ulong timeout);
 
 private:
 

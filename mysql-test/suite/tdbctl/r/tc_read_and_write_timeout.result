@@ -1,0 +1,128 @@
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Save the original variable value
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_read_timeout INTO @origin_session_tc_read_timeout;
+SELECT @@SESSION.tc_write_timeout INTO @origin_session_tc_write_timeout;
+SELECT @@GLOBAL.tc_read_timeout INTO @origin_global_tc_read_timeout;
+SELECT @@GLOBAL.tc_write_timeout INTO @origin_global_tc_write_timeout;
+SELECT @@GLOBAL.max_allowed_packet INTO @origin_max_allowed_packet;
+
+# Create database and tables
+SET tc_admin = ON;
+CREATE DATABASE IF NOT EXISTS test_tc_timeout;
+USE test_tc_timeout;
+CREATE TABLE t1(id INT PRIMARY KEY);
+CREATE TABLE t2(id INT AUTO_INCREMENT PRIMARY KEY, value INT);
+
+# Lock tables
+LOCK TABLES test_tc_timeout_0.t1 READ;
+
+# Show global tc_read_timeout and tc_write_timeout
+SHOW GLOBAL variables like 'tc_%_timeout';
+Variable_name	Value
+tc_internal_connection_timeout	2
+tc_read_timeout	31536000
+tc_write_timeout	31536000
+SHOW SESSION variables like 'tc_%_timeout';
+Variable_name	Value
+tc_internal_connection_timeout	2
+tc_read_timeout	31536000
+tc_write_timeout	31536000
+# Note the case when timeout is set to zero
+SET SESSION tc_read_timeout = 0;
+Warnings:
+Warning	1292	Truncated incorrect tc_read_timeout value: '0'
+SET SESSION tc_write_timeout = 0;
+Warnings:
+Warning	1292	Truncated incorrect tc_write_timeout value: '0'
+SHOW SESSION variables like 'tc_%_timeout';
+Variable_name	Value
+tc_internal_connection_timeout	2
+tc_read_timeout	1
+tc_write_timeout	1
+# The default timeout is one year, which can be considered as no timeout
+SET SESSION tc_read_timeout = default;
+SET GLOBAL tc_read_timeout = default;
+SET SESSION tc_write_timeout = default;
+SET GLOBAL tc_write_timeout = default;
+SHOW SESSION variables like 'tc_%_timeout';
+Variable_name	Value
+tc_internal_connection_timeout	2
+tc_read_timeout	31536000
+tc_write_timeout	31536000
+SHOW GLOBAL variables like 'tc_%_timeout';
+Variable_name	Value
+tc_internal_connection_timeout	2
+tc_read_timeout	31536000
+tc_write_timeout	31536000
+SET GLOBAL max_allowed_packet = 100 * 1024 * 1024;
+
+# Create new session to make max_allowed_packet be valid
+SHOW VARIABLES LIKE 'max_allowed_packet';
+Variable_name	Value
+max_allowed_packet	104857600
+
+# Set tc_read_timeout and tc_write_timeout
+SET tc_read_timeout = 3;
+SET tc_write_timeout = 1;
+
+# Block by lock
+SET tc_admin = ON;
+SELECT NOW() INTO @start_time;
+DROP TABLE test_tc_timeout.t1;
+ERROR HY000: Execution failed: 
+Remote@SPT0: (Error 1159: )
+SELECT TIMESTAMPDIFF(SECOND, @start_time, NOW()) AS query_time;
+query_time
+3
+
+# Construct a very long insert statement
+SET tc_admin = OFF;
+SET @elem_count = 500000;
+SET @insert_statement = CONCAT(
+'INSERT INTO test_tc_timeout.t2(value) VALUES ',
+REPEAT('(0),(1),', @elem_count),
+'(2);'
+);
+
+# Block by complex sql
+SET tc_admin = ON;
+INSERT INTO test_tc_timeout.t2(value) VALUES (0),(1), ... (0),(1),(2);
+ERROR HY000: Execution failed: 
+Spider@SPIDER0: (Error 1159: )
+
+# No timeout
+SET tc_read_timeout = default;
+SET tc_admin = ON;
+INSERT INTO test_tc_timeout.t2(value) VALUES (0),(1), ... (0),(1),(2);
+
+# Disconnect new session
+
+# Unlock tables
+UNLOCK TABLES;
+
+# Drop databases and tables
+SET tc_read_timeout = default;
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_tc_timeout;
+
+# Recovery variable value
+SET tc_admin = OFF;
+SET @@GLOBAL.max_allowed_packet = @origin_max_allowed_packet;
+SET @@GLOBAL.tc_write_timeout = @origin_global_tc_write_timeout;
+SET @@GLOBAL.tc_read_timeout = @origin_global_tc_read_timeout;
+SET @@SESSION.tc_write_timeout = @origin_session_tc_write_timeout;
+SET @@SESSION.tc_read_timeout = @origin_session_tc_read_timeout;
+SET @@SESSION.tc_admin = @origin_tc_admin;

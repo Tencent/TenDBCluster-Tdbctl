@@ -337,6 +337,7 @@ ADD_COMPILE_FLAGS(
    sql_yacc.cc
    conn_handler/connection_handler_per_thread.cc
    mysqld.cc
+   sys_vars.cc
    COMPILE_FLAGS "-std=c++11"
 )
 IF (NOT WIN32)

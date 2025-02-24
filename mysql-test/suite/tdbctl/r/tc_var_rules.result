@@ -101,41 +101,11 @@ Variable_name	Value
 tc_set_forwarding_rules	{"time_zone": "TDBCTL", "net_read_timeout": "NO_EXEC"}
 
 # Set general_log output to table.
-SET tc_admin=OFF;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
-SET @old_log_output = @@GLOBAL.log_output;
-SET @old_general_log = @@GLOBAL.general_log;
-SET GLOBAL log_output = 'TABLE';
-SET GLOBAL general_log = ON;
+Set general log for all cluster nodes.
 
 # Check default forwarding rule for the SQLCOM_SET_OPTION command.
 # Truncate general_log.
-SET tc_admin=OFF;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
 # Execute SQLCOM_SET_OPTION commands of different variable types.
 # Still in the old session.
 SET tc_admin = ON;
@@ -158,7 +128,7 @@ SET tc_admin = OFF, time_zone = default;
 ERROR HY000: Execution failed: can't set variables with different execution flags at the same time
 # Show general_log.
 --------------------
-SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
 tdbctl0_log
 SET tc_admin = ON
 SET @origin_time_zone = @@SESSION.time_zone
@@ -174,7 +144,7 @@ SET GLOBAL max_connections = 64
 SET GLOBAL max_connections = @origin_max_connections
 SET tc_admin = OFF, time_zone = default
 --------------------
-SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
@@ -187,7 +157,7 @@ SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_conn
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
 --------------------
-SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
@@ -200,7 +170,7 @@ SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_conn
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
 --------------------
-SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
@@ -213,22 +183,16 @@ SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_conn
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
 --------------------
-SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 --------------------
-SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 --------------------
 
 # Check modified forwarding rules for SQLCOM_SET_OPTION commands of system variables.
 # Truncate general_log.
-SET tc_admin=OFF;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
 # Execute SQLCOM_SET_OPTION commands of different variable types.
 # Go to the new session.
 SET tc_admin=ON;
@@ -251,7 +215,8 @@ SET tc_admin = OFF, time_zone = default;
 ERROR HY000: Execution failed: can't set tdbctl-only var and common var at the same time
 # show general_log.
 --------------------
-SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+SET tc_admin=OFF;
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
 tdbctl0_log
 SET tc_admin=ON
 SET @origin_time_zone = @@SESSION.time_zone
@@ -266,8 +231,9 @@ SET @origin_max_connections = @@GLOBAL.max_connections
 SET GLOBAL max_connections = 64
 SET GLOBAL max_connections = @origin_max_connections
 SET tc_admin = OFF, time_zone = default
+SET tc_admin=OFF
 --------------------
-SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
@@ -276,7 +242,7 @@ SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_conn
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
 --------------------
-SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
@@ -285,7 +251,7 @@ SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_conn
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
 --------------------
-SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
@@ -294,10 +260,10 @@ SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_conn
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
 --------------------
-SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 --------------------
-SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 --------------------
 
@@ -320,13 +286,7 @@ tc_set_forwarding_rules	{"time_zone": "TDBCTL, SPIDER_ALL, REMOTE_ALL", "net_rea
 
 # Check default forwarding rule for the SQLCOM_SET_OPTION command.
 # Truncate general_log.
-SET tc_admin=OFF;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
 # Execute SQLCOM_SET_OPTION commands of different variable types.
 # Still in the old session.
 SET tc_admin = ON;
@@ -339,7 +299,7 @@ SET GLOBAL max_connections = 64;
 SET GLOBAL max_connections = @origin_max_connections;
 # Show general_log.
 --------------------
-SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
 tdbctl0_log
 SET tc_admin = ON
 SET time_zone = '+00:00'
@@ -350,7 +310,7 @@ SET @origin_max_connections = @@GLOBAL.max_connections
 SET GLOBAL max_connections = 64
 SET GLOBAL max_connections = @origin_max_connections
 --------------------
-SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
 SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
 SET NAMES latin1;SET sql_mode='';SET time_zone = default
@@ -360,7 +320,7 @@ SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_conn
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
 --------------------
-SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
 SET NAMES latin1;SET sql_mode='';SET time_zone = default
@@ -370,7 +330,7 @@ SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_conn
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
 --------------------
-SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
 SET NAMES latin1;SET sql_mode='';SET time_zone = default
@@ -380,22 +340,16 @@ SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_conn
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
 SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
 --------------------
-SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 --------------------
-SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 --------------------
 
 # Check modified forwarding rules for SQLCOM_SET_OPTION commands of system variables.
 # Truncate general_log.
-SET tc_admin=OFF;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
-TRUNCATE TABLE mysql.general_log;
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
 # Execute SQLCOM_SET_OPTION commands of different variable types.
 # Go to the new session.
 SET tc_admin = ON;
@@ -410,7 +364,8 @@ SET GLOBAL max_connections = 64;
 SET GLOBAL max_connections = @origin_max_connections;
 # show general_log.
 --------------------
-SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+SET tc_admin=OFF;
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
 tdbctl0_log
 SET tc_admin = ON
 SET time_zone = '+00:00'
@@ -420,23 +375,24 @@ SET net_read_timeout = default, net_write_timeout = default
 SET @origin_max_connections = @@GLOBAL.max_connections
 SET GLOBAL max_connections = 64
 SET GLOBAL max_connections = @origin_max_connections
+SET tc_admin=OFF
 --------------------
-SELECT argument AS spider0_log FROM mysql.general_log WHERE argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
 SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
 SET NAMES latin1;SET sql_mode='';SET time_zone = default
 --------------------
-SELECT argument AS spider1_log FROM mysql.general_log WHERE argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
 SET NAMES latin1;SET sql_mode='';SET time_zone = default
 --------------------
-SELECT argument AS spider2_log FROM mysql.general_log WHERE argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
 SET NAMES latin1;SET sql_mode='';SET time_zone = default
 --------------------
-SELECT argument AS remote_master0_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 SET NAMES latin1;
 SET sql_mode='';
@@ -445,7 +401,7 @@ SET NAMES latin1;
 SET sql_mode='';
 SET time_zone = default
 --------------------
-SELECT argument AS remote_master1_log FROM mysql.general_log WHERE argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 SET NAMES latin1;
 SET sql_mode='';
@@ -494,19 +450,7 @@ SET SESSION tc_forwarding_rules = '{"SQLCOM_SET_OPTION": "TDBCTL, SPIDER_ALL, RE
 SET time_zone = @origin_time_zone;
 
 # Restore to the initial state.
-SET tc_admin=OFF;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
-SET GLOBAL log_output = @old_log_output;
-SET GLOBAL general_log = @old_general_log;
+Set general log to original state for all cluster nodes.
 SET @@SESSION.tc_set_forwarding_rules = @origin_session_var_rules;
 SET @@GLOBAL.tc_set_forwarding_rules = @origin_global_var_rules;
 SET @@SESSION.tc_forwarding_rules = @origin_session_sql_rules;
