@@ -614,6 +614,7 @@ static const SYMBOL symbols[] = {
   { SYM("SUSPEND",                  SUSPEND_SYM)},
   { SYM("SWAPS",                    SWAPS_SYM)},
   { SYM("SWITCHES",                 SWITCHES_SYM)},
+  { SYM("SYNC",                     SYNC_SYM)},
   { SYM("TABLE",                    TABLE_SYM)},
   { SYM("TABLE_NAME",               TABLE_NAME_SYM)},
   { SYM("TABLES",                   TABLES)},

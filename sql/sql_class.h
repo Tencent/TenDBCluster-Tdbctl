@@ -72,8 +72,9 @@ extern ulong kill_idle_transaction_timeout;
 
 enum tc_flush_option
 {
-  FLUSH_ALL_ROUTING,
-  FLUSH_ROUTING_BY_SERVER,
+  FLUSH_ALL_ROUTING,             // flush routings of all the tdbctl, spider and spider_slave nodes
+  FLUSH_ROUTING_BY_SERVER,       // flush routing of one specific node
+  SYNC_SPIDER_ROUTING,           // synchronize the mysql.servers for all spider and spider_slave nodes
 };
 
 class Cluster_conn_manager;

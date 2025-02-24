@@ -5576,7 +5576,7 @@ mysql_execute_command(THD *thd, bool first_level)
         {
           Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
           drop_node->execute(thd);
-          my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "reload server failed");
+          my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "reload servers failed when creating node with schema option");
           goto error;
         }
         if (tc_flush_routing(lex, thd->cluster_conn_manager))
@@ -5588,6 +5588,29 @@ mysql_execute_command(THD *thd, bool first_level)
         if(tc_load_schema_to_new_node(thd, lex))
           goto error;
       }
+
+      /*
+        For 'TDBCTL ALTER NODE ... WITH SYNC', we will synchronously change the spider/spider_slave nodes' 
+        routing table without affecting their routing cache, that is, 
+        the spider/spider_slave nodes' routing changes do not take effect before executing 'flush privileges'.
+      */
+      if (lex->sql_command == TC_SQLCOM_ALTER_NODE && lex->tc_with_sync) {
+        /* always do reload first */
+        if (servers_reload(thd) || thd->cluster_conn_manager->refresh(FALSE, FALSE))
+        {
+          Sql_cmd_alter_server *resume_node = new Sql_cmd_alter_server(&old_server_options);
+          resume_node->execute(thd);
+          my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), "reload servers failed when altering node with sync option");
+          goto error;
+        }
+        if (tc_flush_routing(lex, thd->cluster_conn_manager))
+        {
+          Sql_cmd_alter_server *resume_node = new Sql_cmd_alter_server(&old_server_options);
+          resume_node->execute(thd);
+          goto error;
+        }
+      }
+
       //after reset, should call this
       my_ok(thd, 1);
       break;

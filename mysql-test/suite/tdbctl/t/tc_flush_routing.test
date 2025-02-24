@@ -1,0 +1,125 @@
+# Test the workflow of the command 'TDBCTL FLUSH ROUTING'.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+
+--echo
+--echo # Set general_log output to table.
+--source suite/tdbctl/inc/set_cluster_general_log_to_table.inc
+
+--echo
+--echo # Case 1: TDBCTL FLUSH ROUTING.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # execute TDBCTL FLUSH ROUTING command.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+--echo
+--echo # Case 2: TDBCTL FLUSH ROUTING FORCE.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # execute TDBCTL FLUSH ROUTING command.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING FORCE;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+--echo
+--echo # Case 3: TDBCTL FLUSH ROUTING CACHE.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # execute TDBCTL FLUSH ROUTING command.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING CACHE;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+--echo
+--echo # Case 4: TDBCTL FLUSH ROUTING CACHE FORCE.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # execute TDBCTL FLUSH ROUTING command.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING CACHE FORCE;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+--echo
+--echo # Case 5: TDBCTL FLUSH SERVER SPIDER0 ROUTING.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # execute TDBCTL FLUSH ROUTING command.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL FLUSH SERVER SPIDER0 ROUTING;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+--echo
+--echo # Case 6: Fail to modify 'mysql.servers'.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Lock mysql.servers of SPIDER0
+--connection spider0
+LOCK TABLES mysql.servers READ;
+--echo # execute TDBCTL FLUSH ROUTING command.
+--connection tdbctl0
+SET tc_admin=ON;
+--error ER_TCADMIN_FLUSH_ROUTING_ERROR
+TDBCTL FLUSH ROUTING;
+--echo # Unlock mysql.servers of SPIDER0
+--connection spider0
+UNLOCK TABLES;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+--echo # restore cluster routing.
+--connection tdbctl0
+SET tc_admin=ON;
+--disable_warnings
+TDBCTL FLUSH ROUTING;
+--enable_warnings
+
+--echo
+--echo # Case 7: Fail to execute 'flush tables; flush table with read lock;'.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Lock test_flush.t1 of SPIDER0
+--connection spider0
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */;
+CREATE DATABASE test_flush;
+CREATE TABLE test_flush.t1(id INT PRIMARY KEY);
+LOCK TABLES test_flush.t1 READ;
+--echo # execute TDBCTL FLUSH ROUTING command.
+--connection tdbctl0
+SET tc_admin=ON;
+--error ER_TCADMIN_FLUSH_ROUTING_ERROR
+TDBCTL FLUSH ROUTING;
+--echo # Unlock test_flush.t1 of SPIDER0
+--connection spider0
+UNLOCK TABLES;
+DROP DATABASE test_flush;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+--echo # restore cluster routing.
+--connection tdbctl0
+SET tc_admin=ON;
+--disable_warnings
+TDBCTL FLUSH ROUTING;
+--enable_warnings
+
+
+--echo
+--echo # Restore to the initial state.
+--source suite/tdbctl/inc/reset_cluster_general_log.inc
+--connection tdbctl0
+SET @@SESSION.tc_admin = @origin_tc_admin;

@@ -1051,6 +1051,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 %token  SUSPEND_SYM
 %token  SWAPS_SYM
 %token  SWITCHES_SYM
+%token  SYNC_SYM
 %token  SYSDATE
 %token  TABLES
 %token  TABLESPACE_SYM
@@ -1340,7 +1341,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 
 %type <NONE>
         create change drop
-        tdbctl opt_tdbctl_flush opt_force 
+        tdbctl opt_tdbctl_flush opt_cache opt_with_sync opt_force 
         truncate rename
         show describe load alter optimize keycache preload flush
         reset purge begin commit rollback savepoint release
@@ -2282,7 +2283,7 @@ opt_channel:
 
 
 tdbctl:
-        TDBCTL_SYM FLUSH_SYM opt_tdbctl_flush ROUTING_SYM opt_force
+        TDBCTL_SYM FLUSH_SYM opt_tdbctl_flush ROUTING_SYM opt_cache opt_force
         {
           Lex->sql_command = TC_SQLCOM_FLUSH_ROUTING;
           Lex->tc_do_grants = FALSE;
@@ -2315,7 +2316,7 @@ tdbctl:
           Lex->tc_do_grants = TRUE;
 			    Lex->tc_flush_type = FLUSH_ALL_ROUTING;
         }
-      | TDBCTL_SYM ALTER NODE_SYM ident_or_text OPTIONS_SYM '(' server_options_list ')' opt_force
+      | TDBCTL_SYM ALTER NODE_SYM ident_or_text OPTIONS_SYM '(' server_options_list ')' opt_with_sync opt_force
         {
           LEX *lex= Lex;
           lex->sql_command= TC_SQLCOM_ALTER_NODE;
@@ -2323,7 +2324,7 @@ tdbctl:
           lex->m_sql_cmd=
               new (YYTHD->mem_root) Sql_cmd_alter_server(&Lex->server_options);
           Lex->tc_do_grants = TRUE;
-			    Lex->tc_flush_type = FLUSH_ALL_ROUTING;
+			    Lex->tc_flush_type = Lex->tc_with_sync ? SYNC_SPIDER_ROUTING : FLUSH_ALL_ROUTING;
         }
       | TDBCTL_SYM DROP NODE_SYM if_exists ident_or_text opt_force
         {
@@ -2405,6 +2406,22 @@ opt_with_schema:
          |WITH DATABASE
          {
            Lex->tc_with_schema = TRUE;
+         }
+         ;
+
+opt_with_sync:
+         /* empty */ {  Lex->tc_with_sync = FALSE; }
+         | WITH SYNC_SYM
+         {
+           Lex->tc_with_sync = TRUE;
+         }
+         ;
+
+opt_cache:
+         /* empty */ {  Lex->tc_flush_only_cache = FALSE; }
+         | CACHE_SYM
+         {
+           Lex->tc_flush_only_cache = TRUE;
          }
          ;
 
