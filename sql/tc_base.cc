@@ -3312,9 +3312,15 @@ string tc_get_user_name(
 /* TODO: get rid of this */
 MYSQL* tc_conn_connect(string ipport, string user, string passwd)
 {
+  uint read_timeout, write_timeout;
   THD *thd = current_thd;
-  uint read_timeout = thd->variables.tc_internal_read_timeout;
-  uint write_timeout = thd->variables.tc_internal_write_timeout;
+  if(thd) {
+    read_timeout = thd->variables.tc_internal_read_timeout;
+    write_timeout = thd->variables.tc_internal_write_timeout;
+  } else {
+    read_timeout = (uint)global_system_variables.tc_internal_read_timeout;
+    write_timeout = (uint)global_system_variables.tc_internal_write_timeout;;
+  }
   int connect_timeout = 60;
   ulong pos = ipport.find("#");
   string hosts = ipport.substr(0, pos);
@@ -3360,9 +3366,15 @@ MYSQL *tc_conn_connect(const AUTH_INFO &auth) {
 
 MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
                        const string &passwd, const string &wrapper) {
+  uint read_timeout, write_timeout;
   THD *thd = current_thd;
-  uint read_timeout = thd->variables.tc_internal_read_timeout;
-  uint write_timeout = thd->variables.tc_internal_write_timeout;
+  if(thd) {
+    read_timeout = thd->variables.tc_internal_read_timeout;
+    write_timeout = thd->variables.tc_internal_write_timeout;
+  } else {
+    read_timeout = (uint)global_system_variables.tc_internal_read_timeout;
+    write_timeout = (uint)global_system_variables.tc_internal_write_timeout;;
+  }
   int connect_timeout = tc_internal_connection_timeout;
   uint connect_retry_count = tc_internal_connection_retry_times;
   uint real_connect_option = 0;
