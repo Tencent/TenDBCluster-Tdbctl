@@ -5593,9 +5593,9 @@ mysql_execute_command(THD *thd, bool first_level)
       }
 
       /*
-        For 'TDBCTL ALTER NODE ... WITH SYNC', we will synchronously change the spider/spider_slave nodes' 
+        For 'TDBCTL ALTER NODE ... WITH SYNC', we will synchronously change the spider/spider_slave/tdbctl nodes' 
         routing table without affecting their routing cache, that is, 
-        the spider/spider_slave nodes' routing changes do not take effect before executing 'flush privileges'.
+        the spider/spider_slave/tdbctl nodes' routing changes do not take effect before executing 'flush privileges'.
       */
       if (lex->sql_command == TC_SQLCOM_ALTER_NODE && lex->tc_with_sync) {
         /* always do reload first */

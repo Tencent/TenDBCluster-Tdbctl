@@ -2004,6 +2004,7 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
   switch (lex->tc_flush_type)
   {
   case FLUSH_ALL_ROUTING:
+  case SYNC_SPIDER_ROUTING:
   {
     get_server_name_set(&mem_root, spider_nodes, SPIDER_WRAPPER);
     get_server_name_set(&mem_root, spider_slave_nodes, SPIDER_SLAVE_WRAPPER);
@@ -2035,19 +2036,6 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
     }
     nodes.insert(string(server->server_name, server->server_name_length));
     if(tc_flush_routing_to_nodes(lex, nodes, conn_mgr, server->scheme))
-    {
-      result = TRUE;
-      break;
-    }
-    break;
-  }
-  case SYNC_SPIDER_ROUTING:
-  {
-    get_server_name_set(&mem_root, spider_nodes, SPIDER_WRAPPER);
-    get_server_name_set(&mem_root, spider_slave_nodes, SPIDER_SLAVE_WRAPPER);
-
-    if (tc_flush_routing_to_nodes(lex, spider_nodes, conn_mgr, SPIDER_WRAPPER) ||
-        tc_flush_routing_to_nodes(lex, spider_slave_nodes, conn_mgr, SPIDER_SLAVE_WRAPPER))
     {
       result = TRUE;
       break;
