@@ -353,6 +353,7 @@ IF (NOT WIN32)
     item_geofunc_setops.cc
     item_json_func.cc
     spatial.cc
+    tc_forwarding_rule_mgr.cc
     COMPILE_FLAGS -I${BOOST_PATCHES_DIR} -isystem ${BOOST_INCLUDE_DIR}
   )
 ELSE()
@@ -368,6 +369,7 @@ ELSE()
     item_geofunc_setops.cc
     item_json_func.cc
     spatial.cc
+    tc_forwarding_rule_mgr.cc
     COMPILE_FLAGS -I${BOOST_PATCHES_DIR} -I${BOOST_INCLUDE_DIR}
   )
 ENDIF()

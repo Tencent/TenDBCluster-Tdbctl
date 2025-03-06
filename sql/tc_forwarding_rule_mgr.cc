@@ -4,28 +4,18 @@
 #include "json_dom.h"              // Json_dom::parse
 #include "tc_base.h"               // TC_SPIDER_NEED_EXECUTE
 #include "log.h"                   // sql_print_error
+#include <boost/algorithm/string.hpp>
 
 
 /* Removes whitespace at the beginning and end of the string. */
 std::string string_strip(const std::string &str) {
-  std::string result = str;
-  int lpos = 0, rpos = result.size() - 1;
-  while(lpos < result.size() && isspace(result[lpos]))
-    ++lpos;
-  while(rpos >= 0 && isspace(result[rpos]))
-    --rpos;
-  if(lpos > rpos)
-    return "";
-  result = result.substr(lpos, rpos - lpos + 1);
-  return result;
+  return boost::algorithm::trim_copy(str);
 }
 
 /* Removes whitespace at the beginning and end of the string and converts English letters to uppercase. */
 std::string trim_and_uppercase(const std::string &str) {
-    std::string result = string_strip(str);
-    for(int i = 0; i < result.size(); ++i) {
-      result[i] = toupper(result[i]);
-    }
+    std::string result = boost::algorithm::trim_copy(str);
+    boost::algorithm::to_upper(result);
     return result;
 }
 
