@@ -164,10 +164,12 @@ public:
 
   }
 
+private:
   /* disable copy assignment constructor. */
-  Forwarding_rule_mgr(Forwarding_rule_mgr const &other) = delete;
-  Forwarding_rule_mgr& operator= (Forwarding_rule_mgr const &rhs) = delete;
+  Forwarding_rule_mgr(Forwarding_rule_mgr const &other);
+  Forwarding_rule_mgr& operator= (Forwarding_rule_mgr const &rhs);
 
+public:
   bool get_sql_execute_flag(THD *thd, LEX *lex, enum_sql_command sql_cmd, Exec_Flag &execute_flag);
 
   static bool check_forwarding_rules(THD *thd, set_var *var, std::string &err_msg);

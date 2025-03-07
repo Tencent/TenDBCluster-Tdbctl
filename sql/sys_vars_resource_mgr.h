@@ -135,8 +135,12 @@ class malloc_map
 class Session_tc_sysvar_resource_manager {
  private:
   // The value always contains the string that the key points to.
-  malloc_map<char **, char *> m_sysvar_string_alloc_hash{key_memory_THD_Session_sysvar_resource_manager};
+  malloc_map<char **, char *> m_sysvar_string_alloc_hash;
  public:
+  Session_tc_sysvar_resource_manager(): m_sysvar_string_alloc_hash(key_memory_THD_Session_sysvar_resource_manager) {
+
+  }
+
   /**
     Allocates memory for Sys_var_charptr session variable during session
     initialization.
