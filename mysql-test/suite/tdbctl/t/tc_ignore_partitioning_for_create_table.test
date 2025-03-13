@@ -6,7 +6,8 @@ SELECT * FROM mysql.servers;
 SELECT @@session.tc_admin INTO @origin_tc_admin;
 SELECT @@global.tc_ignore_partitioning_for_create_table INTO @origin_tc_ignore_partition;
 
-# case 1: when tc_admin=0, tc_ignore_partitioning_for_create_table has no effect.
+--echo
+--echo # case 1: when tc_admin=0, tc_ignore_partitioning_for_create_table has no effect.
 
 SET tc_admin=0;
 SET GLOBAL tc_ignore_partitioning_for_create_table=1;
@@ -24,7 +25,9 @@ SHOW CREATE TABLE tb1;
 SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
 FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb1';
 
-# case 2: when tc_admin=1 and tc_ignore_partitioning_for_create_table=1, 'PARTITION BY' will be ignored; 
+
+--echo
+--echo # case 2: when tc_admin=1 and tc_ignore_partitioning_for_create_table=1, 'PARTITION BY' will be ignored; 
 
 SET tc_admin=1;
 SET GLOBAL tc_ignore_partitioning_for_create_table=1;
@@ -32,7 +35,7 @@ SET GLOBAL tc_ignore_partitioning_for_create_table=1;
 CREATE DATABASE test2;
 USE test2;
 
---disable_warnings
+--echo # SPIDER ENGINE
 CREATE TABLE tb2 (
     id INT NOT NULL,
     value INT NOT NULL,
@@ -41,7 +44,6 @@ CREATE TABLE tb2 (
 PARTITION BY LIST (crc32(`id`) MOD 2)
 (PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test2_0", table "tb2", server "SPT0"' ENGINE = SPIDER, 
  PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test2_1", table "tb2", server "SPT1"' ENGINE = SPIDER);
---enable_warnings
 
 SHOW CREATE TABLE tb2;
 
@@ -51,6 +53,7 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb2';
 TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test2.tb2';
 TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test2_0.tb2';
 
+--echo # DEFAULT ENGINE
 CREATE TABLE tb3 (
     id INT NOT NULL,
     value INT NOT NULL,
@@ -62,7 +65,66 @@ SHOW CREATE TABLE tb3;
 TDBCTL CONNECT NODE SPIDER1 EXECUTE 'SHOW CREATE TABLE test2.tb3';
 TDBCTL CONNECT NODE SPT1 EXECUTE 'SHOW CREATE TABLE test2_1.tb3';
 
-# case 3: when tc_admin=1 and tc_ignore_partitioning_for_create_table=0, 'PARTITION BY' clause of spider engine is not allowed on tdbctl node.
+--echo # ROCKSDB ENGINE
+CREATE TABLE tb4 (     
+    id INT NOT NULL,     
+    value INT NOT NULL,     
+    PRIMARY KEY(`id`) 
+) ENGINE=ROCKSDB 
+/*!50100 PARTITION BY RANGE (id % 2) (     
+PARTITION `p0` VALUES LESS THAN (1),     
+PARTITION `p1` VALUES LESS THAN (2)
+ ) */;
+
+SHOW CREATE TABLE tb4;
+
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb4';
+
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test2.tb4';
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test2_0.tb4';
+
+--echo # TOKUDB ENGINE
+CREATE TABLE tb5 (     
+    id INT NOT NULL,     
+    value INT NOT NULL,     
+    PRIMARY KEY(`id`) 
+) ENGINE=TOKUDB 
+/*!50100 PARTITION BY RANGE (id % 2) (     
+PARTITION `p0` VALUES LESS THAN (1),     
+PARTITION `p1` VALUES LESS THAN (2)
+ ) */;
+
+SHOW CREATE TABLE tb5;
+
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb5';
+
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test2.tb5';
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test2_0.tb5';
+
+--echo # INNODB ENGINE
+CREATE TABLE tb6 (     
+    id INT NOT NULL,     
+    value INT NOT NULL,     
+    PRIMARY KEY(`id`) 
+) ENGINE=INNODB 
+/*!50100 PARTITION BY RANGE (id % 2) (     
+PARTITION `p0` VALUES LESS THAN (1),     
+PARTITION `p1` VALUES LESS THAN (2)
+ ) */;
+
+SHOW CREATE TABLE tb6;
+
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb6';
+
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test2.tb6';
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test2_0.tb6';
+
+
+--echo
+--echo # case 3: when tc_admin=1 and tc_ignore_partitioning_for_create_table=0, 'PARTITION BY' clause of spider engine is not allowed on tdbctl node.
 
 SET tc_admin=1;
 SET GLOBAL tc_ignore_partitioning_for_create_table=0;
@@ -70,24 +132,27 @@ SET GLOBAL tc_ignore_partitioning_for_create_table=0;
 CREATE DATABASE test3;
 USE test3;
 
+--echo # SPIDER ENGINE
 --error ER_PARTITION_FUNCTION_IS_NOT_ALLOWED
-CREATE TABLE tb4 (
+CREATE TABLE tb7 (
     id INT NOT NULL,
     value INT NOT NULL,
     PRIMARY KEY(`id`)
 )ENGINE=SPIDER DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
 PARTITION BY LIST (crc32(`id`) MOD 2)
-(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb4", server "SPT0"' ENGINE = SPIDER, 
- PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb4", server "SPT1"' ENGINE = SPIDER);
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb7", server "SPT0"' ENGINE = SPIDER, 
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb7", server "SPT1"' ENGINE = SPIDER);
 
-SELECT COUNT(*) AS tb4_exists_on_ctl0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb4';
+SELECT COUNT(*) AS tb7_exists_on_ctl0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb7';
 
-TDBCTL CONNECT NODE SPIDER0 EXECUTE "SELECT COUNT(*) AS tb4_exists_on_spider0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb4'";
-TDBCTL CONNECT NODE SPT0 EXECUTE "SELECT COUNT(*) AS tb4_exists_on_remote0 FROM information_schema.tables WHERE table_schema = 'test3_0' AND table_name = 'tb4'";
+TDBCTL CONNECT NODE SPIDER0 EXECUTE "SELECT COUNT(*) AS tb7_exists_on_spider0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb7'";
+TDBCTL CONNECT NODE SPT0 EXECUTE "SELECT COUNT(*) AS tb7_exists_on_remote0 FROM information_schema.tables WHERE table_schema = 'test3_0' AND table_name = 'tb7'";
 
-# case 4: when tc_admin=1 and tc_ignore_partitioning_for_create_table=0, general 'PARTITION BY' clause on tdbctl node is allowed.
 
-CREATE TABLE tb5 (
+--echo
+--echo # case 4: when tc_admin=1 and tc_ignore_partitioning_for_create_table=0, general 'PARTITION BY' clause on tdbctl node is allowed.
+--echo # default ENGINE
+CREATE TABLE tb8 (
     id INT NOT NULL,
     value INT NOT NULL,
     PRIMARY KEY(`id`)
@@ -96,14 +161,54 @@ CREATE TABLE tb5 (
     PARTITION `p1` VALUES LESS THAN (2)
 );
 
-SHOW CREATE TABLE tb5;
+SHOW CREATE TABLE tb8;
 
 SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
-FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb5';
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb8';
 
-TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test3.tb5';
-TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test3_0.tb5';
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test3.tb8';
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test3_0.tb8';
 
+--echo # ROCKSDB ENGINE
+CREATE TABLE tb9 (     
+    id INT NOT NULL,     
+    value INT NOT NULL,     
+    PRIMARY KEY(`id`) 
+) ENGINE=ROCKSDB 
+/*!50100 PARTITION BY RANGE (id % 2) (     
+PARTITION `p0` VALUES LESS THAN (1),     
+PARTITION `p1` VALUES LESS THAN (2)
+ ) */;
+
+ SHOW CREATE TABLE tb9;
+
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb9';
+
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test3.tb9';
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test3_0.tb9';
+
+--echo # TOKUDB ENGINE
+CREATE TABLE tb10 (     
+    id INT NOT NULL,     
+    value INT NOT NULL,     
+    PRIMARY KEY(`id`) 
+) ENGINE=TOKUDB 
+/*!50100 PARTITION BY RANGE (id % 2) (     
+PARTITION `p0` VALUES LESS THAN (1),     
+PARTITION `p1` VALUES LESS THAN (2)
+ ) */;
+
+ SHOW CREATE TABLE tb10;
+
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb10';
+
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test3.tb10';
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test3_0.tb10';
+
+--echo
+--echo # Restore to the initial state.
 DROP DATABASE if exists test3;
 DROP DATABASE if exists test2;
 DROP DATABASE if exists test1;

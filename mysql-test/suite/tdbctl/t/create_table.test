@@ -1,0 +1,116 @@
+# Test the command 'CREATE TABLE ...'.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SET tc_admin = ON;
+CREATE DATABASE test_create_table;
+USE test_create_table;
+
+--echo
+--echo # Test the key length limitation of TOKUDB engine.
+SET tc_admin = OFF;
+CREATE TABLE `pre_download_info`(
+    `openid` varchar(255) NOT NULL, 
+    `model` varchar(255) NOT NULL, 
+    `md5` varchar(255) DEFAULT NULL, 
+    `path` varchar(512) DEFAULT NULL, 
+    `url` varchar(1024) DEFAULT NULL, 
+    `ctime` timestamp NOT NULL DEFAULT '1970-01-01 16:00:01', 
+    `utime` timestamp NOT NULL DEFAULT '1970-01-01 16:00:01' ON UPDATE CURRENT_TIMESTAMP, 
+    `exp_time` bigint(11) DEFAULT '0', 
+    `version` varchar(128) DEFAULT '',
+    `version_url` text, 
+    `exp_time_version_url` bigint(11) DEFAULT '0', 
+    PRIMARY KEY(`openid`, `model`), 
+    KEY `idx_openid` (`openid`), 
+    KEY `idx_model`(`model`),
+    KEY `idx_openid_model_md5`(`openid`, `model`, `md5`)
+)ENGINE=TokuDB DEFAULT CHARSET=utf8;
+SHOW CREATE TABLE pre_download_info;
+
+--echo
+--echo # Test the key length limitation of ROCKSDB engine.
+SET tc_admin = OFF;
+CREATE TABLE `tb_backup_system_size_detail` (
+    `report_day` int(11) NOT NULL,
+    `year` int(4) NOT NULL,
+    `month` int(2) NOT NULL,
+    `quarter` int(1) NOT NULL,
+    `type` varchar(10) NOT NULL,
+    `city_id` int(5) NOT NULL,
+    `city` varchar(50) NOT NULL,
+    `app` varchar(300) NOT NULL,
+    `file_tag` varchar(100) NOT NULL,
+    `size` bigint(11) DEFAULT '0',
+    `zip_size` bigint(11) DEFAULT '0',
+    KEY `ind_report_day` (`report_day`),
+    KEY `ind_day_list` (`year`,`month`,`quarter`),
+    KEY `ind_report_cat` (`city_id`,`app`,`file_tag`)
+) ENGINE=ROCKSDB DEFAULT CHARSET=utf8 COMMENT='shard_key "report_day"';
+SHOW CREATE TABLE tb_backup_system_size_detail;
+
+--echo
+--echo # Set general_log output to table.
+--source suite/tdbctl/inc/set_cluster_general_log_to_table.inc
+
+--echo
+--echo # Test the forwarding and execution of CREATE TABLE statements using different engines.
+
+--echo
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # INNODB ENGINE
+--connection tdbctl0
+SET tc_admin=ON;
+CREATE TABLE tb1 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=INNODB;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo
+--echo # SPIDER ENGINE
+--connection tdbctl0
+SET tc_admin=ON;
+CREATE TABLE tb2 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=SPIDER;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo
+--echo # ROCKSDB ENGINE
+--connection tdbctl0
+SET tc_admin=ON;
+CREATE TABLE tb3 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=ROCKSDB;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo
+--echo # TOKUDB ENGINE
+--connection tdbctl0
+SET tc_admin=ON;
+CREATE TABLE tb4 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=TOKUDB;
+--echo # show general_log.
+--source suite/tdbctl/inc/get_cluster_general_log.inc
+
+
+--echo
+--echo # Restore to the initial state.
+--source suite/tdbctl/inc/reset_cluster_general_log.inc
+--connection tdbctl0
+SET tc_admin = ON;
+DROP DATABASE test_create_table;
+SET @@SESSION.tc_admin = @origin_tc_admin;

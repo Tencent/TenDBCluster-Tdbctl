@@ -12,6 +12,8 @@ TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL
 TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
 SELECT @@session.tc_admin INTO @origin_tc_admin;
 SELECT @@global.tc_ignore_partitioning_for_create_table INTO @origin_tc_ignore_partition;
+
+# case 1: when tc_admin=0, tc_ignore_partitioning_for_create_table has no effect.
 SET tc_admin=0;
 SET GLOBAL tc_ignore_partitioning_for_create_table=1;
 CREATE DATABASE test1;
@@ -33,10 +35,13 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb1';
 TABLE_NAME	PARTITION_METHOD	PARTITION_EXPRESSION	PARTITION_DESCRIPTION
 tb1	KEY	`id`	NULL
 tb1	KEY	`id`	NULL
+
+# case 2: when tc_admin=1 and tc_ignore_partitioning_for_create_table=1, 'PARTITION BY' will be ignored; 
 SET tc_admin=1;
 SET GLOBAL tc_ignore_partitioning_for_create_table=1;
 CREATE DATABASE test2;
 USE test2;
+# SPIDER ENGINE
 CREATE TABLE tb2 (
 id INT NOT NULL,
 value INT NOT NULL,
@@ -45,6 +50,11 @@ PRIMARY KEY(`id`)
 PARTITION BY LIST (crc32(`id`) MOD 2)
 (PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test2_0", table "tb2", server "SPT0"' ENGINE = SPIDER, 
 PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test2_1", table "tb2", server "SPT1"' ENGINE = SPIDER);
+Warnings:
+Warning	1286	Unknown storage engine 'SPIDER'
+Warning	1286	Unknown storage engine 'SPIDER'
+Warning	1286	Unknown storage engine 'SPIDER'
+Warning	1266	Using storage engine InnoDB for table 'tb2'
 SHOW CREATE TABLE tb2;
 Table	Create Table
 tb2	CREATE TABLE `tb2` (
@@ -73,6 +83,7 @@ tb2	CREATE TABLE `tb2` (
   `value` int(11) NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+# DEFAULT ENGINE
 CREATE TABLE tb3 (
 id INT NOT NULL,
 value INT NOT NULL,
@@ -102,29 +113,149 @@ tb3	CREATE TABLE `tb3` (
   `value` int(11) NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8
+# ROCKSDB ENGINE
+CREATE TABLE tb4 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) 
+) ENGINE=ROCKSDB 
+/*!50100 PARTITION BY RANGE (id % 2) (     
+PARTITION `p0` VALUES LESS THAN (1),     
+PARTITION `p1` VALUES LESS THAN (2)
+) */;
+SHOW CREATE TABLE tb4;
+Table	Create Table
+tb4	CREATE TABLE `tb4` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=ROCKSDB DEFAULT CHARSET=utf8
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb4';
+TABLE_NAME	PARTITION_METHOD	PARTITION_EXPRESSION	PARTITION_DESCRIPTION
+tb4	NULL	NULL	NULL
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test2.tb4';
+Table	Create Table
+tb4	CREATE TABLE `tb4` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=SPIDER DEFAULT CHARSET=utf8
+ PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test2_0", table "tb4", server "SPT0"' ENGINE = SPIDER,
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test2_1", table "tb4", server "SPT1"' ENGINE = SPIDER)
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test2_0.tb4';
+Table	Create Table
+tb4	CREATE TABLE `tb4` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+# TOKUDB ENGINE
+CREATE TABLE tb5 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) 
+) ENGINE=TOKUDB 
+/*!50100 PARTITION BY RANGE (id % 2) (     
+PARTITION `p0` VALUES LESS THAN (1),     
+PARTITION `p1` VALUES LESS THAN (2)
+) */;
+SHOW CREATE TABLE tb5;
+Table	Create Table
+tb5	CREATE TABLE `tb5` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=TOKUDB DEFAULT CHARSET=utf8
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb5';
+TABLE_NAME	PARTITION_METHOD	PARTITION_EXPRESSION	PARTITION_DESCRIPTION
+tb5	NULL	NULL	NULL
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test2.tb5';
+Table	Create Table
+tb5	CREATE TABLE `tb5` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=SPIDER DEFAULT CHARSET=utf8
+ PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test2_0", table "tb5", server "SPT0"' ENGINE = SPIDER,
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test2_1", table "tb5", server "SPT1"' ENGINE = SPIDER)
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test2_0.tb5';
+Table	Create Table
+tb5	CREATE TABLE `tb5` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+# INNODB ENGINE
+CREATE TABLE tb6 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) 
+) ENGINE=INNODB 
+/*!50100 PARTITION BY RANGE (id % 2) (     
+PARTITION `p0` VALUES LESS THAN (1),     
+PARTITION `p1` VALUES LESS THAN (2)
+) */;
+SHOW CREATE TABLE tb6;
+Table	Create Table
+tb6	CREATE TABLE `tb6` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb6';
+TABLE_NAME	PARTITION_METHOD	PARTITION_EXPRESSION	PARTITION_DESCRIPTION
+tb6	NULL	NULL	NULL
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test2.tb6';
+Table	Create Table
+tb6	CREATE TABLE `tb6` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=SPIDER DEFAULT CHARSET=utf8
+ PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test2_0", table "tb6", server "SPT0"' ENGINE = SPIDER,
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test2_1", table "tb6", server "SPT1"' ENGINE = SPIDER)
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test2_0.tb6';
+Table	Create Table
+tb6	CREATE TABLE `tb6` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+
+# case 3: when tc_admin=1 and tc_ignore_partitioning_for_create_table=0, 'PARTITION BY' clause of spider engine is not allowed on tdbctl node.
 SET tc_admin=1;
 SET GLOBAL tc_ignore_partitioning_for_create_table=0;
 CREATE DATABASE test3;
 USE test3;
-CREATE TABLE tb4 (
+# SPIDER ENGINE
+CREATE TABLE tb7 (
 id INT NOT NULL,
 value INT NOT NULL,
 PRIMARY KEY(`id`)
 )ENGINE=SPIDER DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
 PARTITION BY LIST (crc32(`id`) MOD 2)
-(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb4", server "SPT0"' ENGINE = SPIDER, 
-PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb4", server "SPT1"' ENGINE = SPIDER);
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb7", server "SPT0"' ENGINE = SPIDER, 
+PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb7", server "SPT1"' ENGINE = SPIDER);
 ERROR HY000: This partition function is not allowed
-SELECT COUNT(*) AS tb4_exists_on_ctl0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb4';
-tb4_exists_on_ctl0
+SELECT COUNT(*) AS tb7_exists_on_ctl0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb7';
+tb7_exists_on_ctl0
 0
-TDBCTL CONNECT NODE SPIDER0 EXECUTE "SELECT COUNT(*) AS tb4_exists_on_spider0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb4'";
-tb4_exists_on_spider0
+TDBCTL CONNECT NODE SPIDER0 EXECUTE "SELECT COUNT(*) AS tb7_exists_on_spider0 FROM information_schema.tables WHERE table_schema = 'test3' AND table_name = 'tb7'";
+tb7_exists_on_spider0
 0
-TDBCTL CONNECT NODE SPT0 EXECUTE "SELECT COUNT(*) AS tb4_exists_on_remote0 FROM information_schema.tables WHERE table_schema = 'test3_0' AND table_name = 'tb4'";
-tb4_exists_on_remote0
+TDBCTL CONNECT NODE SPT0 EXECUTE "SELECT COUNT(*) AS tb7_exists_on_remote0 FROM information_schema.tables WHERE table_schema = 'test3_0' AND table_name = 'tb7'";
+tb7_exists_on_remote0
 0
-CREATE TABLE tb5 (
+
+# case 4: when tc_admin=1 and tc_ignore_partitioning_for_create_table=0, general 'PARTITION BY' clause on tdbctl node is allowed.
+# default ENGINE
+CREATE TABLE tb8 (
 id INT NOT NULL,
 value INT NOT NULL,
 PRIMARY KEY(`id`)
@@ -132,9 +263,9 @@ PRIMARY KEY(`id`)
 PARTITION `p0` VALUES LESS THAN (1),
 PARTITION `p1` VALUES LESS THAN (2)
 );
-SHOW CREATE TABLE tb5;
+SHOW CREATE TABLE tb8;
 Table	Create Table
-tb5	CREATE TABLE `tb5` (
+tb8	CREATE TABLE `tb8` (
   `id` int(11) NOT NULL,
   `value` int(11) NOT NULL,
   PRIMARY KEY (`id`)
@@ -143,23 +274,23 @@ tb5	CREATE TABLE `tb5` (
 (PARTITION p0 VALUES LESS THAN (1) ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN (2) ENGINE = InnoDB) */
 SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
-FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb5';
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb8';
 TABLE_NAME	PARTITION_METHOD	PARTITION_EXPRESSION	PARTITION_DESCRIPTION
-tb5	RANGE	id % 2	1
-tb5	RANGE	id % 2	2
-TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test3.tb5';
+tb8	RANGE	id % 2	1
+tb8	RANGE	id % 2	2
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test3.tb8';
 Table	Create Table
-tb5	CREATE TABLE `tb5` (
+tb8	CREATE TABLE `tb8` (
   `id` int(11) NOT NULL,
   `value` int(11) NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=SPIDER DEFAULT CHARSET=utf8
  PARTITION BY LIST (crc32(`id`) MOD 2)
-(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb5", server "SPT0"' ENGINE = SPIDER,
- PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb5", server "SPT1"' ENGINE = SPIDER)
-TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test3_0.tb5';
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb8", server "SPT0"' ENGINE = SPIDER,
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb8", server "SPT1"' ENGINE = SPIDER)
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test3_0.tb8';
 Table	Create Table
-tb5	CREATE TABLE `tb5` (
+tb8	CREATE TABLE `tb8` (
   `id` int(11) NOT NULL,
   `value` int(11) NOT NULL,
   PRIMARY KEY (`id`)
@@ -167,6 +298,106 @@ tb5	CREATE TABLE `tb5` (
 /*!50100 PARTITION BY RANGE (id % 2)
 (PARTITION p0 VALUES LESS THAN (1) ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN (2) ENGINE = InnoDB) */
+# ROCKSDB ENGINE
+CREATE TABLE tb9 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) 
+) ENGINE=ROCKSDB 
+/*!50100 PARTITION BY RANGE (id % 2) (     
+PARTITION `p0` VALUES LESS THAN (1),     
+PARTITION `p1` VALUES LESS THAN (2)
+) */;
+Warnings:
+Warning	1287	The partition engine, used by table 'test3.tb9', is deprecated and will be removed in a future release. Please use native partitioning instead.
+SHOW CREATE TABLE tb9;
+Table	Create Table
+tb9	CREATE TABLE `tb9` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=ROCKSDB DEFAULT CHARSET=utf8
+/*!50100 PARTITION BY RANGE (id % 2)
+(PARTITION p0 VALUES LESS THAN (1) ENGINE = ROCKSDB,
+ PARTITION p1 VALUES LESS THAN (2) ENGINE = ROCKSDB) */
+Warnings:
+Warning	1287	The partition engine, used by table 'test3.tb9', is deprecated and will be removed in a future release. Please use native partitioning instead.
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb9';
+TABLE_NAME	PARTITION_METHOD	PARTITION_EXPRESSION	PARTITION_DESCRIPTION
+tb9	RANGE	id % 2	1
+tb9	RANGE	id % 2	2
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test3.tb9';
+Table	Create Table
+tb9	CREATE TABLE `tb9` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=SPIDER DEFAULT CHARSET=utf8
+ PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb9", server "SPT0"' ENGINE = SPIDER,
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb9", server "SPT1"' ENGINE = SPIDER)
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test3_0.tb9';
+Table	Create Table
+tb9	CREATE TABLE `tb9` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+/*!50100 PARTITION BY RANGE (id % 2)
+(PARTITION p0 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (2) ENGINE = InnoDB) */
+# TOKUDB ENGINE
+CREATE TABLE tb10 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) 
+) ENGINE=TOKUDB 
+/*!50100 PARTITION BY RANGE (id % 2) (     
+PARTITION `p0` VALUES LESS THAN (1),     
+PARTITION `p1` VALUES LESS THAN (2)
+) */;
+Warnings:
+Warning	1287	The partition engine, used by table 'test3.tb10', is deprecated and will be removed in a future release. Please use native partitioning instead.
+SHOW CREATE TABLE tb10;
+Table	Create Table
+tb10	CREATE TABLE `tb10` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=TOKUDB DEFAULT CHARSET=utf8
+/*!50100 PARTITION BY RANGE (id % 2)
+(PARTITION p0 VALUES LESS THAN (1) ENGINE = TOKUDB,
+ PARTITION p1 VALUES LESS THAN (2) ENGINE = TOKUDB) */
+Warnings:
+Warning	1287	The partition engine, used by table 'test3.tb10', is deprecated and will be removed in a future release. Please use native partitioning instead.
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_NAME = 'tb10';
+TABLE_NAME	PARTITION_METHOD	PARTITION_EXPRESSION	PARTITION_DESCRIPTION
+tb10	RANGE	id % 2	1
+tb10	RANGE	id % 2	2
+TDBCTL CONNECT NODE SPIDER0 EXECUTE 'SHOW CREATE TABLE test3.tb10';
+Table	Create Table
+tb10	CREATE TABLE `tb10` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=SPIDER DEFAULT CHARSET=utf8
+ PARTITION BY LIST (crc32(`id`) MOD 2)
+(PARTITION `pt0` VALUES IN (0) COMMENT = 'database "test3_0", table "tb10", server "SPT0"' ENGINE = SPIDER,
+ PARTITION `pt1` VALUES IN (1) COMMENT = 'database "test3_1", table "tb10", server "SPT1"' ENGINE = SPIDER)
+TDBCTL CONNECT NODE SPT0 EXECUTE 'SHOW CREATE TABLE test3_0.tb10';
+Table	Create Table
+tb10	CREATE TABLE `tb10` (
+  `id` int(11) NOT NULL,
+  `value` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+/*!50100 PARTITION BY RANGE (id % 2)
+(PARTITION p0 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (2) ENGINE = InnoDB) */
+
+# Restore to the initial state.
 DROP DATABASE if exists test3;
 DROP DATABASE if exists test2;
 DROP DATABASE if exists test1;
