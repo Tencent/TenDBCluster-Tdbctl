@@ -6621,7 +6621,7 @@ static Sys_var_mybool Sys_tc_auto_fix_connections(
 
 static Sys_var_mybool Sys_tc_ignore_partitioning_for_create_table(
     "tc_ignore_partitioning_for_create_table",
-    "Whether to ignore the PARTITION clause when creating a table under non-admin mode.",
+    "Whether to ignore the PARTITION clause when creating a table.",
     TDBCTL GLOBAL_VAR(tc_ignore_partitioning_for_create_table), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 static Sys_var_ulong Sys_tc_internal_connection_timeout(

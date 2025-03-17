@@ -1,0 +1,331 @@
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SET tc_admin = ON;
+CREATE DATABASE test_create_table;
+USE test_create_table;
+
+# Test the key length limitation of TOKUDB engine.
+SET tc_admin = OFF;
+CREATE TABLE `pre_download_info`(
+`openid` varchar(255) NOT NULL, 
+`model` varchar(255) NOT NULL, 
+`md5` varchar(255) DEFAULT NULL, 
+`path` varchar(512) DEFAULT NULL, 
+`url` varchar(1024) DEFAULT NULL, 
+`ctime` timestamp NOT NULL DEFAULT '1970-01-01 16:00:01', 
+`utime` timestamp NOT NULL DEFAULT '1970-01-01 16:00:01' ON UPDATE CURRENT_TIMESTAMP, 
+`exp_time` bigint(11) DEFAULT '0', 
+`version` varchar(128) DEFAULT '',
+`version_url` text, 
+`exp_time_version_url` bigint(11) DEFAULT '0', 
+PRIMARY KEY(`openid`, `model`), 
+KEY `idx_openid` (`openid`), 
+KEY `idx_model`(`model`),
+KEY `idx_openid_model_md5`(`openid`, `model`, `md5`)
+)ENGINE=TokuDB DEFAULT CHARSET=utf8;
+SHOW CREATE TABLE pre_download_info;
+Table	Create Table
+pre_download_info	CREATE TABLE `pre_download_info` (
+  `openid` varchar(255) NOT NULL,
+  `model` varchar(255) NOT NULL,
+  `md5` varchar(255) DEFAULT NULL,
+  `path` varchar(512) DEFAULT NULL,
+  `url` varchar(1024) DEFAULT NULL,
+  `ctime` timestamp NOT NULL DEFAULT '1970-01-01 16:00:01',
+  `utime` timestamp NOT NULL DEFAULT '1970-01-01 16:00:01' ON UPDATE CURRENT_TIMESTAMP,
+  `exp_time` bigint(11) DEFAULT '0',
+  `version` varchar(128) DEFAULT '',
+  `version_url` text,
+  `exp_time_version_url` bigint(11) DEFAULT '0',
+  PRIMARY KEY (`openid`,`model`),
+  KEY `idx_openid` (`openid`),
+  KEY `idx_model` (`model`),
+  KEY `idx_openid_model_md5` (`openid`,`model`,`md5`)
+) ENGINE=TOKUDB DEFAULT CHARSET=utf8
+
+# Test the key length limitation of ROCKSDB engine.
+SET tc_admin = OFF;
+CREATE TABLE `tb_backup_system_size_detail` (
+`report_day` int(11) NOT NULL,
+`year` int(4) NOT NULL,
+`month` int(2) NOT NULL,
+`quarter` int(1) NOT NULL,
+`type` varchar(10) NOT NULL,
+`city_id` int(5) NOT NULL,
+`city` varchar(50) NOT NULL,
+`app` varchar(300) NOT NULL,
+`file_tag` varchar(100) NOT NULL,
+`size` bigint(11) DEFAULT '0',
+`zip_size` bigint(11) DEFAULT '0',
+KEY `ind_report_day` (`report_day`),
+KEY `ind_day_list` (`year`,`month`,`quarter`),
+KEY `ind_report_cat` (`city_id`,`app`,`file_tag`)
+) ENGINE=ROCKSDB DEFAULT CHARSET=utf8 COMMENT='shard_key "report_day"';
+SHOW CREATE TABLE tb_backup_system_size_detail;
+Table	Create Table
+tb_backup_system_size_detail	CREATE TABLE `tb_backup_system_size_detail` (
+  `report_day` int(11) NOT NULL,
+  `year` int(4) NOT NULL,
+  `month` int(2) NOT NULL,
+  `quarter` int(1) NOT NULL,
+  `type` varchar(10) NOT NULL,
+  `city_id` int(5) NOT NULL,
+  `city` varchar(50) NOT NULL,
+  `app` varchar(300) NOT NULL,
+  `file_tag` varchar(100) NOT NULL,
+  `size` bigint(11) DEFAULT '0',
+  `zip_size` bigint(11) DEFAULT '0',
+  KEY `ind_report_day` (`report_day`),
+  KEY `ind_day_list` (`year`,`month`,`quarter`),
+  KEY `ind_report_cat` (`city_id`,`app`,`file_tag`)
+) ENGINE=ROCKSDB DEFAULT CHARSET=utf8 COMMENT='shard_key "report_day"'
+
+# Set general_log output to table.
+Set general log for all cluster nodes.
+
+# Test the forwarding and execution of CREATE TABLE statements using different engines.
+
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# INNODB ENGINE
+SET tc_admin=ON;
+CREATE TABLE tb1 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=INNODB;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+CREATE TABLE tb1 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=INNODB
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb1 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE = spider PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb1", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb1 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE = spider PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb1", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb1 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE = spider PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb1", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+SET NAMES latin1;
+SET sql_mode='';
+use `test_create_table_0`;
+CREATE TABLE tb1 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=INNODB
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+SET NAMES latin1;
+SET sql_mode='';
+use `test_create_table_1`;
+CREATE TABLE tb1 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=INNODB
+--------------------
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+
+# SPIDER ENGINE
+SET tc_admin=ON;
+CREATE TABLE tb2 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=SPIDER;
+Warnings:
+Warning	1286	Unknown storage engine 'SPIDER'
+Warning	1266	Using storage engine InnoDB for table 'tb2'
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+CREATE TABLE tb2 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=SPIDER
+SHOW WARNINGS
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb2 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=SPIDER PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb2", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb2 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=SPIDER PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb2", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb2 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=SPIDER PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb2", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+SET NAMES latin1;
+SET sql_mode='';
+use `test_create_table_0`;
+CREATE TABLE tb2 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+SET NAMES latin1;
+SET sql_mode='';
+use `test_create_table_1`;
+CREATE TABLE tb2 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )
+--------------------
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+
+# ROCKSDB ENGINE
+SET tc_admin=ON;
+CREATE TABLE tb3 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=ROCKSDB;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+CREATE TABLE tb3 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=ROCKSDB
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb3 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE = spider PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb3", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb3", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb3 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE = spider PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb3", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb3", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb3 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE = spider PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb3", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb3", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+SET NAMES latin1;
+SET sql_mode='';
+use `test_create_table_0`;
+CREATE TABLE tb3 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=ROCKSDB
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+SET NAMES latin1;
+SET sql_mode='';
+use `test_create_table_1`;
+CREATE TABLE tb3 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=ROCKSDB
+--------------------
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+
+# TOKUDB ENGINE
+SET tc_admin=ON;
+CREATE TABLE tb4 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=TOKUDB;
+# show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+CREATE TABLE tb4 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=TOKUDB
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb4 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE = spider PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb4", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb4", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+spider1_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb4 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE = spider PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb4", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb4", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+spider2_log
+SET NAMES latin1;SET sql_mode='';USE `test_create_table`;CREATE TABLE tb4 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE = spider PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test_create_table_0", table "tb4", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test_create_table_1", table "tb4", server "SPT1"' ENGINE = SPIDER)
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+SET NAMES latin1;
+SET sql_mode='';
+use `test_create_table_0`;
+CREATE TABLE tb4 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=TOKUDB
+--------------------
+SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
+remote_master1_log
+SET NAMES latin1;
+SET sql_mode='';
+use `test_create_table_1`;
+CREATE TABLE tb4 (     
+id INT NOT NULL,     
+value INT NOT NULL,     
+PRIMARY KEY(`id`) )ENGINE=TOKUDB
+--------------------
+
+# Restore to the initial state.
+Set general log to original state for all cluster nodes.
+SET tc_admin = ON;
+DROP DATABASE test_create_table;
+SET @@SESSION.tc_admin = @origin_tc_admin;

@@ -1471,12 +1471,14 @@ void tc_parse_spider_create_table(TC_PARSE_RESULT *tc_parse_result_t,
   regex pattern4("ROW_FORMAT\\s*=\\s*GCS_DYNAMIC", regex::icase);
   regex pattern5("ROW_FORMAT\\s*=\\s*GCS", regex::icase);
   regex pattern6("ENGINE\\s*=\\s*heap", regex::icase);
+  regex pattern7("ENGINE\\s*=\\s*rocksdb", regex::icase);
   spider_create_sql =
       regex_replace(spider_create_sql, pattern1, "ENGINE = spider");
   spider_create_sql =
       regex_replace(spider_create_sql, pattern2, "ENGINE = spider");
   spider_create_sql =
       regex_replace(spider_create_sql, pattern3, "ENGINE = spider");
+  spider_create_sql = regex_replace(spider_create_sql, pattern7, "ENGINE = spider");
   spider_create_sql = regex_replace(spider_create_sql, pattern4, "");
   spider_create_sql = regex_replace(spider_create_sql, pattern5, "");
   spider_create_sql = regex_replace(spider_create_sql, pattern6, "");
