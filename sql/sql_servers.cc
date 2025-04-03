@@ -1530,6 +1530,10 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
       mysql_rwlock_unlock(&THR_LOCK_servers);
       return "";
     }
+  } else {
+    sql_print_warning("primary node not in mysql.servers, null sql returned");
+    mysql_rwlock_unlock(&THR_LOCK_servers);
+    return "";
   }
 
   replace_sql_all.pop_back();
