@@ -55,7 +55,7 @@
   Read locked when only reading data and write-locked for all other access.
 */
 
-static list<string> to_delete_servername_list;
+// static list<string> to_delete_servername_list;
 static MEM_ROOT tc_mem;
 static HASH servers_cache_bak;
 static MEM_ROOT mem_bak;
@@ -257,7 +257,7 @@ static bool servers_load(THD *thd, TABLE *table)
   }
 
   update_server_version(&version_updated);
-  get_deleted_servers();
+  // get_deleted_servers();
   if (version_updated)
   {
     global_modify_server_version++; /* mean flush privileges modify mysql.servers */
@@ -342,7 +342,7 @@ end:
     tdbctl_is_primary = tc_is_primary_tdbctl_node();
   }
   modify_tdbctl_flag = false;
-  return_val = delete_redundant_routings();
+  // return_val = delete_redundant_routings();
   DBUG_RETURN(return_val);
 }
 
@@ -969,8 +969,8 @@ bool Sql_cmd_drop_server::execute(THD *thd)
         we had acquire a MDL_EXCLUSIVE lock by lock_statement_by_name function to block other
         concurrence DROP NODE, so acceptable at present
         */
-        to_delete_servername_list.clear();
-        to_delete_servername_list.push_back(server->server_name);
+        // to_delete_servername_list.clear();
+        // to_delete_servername_list.push_back(server->server_name);
       }
       else if (!m_if_exists)
       {
@@ -1420,13 +1420,16 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
 {
   ulong records = 0;
   FOREIGN_SERVER* server;
-  map<string, string> tdbctl_sql_map;
+  std::map<std::string, std::pair<std::string, std::string>> tdbctl_sql_map;
   mysql_rwlock_rdlock(&THR_LOCK_servers);
   records = servers_cache.records;
   string replace_sql_all = "replace into mysql.servers"
     "(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values";
   stringstream ss;
   string comma = ",";
+  std::string begin_sql = "begin;";
+  std::string commit_sql = "commit;";
+  std::string flush_table_sql = "flush tables with no block;";
 
   if (records == 0)
   {
@@ -1436,16 +1439,9 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
   }
 
   /*
-    Need delete all TDBCTL Wrapper in spider's mysql.servers first.
-    Otherwise, in failure scenario, new elected primary node will be
-    flushed to spider, and multi tdbctl exists(include old and failure tdbctl),
-    which may leader to spider work abnormal.
+    Construct SQL to delete redundant nodes
   */
-  ss.str("");
-  ss << "begin;delete from mysql.servers where Wrapper='";
-  ss << TDBCTL_WRAPPER;
-  ss << "';";
-  replace_sql_all.insert(0, ss.str());
+  string delete_sql_all = "delete from mysql.servers where Server_name not in (";
 
   for (ulong i = 0; i < records; i++)
   {
@@ -1497,10 +1493,11 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
       {
         /* NOTE: at present, ip#port must be unique for tdbctl */
         string ip_port = string(server->host) + "#" + ss.str();
-        tdbctl_sql_map.insert(pair<string, string>(ip_port, replace_sql_cur));
+        tdbctl_sql_map.insert({ip_port, {name, replace_sql_cur}});
         continue;
       }
       replace_sql_all += replace_sql_cur;
+      delete_sql_all += name;
     }
   }
 
@@ -1515,9 +1512,11 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
       ss << primary_port;
       ip_port = primary_host + "#" + ss.str();
 
-      if (tdbctl_sql_map.count(ip_port) == 1)
+      if (tdbctl_sql_map.count(ip_port) == 1) {
         //add tdbctl insert sql
-        replace_sql_all += tdbctl_sql_map[ip_port];
+        replace_sql_all += tdbctl_sql_map[ip_port].second;
+        delete_sql_all += tdbctl_sql_map[ip_port].first;
+      }
       else
       {
         sql_print_warning("primary node not in mysql.servers, null sql returned");
@@ -1531,13 +1530,20 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
       mysql_rwlock_unlock(&THR_LOCK_servers);
       return "";
     }
+  } else {
+    sql_print_warning("primary node not in mysql.servers, null sql returned");
+    mysql_rwlock_unlock(&THR_LOCK_servers);
+    return "";
   }
 
-  replace_sql_all.erase(replace_sql_all.end() - 1);
-  replace_sql_all += ";commit";
-  replace_sql_all += ";flush tables with no block;";
+  replace_sql_all.pop_back();
+  replace_sql_all += ";";
+  delete_sql_all.pop_back();
+  delete_sql_all += ");";
+  std::string flush_routing_sql = begin_sql + delete_sql_all + replace_sql_all
+                                  + commit_sql + flush_table_sql;
   mysql_rwlock_unlock(&THR_LOCK_servers);
-  return replace_sql_all;
+  return flush_routing_sql;
 }
 
 
@@ -2758,27 +2764,27 @@ bool update_server_version(bool* version_updated)
 }
 
 
-void get_deleted_servers()
-{
-  FOREIGN_SERVER* server_bak;
-  FOREIGN_SERVER* server;
-  ulong records = servers_cache.records;
-  ulong bak_records = servers_cache_bak.records;
+// void get_deleted_servers()
+// {
+//   FOREIGN_SERVER* server_bak;
+//   FOREIGN_SERVER* server;
+//   ulong records = servers_cache.records;
+//   ulong bak_records = servers_cache_bak.records;
 
-  if (bak_records > records)
-  {/* delete some servers */
-    for (ulong i = 0; i < bak_records; i++)
-    {
-      server_bak = (FOREIGN_SERVER*)my_hash_element(&servers_cache_bak, i);
-      if (!(server = (FOREIGN_SERVER*)my_hash_search(&servers_cache,
-        (uchar*)server_bak->server_name, server_bak->server_name_length)))
-      {/* don't exits */
-        string name = server_bak->server_name;
-        to_delete_servername_list.push_back(name);
-      }
-    }
-  }
-}
+//   if (bak_records > records)
+//   {/* delete some servers */
+//     for (ulong i = 0; i < bak_records; i++)
+//     {
+//       server_bak = (FOREIGN_SERVER*)my_hash_element(&servers_cache_bak, i);
+//       if (!(server = (FOREIGN_SERVER*)my_hash_search(&servers_cache,
+//         (uchar*)server_bak->server_name, server_bak->server_name_length)))
+//       {/* don't exits */
+//         string name = server_bak->server_name;
+//         to_delete_servername_list.push_back(name);
+//       }
+//     }
+//   }
+// }
 
 
 int get_remote_changed_servers(
@@ -2866,60 +2872,60 @@ int get_remote_changed_servers(
   return result;
 }
 
-string get_delete_routing_sql()
-{
-  list<string>::iterator its;
-  string sql = "";
-  mysql_rwlock_rdlock(&THR_LOCK_servers);
-  if (to_delete_servername_list.size() > 0)
-  {
-    string del_sql = "delete from mysql.servers where Server_name in(";
-    string quotation = "\"";
-    for (its = to_delete_servername_list.begin();
-      its != to_delete_servername_list.end(); its++)
-    {
-      string name = *its;
-      del_sql = del_sql + quotation + name + quotation;
-    }
-    sql = del_sql + ")";
-  }
-  mysql_rwlock_unlock(&THR_LOCK_servers);
-  return sql;
-}
+// string get_delete_routing_sql()
+// {
+//   list<string>::iterator its;
+//   string sql = "";
+//   mysql_rwlock_rdlock(&THR_LOCK_servers);
+//   if (to_delete_servername_list.size() > 0)
+//   {
+//     string del_sql = "delete from mysql.servers where Server_name in(";
+//     string quotation = "\"";
+//     for (its = to_delete_servername_list.begin();
+//       its != to_delete_servername_list.end(); its++)
+//     {
+//       string name = *its;
+//       del_sql = del_sql + quotation + name + quotation;
+//     }
+//     sql = del_sql + ")";
+//   }
+//   mysql_rwlock_unlock(&THR_LOCK_servers);
+//   return sql;
+// }
 
-int delete_redundant_routings()
-{
-  string del_sql = get_delete_routing_sql();
-  if (del_sql.length() > 0)
-  {
-    map<string, MYSQL*> spider_conn_map;
-    Cluster_conn_manager *conn_mgr = new Cluster_conn_manager();
-    //exclude spider_slave
-    if (conn_mgr->refresh(false, true) || conn_mgr->connect(NODE_TYPE_SPIDER, false))
-    {
-      delete conn_mgr;
-      return 1;
-    }
-    else
-      spider_conn_map = conn_mgr->get_spider_conn_map();
+// int delete_redundant_routings()
+// {
+//   string del_sql = get_delete_routing_sql();
+//   if (del_sql.length() > 0)
+//   {
+//     map<string, MYSQL*> spider_conn_map;
+//     Cluster_conn_manager *conn_mgr = new Cluster_conn_manager();
+//     //exclude spider_slave
+//     if (conn_mgr->refresh(false, true) || conn_mgr->connect(NODE_TYPE_SPIDER, false))
+//     {
+//       delete conn_mgr;
+//       return 1;
+//     }
+//     else
+//       spider_conn_map = conn_mgr->get_spider_conn_map();
 
-    string flush_priv_sql = "flush privileges";
-    string sql;
-    map<string, MYSQL*>::iterator it;
-    sql = del_sql + ";" + flush_priv_sql;
+//     string flush_priv_sql = "flush privileges";
+//     string sql;
+//     map<string, MYSQL*>::iterator it;
+//     sql = del_sql + ";" + flush_priv_sql;
 
-    for (it = spider_conn_map.begin(); it != spider_conn_map.end(); it++)
-    {
-      string ipport = it->first;
-      MYSQL* mysql = it->second;
-      tc_exec_info exec_info;
-      tc_exec_sql_without_result(mysql, sql, &exec_info);
-    }
+//     for (it = spider_conn_map.begin(); it != spider_conn_map.end(); it++)
+//     {
+//       string ipport = it->first;
+//       MYSQL* mysql = it->second;
+//       tc_exec_info exec_info;
+//       tc_exec_sql_without_result(mysql, sql, &exec_info);
+//     }
 
-    delete conn_mgr;
-    to_delete_servername_list.clear();
-  }
+//     delete conn_mgr;
+//     to_delete_servername_list.clear();
+//   }
 
-  return 0;
-}
+//   return 0;
+// }
 
