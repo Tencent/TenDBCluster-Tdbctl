@@ -1,0 +1,239 @@
+# Test the command 'TDBCTL CREATE NODE'.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+--echo
+--echo # Original routing table.
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Set general_log output to table.
+--source suite/tdbctl/inc/set_cluster_general_log_to_table.inc
+
+--echo
+--echo # Set routing.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Show routing.
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Case 1: TDBCTL CREATE NODE.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # execute TDBCTL CREATE NODE.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+--echo # show general_log.
+--echo --------------------
+--connection tdbctl0
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection tdbctl1
+SELECT argument AS tdbctl1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%tdbctl1_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection tdbctl2
+SELECT argument AS tdbctl2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%tdbctl2_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection spider0
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection spider1
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection spider2
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--echo # tdbctl0 routing table
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+--echo # tdbctl1 routing table
+--connection tdbctl1
+SELECT * FROM mysql.servers;
+--echo # tdbctl2 routing table
+--connection tdbctl2
+SELECT * FROM mysql.servers;
+--echo # spider0 routing table
+--connection spider0
+SELECT * FROM mysql.servers;
+--echo # spider1 routing table
+--connection spider1
+SELECT * FROM mysql.servers;
+--echo # spider2 routing table
+--connection spider2
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Set routing.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Show routing.
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Case 2: TDBCTL CREATE SPIDER NODE WITH SCHEMA.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # execute TDBCTL CREATE NODE WITH SCHEMA.
+--connection tdbctl0
+SET tc_admin=ON;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+--echo # show general_log.
+--echo --------------------
+--connection tdbctl0
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection tdbctl1
+SELECT argument AS tdbctl1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%tdbctl1_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection tdbctl2
+SELECT argument AS tdbctl2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%tdbctl2_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection spider0
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection spider1
+SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection spider2
+SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--echo # tdbctl0 routing table
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+--echo # tdbctl1 routing table
+--connection tdbctl1
+SELECT * FROM mysql.servers;
+--echo # tdbctl2 routing table
+--connection tdbctl2
+SELECT * FROM mysql.servers;
+--echo # spider0 routing table
+--connection spider0
+SELECT * FROM mysql.servers;
+--echo # spider1 routing table
+--connection spider1
+SELECT * FROM mysql.servers;
+--echo # spider2 routing table
+--connection spider2
+SELECT * FROM mysql.servers;
+
+# --echo
+# --echo # Set routing.
+# --connection tdbctl0
+# SET tc_admin=ON;
+# TDBCTL DROP NODE TDBCTL2;
+# TDBCTL FLUSH ROUTING;
+
+# --echo
+# --echo # Show routing.
+# --connection tdbctl0
+# SELECT * FROM mysql.servers;
+
+# --echo
+# --echo # Case 3: TDBCTL CREATE TDBCTL NODE WITH SCHEMA.
+# --echo # Truncate general_log.
+# --source suite/tdbctl/inc/truncate_cluster_general_log.inc
+# --echo # execute TDBCTL CREATE NODE WITH SCHEMA.
+# --connection tdbctl0
+# SET tc_admin=ON;
+# SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+# --disable_result_log
+# --error ER_TCADMIN_RESTORE_NODE_ERROR
+# TDBCTL CREATE NODE WRAPPER TDBCTL OPTIONS (HOST '172.18.0.11', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+# --enable_result_log
+# --echo # show general_log.
+# --echo --------------------
+# --connection tdbctl0
+# SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+# --echo --------------------
+# --connection tdbctl1
+# SELECT argument AS tdbctl1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%tdbctl1_log%' AND command_type NOT LIKE 'Connect';
+# --echo --------------------
+# --connection tdbctl2
+# SELECT argument AS tdbctl2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%tdbctl2_log%' AND command_type NOT LIKE 'Connect';
+# --echo --------------------
+# --connection spider0
+# SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+# --echo --------------------
+# --connection spider1
+# SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
+# --echo --------------------
+# --connection spider2
+# SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
+# --echo --------------------
+# --echo # tdbctl0 routing table
+# --connection tdbctl0
+# SELECT * FROM mysql.servers;
+# --echo # tdbctl1 routing table
+# --connection tdbctl1
+# SELECT * FROM mysql.servers;
+# --echo # tdbctl2 routing table
+# --connection tdbctl2
+# SELECT * FROM mysql.servers;
+# --echo # spider0 routing table
+# --connection spider0
+# SELECT * FROM mysql.servers;
+# --echo # spider1 routing table
+# --connection spider1
+# SELECT * FROM mysql.servers;
+# --echo # spider2 routing table
+# --connection spider2
+# SELECT * FROM mysql.servers;
+
+--echo
+--echo # Set routing.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL DROP NODE SPT1;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Show routing.
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Case 4: TDBCTL CREATE REMOTE NODE WITH SCHEMA.
+--echo # execute TDBCTL CREATE NODE WITH SCHEMA.
+--connection tdbctl0
+SET tc_admin=ON;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER mysql OPTIONS (HOST '172.18.0.3', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+
+--echo
+--echo # Restore mysql.servers;
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Restore to the initial state.
+--source suite/tdbctl/inc/reset_cluster_general_log.inc
+--connection tdbctl0
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@GLOBAL.tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
+SET @@SESSION.tc_admin = @origin_tc_admin;

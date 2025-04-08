@@ -5,6 +5,16 @@ SET tc_admin=OFF;
 SET GLOBAL general_log = OFF; 
 TRUNCATE TABLE mysql.general_log;
 SET GLOBAL general_log = ON; 
+--connection tdbctl1
+SET tc_admin=OFF;
+SET GLOBAL general_log = OFF; 
+TRUNCATE TABLE mysql.general_log;
+SET GLOBAL general_log = ON; 
+--connection tdbctl2
+SET tc_admin=OFF;
+SET GLOBAL general_log = OFF; 
+TRUNCATE TABLE mysql.general_log;
+SET GLOBAL general_log = ON; 
 --connection spider0
 SET GLOBAL general_log = OFF; 
 TRUNCATE TABLE mysql.general_log;
