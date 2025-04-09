@@ -71,7 +71,11 @@ int tc_dump_node_schema(
     return 1;
   }
   MYSQL_GUARD(conn);
-  string charset = tc_get_variable_value(conn, "character_set_server");
+  string charset;
+  if(tc_get_variable_value(conn, "@@character_set_server", charset)) {
+    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), "Failed to get value of variable \'character_set_server\'");
+    return 1;
+  }
   dump_options += space + "--default-character-set=" + charset;
 
   dump_cmd = dump_bin + space + dump_options;

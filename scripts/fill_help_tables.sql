@@ -726,6 +726,7 @@ INSERT INTO help_topic (help_topic_id,help_category_id,name,description,example,
 INSERT INTO help_topic (help_topic_id,help_category_id,name,description,example,url) VALUES (645,27,'TDBCTL ENABLE PRIMARY','Syntax:\nTDBCTL ENABLE PRIMARY [FORCE]\n\nThis statement enables Primary Mode for this Tdbctl server. The behavior is modifiable depending on installed plugins. For example, when DBM is installed, this command does several checks to verify if the server fulfills the constraints to enable Primary Mode. When Primary Mode is enabled, the value of Global Status \'Tc_is_primary\' would be 1. If FORCE is specified, Primary Mode will be enabled without any validity checks.','','');
 INSERT INTO help_topic (help_topic_id,help_category_id,name,description,example,url) VALUES (646,27,'TDBCTL DISABLE PRIMARY','Syntax:\nTDBCTL DISABLE PRIMARY\n\nThis statement disables Primary Mode for this Tdbctl server.','','');
 INSERT INTO help_topic (help_topic_id,help_category_id,name,description,example,url) VALUES (647,27,'TDBCTL GET PRIMARY','Syntax:\nTDBCTL GET PRIMARY\n\nThis statement finds the Primary node within the cluster, and if succuessful, returns its connect info, including Server_name, Host, Port, and additionally a flag that indicates whether the current server is the Primary node. Please note that, for now, this statement only takes effect when the DBM plugin is installed.','','');
+INSERT INTO help_topic (help_topic_id,help_category_id,name,description,example,url) VALUES (648,21,'TDBCTL CHECK TABLE', 'unfinished', '', '');
 
 INSERT INTO help_keyword (help_keyword_id,name) VALUES (0,'JOIN');
 INSERT INTO help_keyword (help_keyword_id,name) VALUES (1,'HOST');
@@ -2824,6 +2825,7 @@ INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (644,692);
 INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (645,692);
 INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (646,692);
 INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (647,692);
+INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (648,692);
 
 
 COMMIT;

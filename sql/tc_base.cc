@@ -3995,20 +3995,45 @@ map<string, tc_exec_info> result_map_like(const map<string, tc_exec_info> &resul
 
 /*
   get mysql variable value
+  Return
+    true     error
+    false    ok
 */
-string tc_get_variable_value(MYSQL *conn, const char *variable)
+bool tc_get_variable_value(MYSQL *conn, const string &variable, string &value)
 {
   MYSQL_RES* res;
   MYSQL_ROW row = NULL;
   char sql[256];
-  sprintf(sql, "select @@%s", variable);
+  sprintf(sql, "SELECT %s;", variable.c_str());
   res = tc_exec_sql_with_result(conn, sql);
   //use to free result.
   MYSQL_RES_GUARD(res);
-  if (res && (row = mysql_fetch_row(res)))
-    return row[0];
+  if (res && (row = mysql_fetch_row(res))) {
+    value = row[0];
+    return false;
+  }
 
-  return NULL;
+  value = "";
+  return true;
+}
+
+/*
+  set mysql variable value
+  Return
+    >0     error
+    0      ok
+*/
+uint tc_set_variable_value(MYSQL *conn, const string &variable, const string &value, string &err_msg)
+{
+  char sql[512];
+  tc_exec_info exec_info;
+  sprintf(sql, "SET %s = %s;", variable.c_str(), value.c_str());
+  bool res = tc_exec_sql_without_result(conn, sql, &exec_info);
+  if(res) {
+    err_msg = exec_info.err_msg;
+    return exec_info.err_code;
+  }
+  return 0;
 }
 
 /*
@@ -4611,11 +4636,13 @@ int Query_exec_manager::make_real_query(const std::string &exec_query,
 bool Query_exec_manager::get_real_query(const std::string &server_name,
                                        std::string &real_query,
                                        enum_node_type node_type) {
+  query_mtx.lock();
   std::map<std::string, std::string>::iterator found;
   found = real_queries[node_type].find(server_name);
   if (found == real_queries[node_type].end())
     return true;
   real_query = found->second;
+  query_mtx.unlock();
   return false;
 }
 
@@ -4631,10 +4658,17 @@ void Query_exec_manager::store_exec_info(const std::string &server_name,
 
 int Query_exec_manager::get_exec_info(const std::string &server_name, tc_exec_info &exec_info,
                   enum_node_type node_type) {
+  int res = 0;
   result_mtx.lock();
-  exec_info = exec_results[node_type][server_name];
+  std::map<std::string, tc_exec_info>::iterator it;
+  if((it = exec_results[node_type].find(server_name)) != exec_results[node_type].end()) {
+    exec_info = it->second;
+    res = 0;
+  } else {
+    res = 1;
+  }
   result_mtx.unlock();
-  return 0;
+  return res;
 }
 
 MY_ATTRIBUTE((unused))
@@ -4643,6 +4677,8 @@ void Query_exec_manager::store_exec_query(const std::string &server_name,
                                           enum_node_type node_type) {
   DBUG_ENTER("Query_exec_manager::store_exec_query");
   DBUG_PRINT("info", ("storing to server: %s", server_name.c_str()));
+  query_mtx.lock();
+
   string real_query;
   make_real_query(query, real_query, node_type);
 
@@ -4652,6 +4688,7 @@ void Query_exec_manager::store_exec_query(const std::string &server_name,
   exec_queries[node_type][server_name] = query;
   real_queries[node_type][server_name] = real_query;
 
+  query_mtx.unlock();
   DBUG_VOID_RETURN;
 }
 
@@ -4660,6 +4697,8 @@ void Query_exec_manager::store_exec_query(const std::string &query,
   DBUG_ENTER("Query_exec_manager::store_exec_query");
   DBUG_PRINT("info",
              ("storing to all nodes of type: %d using query", (int)node_type));
+  query_mtx.lock();
+
   string real_query;
   make_real_query(query, real_query, node_type);
 
@@ -4671,6 +4710,7 @@ void Query_exec_manager::store_exec_query(const std::string &query,
     real_queries[node_type][server_name] = real_query;
   }
 
+  query_mtx.unlock();
   DBUG_VOID_RETURN;
 }
 
@@ -4680,6 +4720,8 @@ void Query_exec_manager::store_exec_query(
   DBUG_ENTER("Query_exec_manager::store_exec_query");
   DBUG_PRINT("info",
              ("storing all nodes of type: %d using sql_map", (int)node_type));
+  query_mtx.lock();
+
   DBUG_ASSERT(sql_map.size() == exec_queries[node_type].size());
 
   std::map<string, string>::const_iterator it;
@@ -4695,6 +4737,7 @@ void Query_exec_manager::store_exec_query(
     real_queries[node_type][server_name] = real_query;
   }
 
+  query_mtx.unlock();
   DBUG_VOID_RETURN;
 }
 

@@ -7926,6 +7926,9 @@ ER_VAR_RULES_CHECK_UNPASS
 WARN_VAR_RULES_CHECK
   eng "When setting variable-level forwarding rules: %s"
 
+ER_TCADMIN_CHECK_TABLES_ERROR
+  eng "TDBCTL CHECK TABLES FAILED: %s"
+
 #
 # End of MyRocks specific messages
 #

@@ -115,8 +115,8 @@
 #define MAX_FIELDS_BEFORE_HASH	32
 #define USER_VARS_HASH_SIZE     16
 #define TABLE_OPEN_CACHE_MIN    400
-#define TABLE_OPEN_CACHE_DEFAULT 2000
-#define TABLE_DEF_CACHE_DEFAULT 400
+#define TABLE_OPEN_CACHE_DEFAULT 512
+#define TABLE_DEF_CACHE_DEFAULT 512
 /**
   Maximum number of connections default value.
   151 is larger than Apache's default max children,
