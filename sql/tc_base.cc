@@ -4004,7 +4004,7 @@ bool tc_get_variable_value(MYSQL *conn, const string &variable, string &value)
   MYSQL_RES* res;
   MYSQL_ROW row = NULL;
   char sql[256];
-  sprintf(sql, "SELECT %s;", variable.c_str());
+  snprintf(sql, sizeof(sql), "SELECT %s;", variable.c_str());
   res = tc_exec_sql_with_result(conn, sql);
   //use to free result.
   MYSQL_RES_GUARD(res);
@@ -4027,9 +4027,10 @@ uint tc_set_variable_value(MYSQL *conn, const string &variable, const string &va
 {
   char sql[512];
   tc_exec_info exec_info;
-  sprintf(sql, "SET %s = %s;", variable.c_str(), value.c_str());
+  snprintf(sql, sizeof(sql), "SET %s = %s;", variable.c_str(), value.c_str());
   bool res = tc_exec_sql_without_result(conn, sql, &exec_info);
   if(res) {
+    /* error happened */
     err_msg = exec_info.err_msg;
     return exec_info.err_code;
   }

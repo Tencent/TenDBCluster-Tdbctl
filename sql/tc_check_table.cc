@@ -976,13 +976,15 @@ static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
                               bool do_send) {
   Protocol *protocol = (do_send ? thd->get_protocol() : NULL);
   DBUG_ENTER("do_check_one_table");
+  char err_buff[1024];
 
   /* Lock against possible DDL actions */
   Table_MDL_lock_guard guard(thd, db_name, table_name);
   if (!guard.lock_successful()) {
-    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), 
+    snprintf(err_buff, sizeof(err_buff), 
              "failed to lock table %s.%s on current server", 
              db_name.c_str(), table_name.c_str());
+    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
     DBUG_RETURN(TRUE);
   }
 
@@ -1024,7 +1026,7 @@ static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
       /* For Remotes, add a numeric suffix according to their server_name */
       string fixed_db_name = fix_db_name(db_name, server_name, type);
 
-      if (do_send) {
+      if (do_send && (protocol != NULL)) {
         protocol->start_row();
         protocol->store(server_name.c_str(), server_name.length(),
                         system_charset_info);
@@ -1062,7 +1064,7 @@ static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
       compare_columns_info(my_records, records, type, writer);
 
     send_row:
-      if (do_send) {
+      if (do_send && (protocol != NULL)) {
         status = (writer.has_error() ? "Error" : "OK");
         protocol->store(status, strlen(status), system_charset_info);
         protocol->store(writer.raw_str(),
@@ -1129,14 +1131,16 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
   Protocol *protocol = (do_send ? thd->get_protocol() : NULL);
   uint err_code = 0;
   string err_msg;
+  char err_buff[1024];
   DBUG_ENTER("do_check_one_table_by_parallel_query");
 
   /* Lock against possible DDL actions */
   Table_MDL_lock_guard guard(thd, db_name, table_name);
   if (!guard.lock_successful()) {
-    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), 
+    snprintf(err_buff, sizeof(err_buff), 
              "failed to lock table %s.%s on current server", 
              db_name.c_str(), table_name.c_str());
+    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
     DBUG_RETURN(TRUE);
   }
   
@@ -1153,24 +1157,29 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
 
   if (check_tables_hdl->get_table_info(my_server, NODE_TYPE_CTL, my_table_info, 
                                        err_code, err_msg)) {
-    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), "failed to get table information " \
+    snprintf(err_buff, sizeof(err_buff), 
+             "failed to get table information " \
              "of %s.%s from current server, err_code: %d, err_msg: %s", 
              db_name.c_str(), table_name.c_str(), err_code, err_msg.c_str());
+    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
     DBUG_RETURN(TRUE);
   }
 
   if (!my_table_info.exists) {
-    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), 
+    snprintf(err_buff, sizeof(err_buff), 
              "Table %s.%s has been unexpectedly removed", 
              db_name.c_str(), table_name.c_str());
+    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
     DBUG_RETURN(TRUE);
   }
 
   if (check_tables_hdl->get_column_records(my_server, NODE_TYPE_CTL, my_records,
                                            err_code, err_msg)) {
-    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), "failed to get columns information " \
+    snprintf(err_buff, sizeof(err_buff), 
+             "failed to get columns information " \
              "of %s.%s from current server, err_code: %d, err_msg: %s", 
              db_name.c_str(), table_name.c_str(), err_code, err_msg.c_str());
+    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
     DBUG_RETURN(TRUE);
   }
 
@@ -1192,7 +1201,7 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
       /* For Remotes, add a numeric suffix according to their server_name */
       string fixed_db_name = fix_db_name(db_name, server_name, type);
 
-      if (do_send) {
+      if (do_send && (protocol != NULL)) {
         protocol->start_row();
         protocol->store(server_name.c_str(), server_name.length(),
                         system_charset_info);
@@ -1229,16 +1238,17 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
       compare_columns_info(my_records, records, type, writer);
 
     send_row:
-      if (do_send) {
+      if (do_send && (protocol != NULL)) {
         status = (writer.has_error() ? "Error" : "OK");
         protocol->store(status, strlen(status), system_charset_info);
         protocol->store(writer.raw_str(),
                         MY_MIN(writer.length(), max_message_length),
                         system_charset_info);
         if (protocol->end_row()) {
-          my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), 
-             "failed to send check result for table %s.%s", 
-             db_name.c_str(), table_name.c_str());
+          snprintf(err_buff, sizeof(err_buff), 
+             "failed to send check result for table %s.%s of node %s", 
+             fixed_db_name.c_str(), table_name.c_str(), server_name.c_str());
+          my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
           DBUG_RETURN(TRUE);
         }
       }
@@ -1283,8 +1293,8 @@ static bool check_redundant_tables(THD *thd, Cluster_conn_manager *conn_mgr,
       */
       list<string> node_tables;
       if (fill_tables_list(node_conn.second, fixed_db_name.c_str(), wild, node_tables)) {
-        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), 
-                 ("failed to fetch tables of node " + server_name).c_str());
+        string err_buff = "failed to fetch tables of node " + server_name;
+        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff.c_str());
         DBUG_RETURN(TRUE);
       }
 
@@ -1299,7 +1309,7 @@ static bool check_redundant_tables(THD *thd, Cluster_conn_manager *conn_mgr,
                      "table '%s.%s' exists unexpectedly", fixed_db_name.c_str(),
                      table_name.c_str());
           
-          if (do_send) {
+          if (do_send && (protocol != NULL)) {
             protocol->start_row();
             protocol->store(server_name.c_str(), server_name.length(),
                             system_charset_info);
@@ -1360,9 +1370,9 @@ static bool get_table_cache(THD *thd, Cluster_conn_manager *conn_mgr,
                                open_cache_map[server_name]) || 
          tc_get_variable_value(server_conn, sys_table_def_cache, 
                                def_cache_map[server_name])) {
-        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), 
-                 ("failed to get table_open_cache or table_definition_cache" \
-                 " of node " + server_name).c_str());
+        string err_buff = "failed to get table_open_cache or table_definition_cache" \
+                          " of node " + server_name;
+        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff.c_str());
         return true;
       }
     }
