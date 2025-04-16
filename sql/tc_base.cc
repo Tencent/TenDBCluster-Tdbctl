@@ -19,6 +19,7 @@
 #include <map>
 #include <set>
 #include <list>
+#include <tuple>
 #include <vector>
 #include <sstream>
 #include <regex>
@@ -3381,7 +3382,7 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
   uint connect_retry_count = tc_internal_connection_retry_times;
   uint real_connect_option = 0;
   uint ssl_mode = SSL_MODE_DISABLED;
-  MYSQL *mysql;
+  MYSQL *mysql = NULL;
 
   if (user.length() == 0 && passwd.length() == 0) {
     sql_print_error("tc connect fail: username or password is empty");
@@ -4769,7 +4770,7 @@ void Query_exec_manager::build_server_maps(Cluster_conn_manager *conn_mgr) {
 
 Cluster_conn_manager::Cluster_conn_manager()
     : initialized(false), spider_count(0U), shard_count(0U),
-      server_version(0UL) {
+      server_version(0UL), MAX_NUM_CONN_THREADS(256UL) {
   init_alloc_root(PSI_NOT_INSTRUMENTED, &mem_root, 8192, 0);
 }
 
@@ -4952,6 +4953,151 @@ bool Cluster_conn_manager::connect(enum_node_type type, bool passive) {
       DBUG_RETURN(TRUE);
   }
 
+  DBUG_RETURN(FALSE);
+}
+
+void Cluster_conn_manager::connect_safe(THD *thd,
+                                        const std::string &server_name, 
+                                        enum_node_type type, 
+                                        std::mutex &safe_mtx,
+                                        Node_conn_status &conn_status, 
+                                        std::string &err_msg) {
+  int err;
+  DBUG_ENTER("Cluster_conn_manager::connect_safe");
+  DBUG_PRINT("info", ("connecting to server: %s", server_name.c_str()));
+
+  conn_status = Node_conn_status::UNEXPECTED_CONNECTION_ERROR;
+  DBUG_ASSERT(initialized);
+  if (unlikely(!initialized))
+    DBUG_VOID_RETURN;
+  
+  MYSQL *mysql = NULL;
+  const AUTH_INFO *auth = NULL;
+
+  {  /* safe_mtx.lock() */ 
+  std::lock_guard<std::mutex> lock(safe_mtx);
+  
+  if (!server_conns[type].count(server_name)) {
+    conn_status = Node_conn_status::WRONG_SERVERNAME_OR_TYPE;
+    err_msg = "cannot find server: " + server_name;
+    DBUG_VOID_RETURN;
+  }
+
+  mysql = server_conns[type][server_name];
+  auth = &(server_auths[type][server_name]);
+
+  if (mysql) {
+    if (!(err = ping(mysql))) { /* existing connection is valid, do nothing */
+      conn_status = Node_conn_status::CONNECT_SUCCEED;
+      err_msg = "";
+      DBUG_VOID_RETURN;
+    }
+    else {
+      mysql_close(mysql);
+      mysql = NULL;
+      server_conns[type][server_name] = mysql;
+      my_bool auto_fix = global_system_variables.tc_auto_fix_conns;
+      if (thd) {
+        /* Reset the error we got from pinging */
+        thd->get_stmt_da()->reset_diagnostics_area();
+        auto_fix = thd->variables.tc_auto_fix_conns;
+      }
+      
+      if (!auto_fix) {
+        /* Auto-fix is disabled, report an error about the lost connection */
+        char err_duff[256];
+        snprintf(err_duff, sizeof(err_duff),
+                  "remote server '%s' (%s:%u) has gone away"
+                  "(Auto-fix is disabled)",
+                  server_name.c_str(), auth->host.c_str(), auth->port);
+        conn_status = Node_conn_status::AUTO_REPAIR_DISABLED;
+        err_msg = err_duff;
+        DBUG_VOID_RETURN;
+      }
+    }
+  }
+  }  /* safe_mtx.unlock() */ 
+
+  /*
+    Now, we really need to establish a connection.
+    This step allows for parallel execution.
+  */
+  mysql = tc_conn_connect(*auth);
+
+  std::lock_guard<std::mutex> lock(safe_mtx);
+  if(mysql) {
+    server_conns[type][server_name] = mysql;
+    conn_status = Node_conn_status::CONNECT_SUCCEED;
+    err_msg = "";
+  } else {
+    server_conns[type][server_name] = NULL;
+    conn_status = Node_conn_status::CONNECT_FAILED;
+    err_msg = "failed to connect " + auth->ipport_str;
+  }
+
+  DBUG_VOID_RETURN;
+}
+
+bool Cluster_conn_manager::connect_paral(enum_node_type type, bool passive) {
+  DBUG_ENTER("Cluster_conn_manager::connect_paral");
+  THD *thd = current_thd;
+
+  DBUG_ASSERT(initialized);
+  if (unlikely(!initialized))
+    DBUG_RETURN(TRUE);
+
+  vector<Node_to_conn> nodes_to_conn;
+  for (auto it = server_auths[type].begin(); it != server_auths[type].end(); ++it) {
+    nodes_to_conn.emplace_back(it->first, 
+                               Node_conn_status::UNEXPECTED_CONNECTION_ERROR, 
+                               "Unknown error");
+  }
+
+  char errbuff[256];
+  if (nodes_to_conn.size() > MAX_NUM_CONN_THREADS) {
+    snprintf(errbuff, sizeof(errbuff),
+                   "Maximum number of parallel connection threads is %lu, "
+                   "but %lu %s nodes need to be connected.", 
+                   MAX_NUM_CONN_THREADS, nodes_to_conn.size(), 
+                   get_wrapper_name_by_node_type(type));
+    connect_paral_error(thd, errbuff);
+    DBUG_RETURN(TRUE);
+  }
+
+  /* Create multiple threads to achieve parallel connections. */
+  vector<std::thread> conn_threads;
+  std::mutex conn_safe_mutex;
+  for(unsigned long i = 0; i < nodes_to_conn.size(); ++i) {
+    Node_to_conn &one_node = nodes_to_conn[i];
+    conn_threads.emplace_back([this, thd, &one_node, type, &conn_safe_mutex]() {
+      this->connect_safe(thd, one_node.server_name, type, 
+                        conn_safe_mutex,
+                        one_node.conn_status,
+                        one_node.err_msg);
+    });
+  }
+
+  /* Wait for all threads to complete execution */
+  for (std::thread &t : conn_threads)
+    t.join();
+
+  bool res = false;
+  string err_str;
+  for(const Node_to_conn &one_node: nodes_to_conn) {
+    /* failed to connect this node*/
+    if(one_node.conn_status != Node_conn_status::CONNECT_SUCCEED) {
+      /* report the error that cannot be ignored */
+      if(is_unexpected_connect_error(one_node.conn_status) || (!passive)) {
+        err_str += "\n" + one_node.server_name + ": " + one_node.err_msg;
+        res = true;
+      }
+    }
+  }
+  if(res) {
+    connect_paral_error(thd, err_str.c_str());
+    DBUG_RETURN(TRUE);
+  }
+  
   DBUG_RETURN(FALSE);
 }
 
@@ -5170,11 +5316,11 @@ int tdbctl_handle_primary_cmd(THD *thd, LEX *lex) {
 
   if (cmd == TC_SQLCOM_ENABLE_PRIMARY) {
     if (!(res = tdbctl_enable_primary(thd))) {
-      sql_print_information("Tdbctl Primary Mode is enabled");
+      sql_print_information("TC_SQLCOM_ENABLE_PRIMARY: Tdbctl Primary Mode is enabled");
     }
   } else if (cmd == TC_SQLCOM_DISABLE_PRIMARY) {
     if (!(res = tdbctl_disable_primary(thd))) {
-      sql_print_information("Tdbctl Primary Mode is disabled");
+      sql_print_information("TC_SQLCOM_DISABLE_PRIMARY: Tdbctl Primary Mode is disabled");
     }
   } else { /* TC_SQLCOM_GET_PRIMARY */
     res = tdbctl_get_primary(thd);

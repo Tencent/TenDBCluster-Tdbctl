@@ -7929,6 +7929,9 @@ WARN_VAR_RULES_CHECK
 ER_TCADMIN_CHECK_TABLES_ERROR
   eng "TDBCTL CHECK TABLES FAILED: %s"
 
+ER_TCADMIN_PARAL_CONNECT_ERROR
+  eng "Failed to build connections in parallel: %s"
+
 #
 # End of MyRocks specific messages
 #
