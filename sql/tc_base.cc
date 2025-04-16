@@ -4977,7 +4977,8 @@ void Cluster_conn_manager::connect_safe(THD *thd,
   {  /* safe_mtx.lock() */ 
   std::lock_guard<std::mutex> lock(safe_mtx);
   
-  if (!server_conns[type].count(server_name)) {
+  if (!server_conns[type].count(server_name) || 
+      !server_auths[type].count(server_name)) {
     conn_status = Node_conn_status::WRONG_SERVERNAME_OR_TYPE;
     err_msg = "cannot find server: " + server_name;
     DBUG_VOID_RETURN;
