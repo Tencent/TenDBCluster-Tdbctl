@@ -568,7 +568,8 @@ int dbm_startup_enable_primary() {
     err = 1;
     --retry_times;
     /* In this case, the slave may not have finished booting, so we wait and try again */
-    if(check_result == CHECK_PRIMARY_RESULT::STANDALONE_PRIMARY_NOT_ALLOWED) {
+    if((check_result == CHECK_PRIMARY_RESULT::STANDALONE_PRIMARY_NOT_ALLOWED) || 
+       (check_result == CHECK_PRIMARY_RESULT::SELF_WRONG_STATUS)) {
       if(retry_times > 0) {
         sql_print_warning("Startup Enable Primary Thread: Wait %u seconds"
                           " and then try to enable primary", retry_interval); 
