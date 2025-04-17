@@ -596,6 +596,7 @@ bool tc_query_parse(
 
 
 bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t);
+Exec_Flag check_target_forwarding_nodes(Exec_Flag exec_flag, Cluster_conn_manager *conn_mgr);
 Exec_Flag check_rewritten_sql(Exec_Flag exec_flag, const TC_PARSE_RESULT *tc_parse_result_t);
 bool tc_dry_run_command(THD *thd, TC_PARSE_RESULT *parse_result, Exec_Flag exec_flag);
 bool tc_dry_run_log_file(THD *thd, TC_PARSE_RESULT *parse_result, Exec_Flag exec_flag);
