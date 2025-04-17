@@ -117,6 +117,8 @@
 #define TABLE_OPEN_CACHE_MIN    400
 #define TABLE_OPEN_CACHE_DEFAULT 2000
 #define TABLE_DEF_CACHE_DEFAULT 400
+#define TC_TABLE_OPEN_CACHE_DEFAULT 512
+#define TC_TABLE_DEF_CACHE_DEFAULT 512
 /**
   Maximum number of connections default value.
   151 is larger than Apache's default max children,

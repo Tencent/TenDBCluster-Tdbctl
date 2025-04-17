@@ -3972,9 +3972,29 @@ mysql_execute_command(THD *thd, bool first_level)
       break;
     case TC_SQLCOM_CHECK_TABLE:
       DBUG_ASSERT(first_table == all_tables && first_table != 0);
+      /*
+      NB: use server_uuid as lock string here
+      we add S lock to block tdbctl flush routing and 
+      tdbctl add/drop/alter node(acquire X lock).
+     */
+      if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED)))
+      {
+        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), "lock wait timeout");
+        goto error;
+      }
       res = tdbctl_check_table(thd, first_table);
       break;
     case TC_SQLCOM_CHECK_TABLES:
+      /*
+      NB: use server_uuid as lock string here
+      we add S lock to block tdbctl flush routing and 
+      tdbctl add/drop/alter node(acquire X lock).
+     */
+      if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED)))
+      {
+        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), "lock wait timeout");
+        goto error;
+      }
       res = tdbctl_check_tables(thd, select_lex->db, lex->wild);
       break;
     case TC_SQLCOM_CHECK_ROUTING:

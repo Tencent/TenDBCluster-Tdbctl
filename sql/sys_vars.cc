@@ -4094,7 +4094,7 @@ static Sys_var_ulong Sys_table_def_size(
        GLOBAL_VAR(table_def_size),
        CMD_LINE(REQUIRED_ARG, OPT_TABLE_DEFINITION_CACHE),
        VALID_RANGE(TABLE_DEF_CACHE_MIN, 512*1024),
-       DEFAULT(TABLE_DEF_CACHE_DEFAULT),
+       DEFAULT(TC_TABLE_DEF_CACHE_DEFAULT),
        BLOCK_SIZE(1),
        NO_MUTEX_GUARD,
        NOT_IN_BINLOG,
@@ -4119,7 +4119,7 @@ static Sys_var_ulong Sys_table_cache_size(
        "table_open_cache", "The number of cached open tables "
        "(total for all table cache instances)",
        GLOBAL_VAR(table_cache_size), CMD_LINE(REQUIRED_ARG),
-       VALID_RANGE(1, 512*1024), DEFAULT(TABLE_OPEN_CACHE_DEFAULT),
+       VALID_RANGE(1, 512*1024), DEFAULT(TC_TABLE_OPEN_CACHE_DEFAULT),
        BLOCK_SIZE(1), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(NULL),
        ON_UPDATE(fix_table_cache_size),
        NULL,

@@ -1,0 +1,355 @@
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SET tc_admin = ON;
+CREATE DATABASE test_check_table;
+
+# Create tables.
+SET tc_admin = ON;
+USE test_check_table;
+CREATE TABLE t1(f1 INT PRIMARY KEY, f2 INT NOT NULL) DEFAULT CHARSET=utf8;
+CREATE TABLE t2(f1 INT PRIMARY KEY, f2 INT, f3 VARCHAR(10)) ENGINE = InnoDB;
+CREATE TABLE u1(g1 INT PRIMARY KEY, g2 INT);
+
+# Set general_log output to table.
+Set general log for all cluster nodes.
+
+# Case 1: Workflow of 'TDBCTL CHECK TABLES LIKE'.
+# Truncate general_log.
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# Execute TDBCTL CHECK TABLES LIKE.
+SET tc_admin=ON;
+TDBCTL CHECK TABLES FROM test_check_table LIKE 't%';
+Server_name	Db	Table	Status	Message
+SPIDER0	test_check_table	t1	OK	
+SPIDER1	test_check_table	t1	OK	
+SPIDER2	test_check_table	t1	OK	
+SPT0	test_check_table_0	t1	OK	
+SPT1	test_check_table_1	t1	OK	
+SPIDER0	test_check_table	t2	OK	
+SPIDER1	test_check_table	t2	OK	
+SPIDER2	test_check_table	t2	OK	
+SPT0	test_check_table_0	t2	OK	
+SPT1	test_check_table_1	t2	OK	
+# Show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+TDBCTL CHECK TABLES FROM test_check_table LIKE 't%'
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
+SELECT @@server_uuid
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME LIKE 't%'
+SELECT @@GLOBAL.table_open_cache
+SELECT @@GLOBAL.table_definition_cache
+SET @@GLOBAL.table_open_cache = 512
+SET @@GLOBAL.table_definition_cache = 656
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
+SET @@GLOBAL.table_open_cache = 512
+SET @@GLOBAL.table_definition_cache = 656
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SELECT @@GLOBAL.table_open_cache
+SELECT @@GLOBAL.table_definition_cache
+SET @@GLOBAL.table_open_cache = 512
+SET @@GLOBAL.table_definition_cache = 656
+SET NAMES latin1;SET sql_mode='';SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
+SET NAMES latin1;SET sql_mode='';SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
+SET NAMES latin1;SET sql_mode='';SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
+SET NAMES latin1;SET sql_mode='';SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME LIKE 't%'
+SET @@GLOBAL.table_open_cache = 2000
+SET @@GLOBAL.table_definition_cache = 400
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+
+SELECT @@GLOBAL.table_open_cache
+SELECT @@GLOBAL.table_definition_cache
+SET @@GLOBAL.table_open_cache = 512
+SET @@GLOBAL.table_definition_cache = 656
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='t1'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='t1'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='t2'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='t2'
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME LIKE 't%'
+SET @@GLOBAL.table_open_cache = 2000
+SET @@GLOBAL.table_definition_cache = 1400
+--------------------
+
+# Case 2: Workflow of 'TDBCTL CHECK DATABASE'.
+# Truncate general_log.
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# Execute TDBCTL CHECK DATABASE.
+SET tc_admin=ON;
+TDBCTL CHECK DATABASE test_check_table;
+Server_name	Db	Table	Status	Message
+SPIDER0	test_check_table	t1	OK	
+SPIDER1	test_check_table	t1	OK	
+SPIDER2	test_check_table	t1	OK	
+SPT0	test_check_table_0	t1	OK	
+SPT1	test_check_table_1	t1	OK	
+SPIDER0	test_check_table	t2	OK	
+SPIDER1	test_check_table	t2	OK	
+SPIDER2	test_check_table	t2	OK	
+SPT0	test_check_table_0	t2	OK	
+SPT1	test_check_table_1	t2	OK	
+SPIDER0	test_check_table	u1	OK	
+SPIDER1	test_check_table	u1	OK	
+SPIDER2	test_check_table	u1	OK	
+SPT0	test_check_table_0	u1	OK	
+SPT1	test_check_table_1	u1	OK	
+# Show general_log.
+--------------------
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+tdbctl0_log
+SET tc_admin=ON
+TDBCTL CHECK DATABASE test_check_table
+
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
+SELECT @@server_uuid
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table'
+SELECT @@GLOBAL.table_open_cache
+SELECT @@GLOBAL.table_definition_cache
+SET @@GLOBAL.table_open_cache = 512
+SET @@GLOBAL.table_definition_cache = 656
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='u1'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='u1'
+SET @@GLOBAL.table_open_cache = 512
+SET @@GLOBAL.table_definition_cache = 656
+--------------------
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+spider0_log
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SELECT @@GLOBAL.table_open_cache
+SELECT @@GLOBAL.table_definition_cache
+SET @@GLOBAL.table_open_cache = 512
+SET @@GLOBAL.table_definition_cache = 656
+SET NAMES latin1;SET sql_mode='';SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
+SET NAMES latin1;SET sql_mode='';SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
+SET NAMES latin1;SET sql_mode='';SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
+SET NAMES latin1;SET sql_mode='';SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
+SET NAMES latin1;SET sql_mode='';SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='u1'
+SET NAMES latin1;SET sql_mode='';SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='u1'
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table'
+SET @@GLOBAL.table_open_cache = 2000
+SET @@GLOBAL.table_definition_cache = 400
+--------------------
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+remote_master0_log
+
+SELECT @@GLOBAL.table_open_cache
+SELECT @@GLOBAL.table_definition_cache
+SET @@GLOBAL.table_open_cache = 512
+SET @@GLOBAL.table_definition_cache = 656
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='t1'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='t1'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='t2'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='t2'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='u1'
+SET NAMES latin1;
+SET sql_mode='';
+SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='u1'
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0'
+SET @@GLOBAL.table_open_cache = 2000
+SET @@GLOBAL.table_definition_cache = 1400
+--------------------
+
+# Restore general_log.
+Set general log for all cluster nodes.
+
+# Case 3: Inconsistent table collation or table engine.
+# Make difference
+SET SESSION ddl_execute_by_ctl = OFF;
+ALTER TABLE test_check_table.t1 CONVERT TO CHARACTER SET latin1;
+ALTER TABLE test_check_table.t2 ENGINE = MyISAM;
+ALTER TABLE test_check_table_0.t1 CONVERT TO CHARACTER SET latin1;
+ALTER TABLE test_check_table_0.t2 ENGINE = MyISAM;
+# Execute TDBCTL CHECK TABLES.
+SET tc_admin = ON;
+TDBCTL CHECK TABLES IN test_check_table;
+Server_name	Db	Table	Status	Message
+SPIDER0	test_check_table	t1	Error	(1)Expected table collation to be 'utf8_general_ci', but actually is 'latin1_swedish_ci'
+SPIDER1	test_check_table	t1	OK	
+SPIDER2	test_check_table	t1	OK	
+SPT0	test_check_table_0	t1	Error	(1)Expected table collation to be 'utf8_general_ci', but actually is 'latin1_swedish_ci'
+SPT1	test_check_table_1	t1	OK	
+SPIDER0	test_check_table	t2	Error	(1)Expected table engine to be 'SPIDER', but actually is 'MyISAM'
+SPIDER1	test_check_table	t2	OK	
+SPIDER2	test_check_table	t2	OK	
+SPT0	test_check_table_0	t2	Error	(1)Expected table engine to be 'InnoDB', but actually is 'MyISAM'
+SPT1	test_check_table_1	t2	OK	
+SPIDER0	test_check_table	u1	OK	
+SPIDER1	test_check_table	u1	OK	
+SPIDER2	test_check_table	u1	OK	
+SPT0	test_check_table_0	u1	OK	
+SPT1	test_check_table_1	u1	OK	
+
+# Reset tables.
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_check_table;
+CREATE DATABASE test_check_table;
+USE test_check_table;
+CREATE TABLE t1(f1 INT PRIMARY KEY, f2 SMALLINT);
+CREATE TABLE t2(f1 INT PRIMARY KEY, f2 INT, f3 INT);
+CREATE TABLE t2_5(f1 INT PRIMARY KEY, f2 VARCHAR(10) CHARACTER SET utf8);
+ERROR HY000: CREATE TABLE FAILED: ERROR: UNSUPPORT SQL CREATE TABLE WITH FIELD_CHARSET
+CREATE TABLE t3(f1 INT PRIMARY KEY, f2 VARCHAR(10)) DEFAULT CHARSET=utf8;
+CREATE TABLE t4(f1 INT PRIMARY KEY, f2 INT, f3 INT, INDEX index_f3(f3));
+
+# Case 4: Inconsistent column data_type/ordinal_position/collation/key
+# Make difference
+SET SESSION ddl_execute_by_ctl = OFF;
+ALTER TABLE test_check_table.t1 MODIFY COLUMN f2 INT;
+ALTER TABLE test_check_table.t2 MODIFY COLUMN f2 INT AFTER f3;
+Not allowed: ALTER TABLE test_check_table.t3 MODIFY COLUMN f2 VARCHAR(10) CHARACTER SET latin1;
+ALTER TABLE test_check_table.t4 ADD INDEX index_f2(f2);
+ALTER TABLE test_check_table_1.t1 MODIFY COLUMN f2 INT;
+ALTER TABLE test_check_table_1.t2 MODIFY COLUMN f2 INT FIRST;
+ALTER TABLE test_check_table_1.t3 MODIFY COLUMN f2 VARCHAR(10) CHARACTER SET latin1;
+ALTER TABLE test_check_table_1.t4 DROP INDEX index_f3;
+# Execute TDBCTL CHECK TABLES.
+SET tc_admin = ON;
+TDBCTL CHECK TABLES IN test_check_table;
+Server_name	Db	Table	Status	Message
+SPIDER0	test_check_table	t1	OK	
+SPIDER1	test_check_table	t1	Error	(1)Column 'f2': Expected data type to be 'smallint', but actually is 'int'
+SPIDER2	test_check_table	t1	OK	
+SPT0	test_check_table_0	t1	OK	
+SPT1	test_check_table_1	t1	Error	(1)Column 'f2': Expected data type to be 'smallint', but actually is 'int'
+SPIDER0	test_check_table	t2	OK	
+SPIDER1	test_check_table	t2	Error	(1)Column 'f2': Expected ordinal position to be 2, but actually is 3 (2)Column 'f3': Expected ordinal position to be 3, but actually is 2
+SPIDER2	test_check_table	t2	OK	
+SPT0	test_check_table_0	t2	OK	
+SPT1	test_check_table_1	t2	Error	(1)Column 'f1': Expected ordinal position to be 1, but actually is 2 (2)Column 'f2': Expected ordinal position to be 2, but actually is 1
+SPIDER0	test_check_table	t3	OK	
+SPIDER1	test_check_table	t3	OK	
+SPIDER2	test_check_table	t3	OK	
+SPT0	test_check_table_0	t3	OK	
+SPT1	test_check_table_1	t3	Error	(1)Column 'f2': Expected collation to be 'utf8_general_ci', but actually is 'latin1_swedish_ci'
+SPIDER0	test_check_table	t4	OK	
+SPIDER1	test_check_table	t4	Error	(1)Column 'f2': Expected column key to be '', but actually is 'MUL'
+SPIDER2	test_check_table	t4	OK	
+SPT0	test_check_table_0	t4	OK	
+SPT1	test_check_table_1	t4	Error	(1)Column 'f3': Expected column key to be 'MUL', but actually is ''
+
+# Reset tables.
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_check_table;
+CREATE DATABASE test_check_table;
+USE test_check_table;
+CREATE TABLE t1(f1 INT PRIMARY KEY, f2 INT);
+CREATE TABLE t2(f1 INT PRIMARY KEY, f2 INT);
+CREATE TABLE t3(f1 INT PRIMARY KEY, f2 INT);
+
+# Case 5: Extra/Missing tables, Extra/Missing columns
+# Make difference
+SET SESSION ddl_execute_by_ctl = OFF;
+DROP TABLE test_check_table.t2;
+ALTER TABLE test_check_table.t3 ADD COLUMN f3 INT;
+CREATE TABLE test_check_table_1.u1(f1 INT PRIMARY KEY, f2 INT);
+ALTER TABLE test_check_table_1.t3 DROP COLUMN f2;
+# Execute TDBCTL CHECK TABLES.
+SET tc_admin = ON;
+TDBCTL CHECK TABLES IN test_check_table;
+Server_name	Db	Table	Status	Message
+SPIDER0	test_check_table	t1	OK	
+SPIDER1	test_check_table	t1	OK	
+SPIDER2	test_check_table	t1	OK	
+SPT0	test_check_table_0	t1	OK	
+SPT1	test_check_table_1	t1	OK	
+SPIDER0	test_check_table	t2	OK	
+SPIDER1	test_check_table	t2	OK	
+SPIDER2	test_check_table	t2	Error	(1)This table does not exist
+SPT0	test_check_table_0	t2	OK	
+SPT1	test_check_table_1	t2	OK	
+SPIDER0	test_check_table	t3	OK	
+SPIDER1	test_check_table	t3	OK	
+SPIDER2	test_check_table	t3	Error	(1)extra column 'f3'
+SPT0	test_check_table_0	t3	OK	
+SPT1	test_check_table_1	t3	Error	(1)missing column 'f2'
+SPT1	test_check_table_1	u1	Error	(1)table 'test_check_table_1.u1' exists unexpectedly
+
+# Reset tables.
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_check_table;
+CREATE DATABASE test_check_table;
+USE test_check_table;
+
+# Case 6: Empty database/no tables selected
+# Execute TDBCTL CHECK TABLES.
+SET tc_admin = ON;
+TDBCTL CHECK TABLE test_check_table.t1;
+ERROR 42S02: Unknown table 'test_check_table.t1'
+TDBCTL CHECK TABLES IN test_check_table;
+Server_name	Db	Table	Status	Message
+TDBCTL CHECK TABLES IN test_check_table LIKE 't%';
+Server_name	Db	Table	Status	Message
+TDBCTL CHECK DATABASE test_check_table;
+Server_name	Db	Table	Status	Message
+
+# Restore to the initial state.
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_check_table;
+SET @@SESSION.tc_admin = @origin_tc_admin;

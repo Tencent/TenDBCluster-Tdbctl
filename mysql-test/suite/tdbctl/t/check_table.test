@@ -1,0 +1,166 @@
+# Test the correctness of the command 'TDBCTL CHECK TABLE'.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SET tc_admin = ON;
+CREATE DATABASE test_check_table;
+
+--echo
+--echo # Create tables.
+--connection tdbctl0
+SET tc_admin = ON;
+USE test_check_table;
+CREATE TABLE t1(f1 INT PRIMARY KEY, f2 INT NOT NULL) DEFAULT CHARSET=utf8;
+CREATE TABLE t2(f1 INT PRIMARY KEY, f2 INT, f3 VARCHAR(10)) ENGINE = InnoDB;
+CREATE TABLE u1(g1 INT PRIMARY KEY, g2 INT);
+
+--echo
+--echo # Set general_log output to table.
+--source suite/tdbctl/inc/set_cluster_general_log_to_table.inc
+
+--echo
+--echo # Case 1: Workflow of 'TDBCTL CHECK TABLES LIKE'.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Execute TDBCTL CHECK TABLES LIKE.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL CHECK TABLES FROM test_check_table LIKE 't%';
+--echo # Show general_log.
+--echo --------------------
+--connection tdbctl0
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection spider0
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection remote_master0
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+
+--echo
+--echo # Case 2: Workflow of 'TDBCTL CHECK DATABASE'.
+--echo # Truncate general_log.
+--source suite/tdbctl/inc/truncate_cluster_general_log.inc
+--echo # Execute TDBCTL CHECK DATABASE.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL CHECK DATABASE test_check_table;
+--echo # Show general_log.
+--echo --------------------
+--connection tdbctl0
+SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection spider0
+SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+--connection remote_master0
+SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
+--echo --------------------
+
+--echo
+--echo # Restore general_log.
+--source suite/tdbctl/inc/set_cluster_general_log_to_table.inc
+
+--echo
+--echo # Case 3: Inconsistent table collation or table engine.
+--echo # Make difference
+--connection spider0
+SET SESSION ddl_execute_by_ctl = OFF;
+ALTER TABLE test_check_table.t1 CONVERT TO CHARACTER SET latin1;
+ALTER TABLE test_check_table.t2 ENGINE = MyISAM;
+--connection remote_master0
+ALTER TABLE test_check_table_0.t1 CONVERT TO CHARACTER SET latin1;
+ALTER TABLE test_check_table_0.t2 ENGINE = MyISAM;
+--echo # Execute TDBCTL CHECK TABLES.
+--connection tdbctl0
+SET tc_admin = ON;
+TDBCTL CHECK TABLES IN test_check_table;
+
+--echo
+--echo # Reset tables.
+--connection tdbctl0
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_check_table;
+CREATE DATABASE test_check_table;
+USE test_check_table;
+CREATE TABLE t1(f1 INT PRIMARY KEY, f2 SMALLINT);
+CREATE TABLE t2(f1 INT PRIMARY KEY, f2 INT, f3 INT);
+--error ER_TCADMIN_CREATE_TABLE
+CREATE TABLE t2_5(f1 INT PRIMARY KEY, f2 VARCHAR(10) CHARACTER SET utf8);
+CREATE TABLE t3(f1 INT PRIMARY KEY, f2 VARCHAR(10)) DEFAULT CHARSET=utf8;
+CREATE TABLE t4(f1 INT PRIMARY KEY, f2 INT, f3 INT, INDEX index_f3(f3));
+
+--echo
+--echo # Case 4: Inconsistent column data_type/ordinal_position/collation/key
+--echo # Make difference
+--connection spider1
+SET SESSION ddl_execute_by_ctl = OFF;
+ALTER TABLE test_check_table.t1 MODIFY COLUMN f2 INT;
+ALTER TABLE test_check_table.t2 MODIFY COLUMN f2 INT AFTER f3;
+--echo Not allowed: ALTER TABLE test_check_table.t3 MODIFY COLUMN f2 VARCHAR(10) CHARACTER SET latin1;
+ALTER TABLE test_check_table.t4 ADD INDEX index_f2(f2);
+--connection remote_master1
+ALTER TABLE test_check_table_1.t1 MODIFY COLUMN f2 INT;
+ALTER TABLE test_check_table_1.t2 MODIFY COLUMN f2 INT FIRST;
+ALTER TABLE test_check_table_1.t3 MODIFY COLUMN f2 VARCHAR(10) CHARACTER SET latin1;
+ALTER TABLE test_check_table_1.t4 DROP INDEX index_f3;
+--echo # Execute TDBCTL CHECK TABLES.
+--connection tdbctl0
+SET tc_admin = ON;
+TDBCTL CHECK TABLES IN test_check_table;
+
+--echo
+--echo # Reset tables.
+--connection tdbctl0
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_check_table;
+CREATE DATABASE test_check_table;
+USE test_check_table;
+CREATE TABLE t1(f1 INT PRIMARY KEY, f2 INT);
+CREATE TABLE t2(f1 INT PRIMARY KEY, f2 INT);
+CREATE TABLE t3(f1 INT PRIMARY KEY, f2 INT);
+
+--echo
+--echo # Case 5: Extra/Missing tables, Extra/Missing columns
+--echo # Make difference
+--connection spider2
+SET SESSION ddl_execute_by_ctl = OFF;
+DROP TABLE test_check_table.t2;
+ALTER TABLE test_check_table.t3 ADD COLUMN f3 INT;
+--connection remote_master1
+CREATE TABLE test_check_table_1.u1(f1 INT PRIMARY KEY, f2 INT);
+ALTER TABLE test_check_table_1.t3 DROP COLUMN f2;
+--echo # Execute TDBCTL CHECK TABLES.
+--connection tdbctl0
+SET tc_admin = ON;
+TDBCTL CHECK TABLES IN test_check_table;
+
+--echo
+--echo # Reset tables.
+--connection tdbctl0
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_check_table;
+CREATE DATABASE test_check_table;
+USE test_check_table;
+
+--echo
+--echo # Case 6: Empty database/no tables selected
+--echo # Execute TDBCTL CHECK TABLES.
+--connection tdbctl0
+SET tc_admin = ON;
+--error ER_BAD_TABLE_ERROR
+TDBCTL CHECK TABLE test_check_table.t1;
+TDBCTL CHECK TABLES IN test_check_table;
+TDBCTL CHECK TABLES IN test_check_table LIKE 't%';
+TDBCTL CHECK DATABASE test_check_table;
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_check_table;
+SET @@SESSION.tc_admin = @origin_tc_admin;
