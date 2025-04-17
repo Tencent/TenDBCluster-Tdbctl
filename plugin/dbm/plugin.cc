@@ -35,7 +35,7 @@ static MYSQL_SYSVAR_UINT(
     enable_primary_retry_times, opt_enable_primary_retry_times, PLUGIN_VAR_OPCMDARG, 
     "The number of retries for attempting to set itself "
     "as the primary node during startup.",
-    NULL, NULL, 9, 1, 25, 1);
+    NULL, NULL, 10, 1, 25, 1);
 
 static MYSQL_SYSVAR_UINT(
     enable_primary_initial_interval, opt_enable_primary_initial_interval, PLUGIN_VAR_OPCMDARG, 
