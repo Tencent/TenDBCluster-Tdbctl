@@ -13,7 +13,7 @@
 #include "dbm.h"
 
 my_bool opt_allow_standalone_primary = FALSE;
-uint opt_enable_primary_retry_times = 10;
+uint opt_enable_primary_retry_times = 6;
 uint opt_enable_primary_initial_interval = 3;
 
 extern ST_FIELD_INFO tdbctl_nodes_fields_info[];
@@ -35,7 +35,7 @@ static MYSQL_SYSVAR_UINT(
     enable_primary_retry_times, opt_enable_primary_retry_times, PLUGIN_VAR_OPCMDARG, 
     "The number of retries for attempting to set itself "
     "as the primary node during startup.",
-    NULL, NULL, 10, 1, 25, 1);
+    NULL, NULL, 6, 1, 25, 1);
 
 static MYSQL_SYSVAR_UINT(
     enable_primary_initial_interval, opt_enable_primary_initial_interval, PLUGIN_VAR_OPCMDARG, 
