@@ -76,6 +76,7 @@ enum tc_flush_option
   FLUSH_ROUTING_BY_SERVER,       // flush routing of one specific node
   SYNC_ROUTING_FOR_ALTER_NODE,   // synchronize the mysql.servers for all tdbctl/spider/spider_slave nodes
   FLUSH_ROUTING_FOR_CREATE_NODE, // flush routings of all tdbctl nodes and the newly added node.
+  FLUSH_NONE,                    // do nothing
 };
 
 class Cluster_conn_manager;

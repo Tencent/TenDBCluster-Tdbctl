@@ -2066,6 +2066,11 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
     }
     std::set<std::string> new_added_node;
     new_added_node.insert(string(server->server_name, server->server_name_length));
+
+    /*
+      The TDBCTL node will definitely refresh the routing. Therefore, if the newly added node 
+      is also a TDBCTL node, there is no need to refresh the routing separately.
+    */
     bool skip_new_node = (strcasecmp(server->scheme, TDBCTL_WRAPPER) == 0);
 
     if ((!skip_new_node && tc_flush_routing_to_nodes(lex, new_added_node, conn_mgr, server->scheme)) ||
