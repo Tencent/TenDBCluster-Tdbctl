@@ -6,6 +6,18 @@ SET @old_log_output = @@GLOBAL.log_output;
 SET @old_general_log = @@GLOBAL.general_log;
 SET GLOBAL log_output = 'TABLE';
 SET GLOBAL general_log = ON;
+--connection tdbctl1
+SET tc_admin=OFF;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
+--connection tdbctl2
+SET tc_admin=OFF;
+SET @old_log_output = @@GLOBAL.log_output;
+SET @old_general_log = @@GLOBAL.general_log;
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL general_log = ON;
 --connection spider0
 SET @old_log_output = @@GLOBAL.log_output;
 SET @old_general_log = @@GLOBAL.general_log;

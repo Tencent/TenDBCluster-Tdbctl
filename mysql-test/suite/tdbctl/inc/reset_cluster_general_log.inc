@@ -4,6 +4,14 @@
 SET tc_admin=OFF;
 SET GLOBAL log_output = @old_log_output;
 SET GLOBAL general_log = @old_general_log;
+--connection tdbctl1
+SET tc_admin=OFF;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
+--connection tdbctl2
+SET tc_admin=OFF;
+SET GLOBAL log_output = @old_log_output;
+SET GLOBAL general_log = @old_general_log;
 --connection spider0
 SET GLOBAL log_output = @old_log_output;
 SET GLOBAL general_log = @old_general_log;

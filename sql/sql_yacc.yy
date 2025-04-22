@@ -2314,7 +2314,7 @@ tdbctl:
           Lex->m_sql_cmd=
                 new (YYTHD->mem_root) Sql_cmd_create_server(&Lex->server_options);
           Lex->tc_do_grants = TRUE;
-			    Lex->tc_flush_type = FLUSH_ALL_ROUTING;
+			    Lex->tc_flush_type = Lex->tc_with_schema ? FLUSH_ROUTING_FOR_CREATE_NODE : FLUSH_NONE;
         }
       | TDBCTL_SYM ALTER NODE_SYM ident_or_text OPTIONS_SYM '(' server_options_list ')' opt_with_sync opt_force
         {
@@ -2324,7 +2324,7 @@ tdbctl:
           lex->m_sql_cmd=
               new (YYTHD->mem_root) Sql_cmd_alter_server(&Lex->server_options);
           Lex->tc_do_grants = TRUE;
-			    Lex->tc_flush_type = Lex->tc_with_sync ? SYNC_SPIDER_ROUTING : FLUSH_ALL_ROUTING;
+			    Lex->tc_flush_type = Lex->tc_with_sync ? SYNC_ROUTING_FOR_ALTER_NODE : FLUSH_NONE;
         }
       | TDBCTL_SYM DROP NODE_SYM if_exists ident_or_text opt_force
         {

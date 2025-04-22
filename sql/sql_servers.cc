@@ -2010,7 +2010,7 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
   switch (lex->tc_flush_type)
   {
   case FLUSH_ALL_ROUTING:
-  case SYNC_SPIDER_ROUTING:
+  case SYNC_ROUTING_FOR_ALTER_NODE:
   {
     get_server_name_set(&mem_root, spider_nodes, SPIDER_WRAPPER);
     get_server_name_set(&mem_root, spider_slave_nodes, SPIDER_SLAVE_WRAPPER);
@@ -2042,6 +2042,39 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
     }
     nodes.insert(string(server->server_name, server->server_name_length));
     if(tc_flush_routing_to_nodes(lex, nodes, conn_mgr, server->scheme))
+    {
+      result = TRUE;
+      break;
+    }
+    break;
+  }
+  case FLUSH_ROUTING_FOR_CREATE_NODE:
+  {
+    // get non-primary tdbctl nodes 
+    get_server_name_set(&mem_root, tdbctl_nodes, TDBCTL_WRAPPER);
+    tdbctl_nodes.erase(tdbctl_server_name);
+
+    // get the newly added node
+    std::string server_name = std::string(lex->server_options.m_server_name.str,
+                                          lex->server_options.m_server_name.length);
+    FOREIGN_SERVER *server =
+            get_server_by_name(&mem_root, server_name.c_str(), NULL);
+    if (!server) {
+      my_error(ER_FOREIGN_SERVER_DOESNT_EXIST, MYF(0), server_name.c_str());
+      result = TRUE;
+      break;
+    }
+    std::set<std::string> new_added_node;
+    new_added_node.insert(string(server->server_name, server->server_name_length));
+
+    /*
+      The TDBCTL node will definitely refresh the routing. Therefore, if the newly added node 
+      is also a TDBCTL node, there is no need to refresh the routing separately.
+    */
+    bool skip_new_node = (strcasecmp(server->scheme, TDBCTL_WRAPPER) == 0);
+
+    if ((!skip_new_node && tc_flush_routing_to_nodes(lex, new_added_node, conn_mgr, server->scheme)) ||
+        tc_flush_routing_to_nodes(lex, tdbctl_nodes, conn_mgr, TDBCTL_WRAPPER))
     {
       result = TRUE;
       break;
@@ -2099,7 +2132,7 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
     }
 
     if (!nodes_to_be_flushed.empty()) {
-      if (lex->tc_flush_type == SYNC_SPIDER_ROUTING) {
+      if (lex->tc_flush_type == SYNC_ROUTING_FOR_ALTER_NODE) {
         exec_ret = tc_sync_servers_table_by_wrapper(result_map, needed_conn_map, wrapper);
       } else {
         exec_ret = tc_flush_routing_by_wrapper(result_map, needed_conn_map, wrapper, is_force, is_flush_only_cache);
