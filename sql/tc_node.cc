@@ -6,9 +6,15 @@
 Add for node's control
 */
 #include "tc_node.h"
+#include "my_sys.h"
+#include "mysqld.h"
+#include "mysqld_error.h"
 #include "sql_base.h"         // open_tables, open_and_lock_tables,
 #include "log.h"
+#include "sql_servers.h"
 #include "tc_base.h"
+#include <cstring>
+#include <string>
 #include <thread>
 #include <fstream>
 #include <iostream>
@@ -39,7 +45,10 @@ int tc_dump_node_schema(
   dump_options = "--single-transaction --no-autocommit=FALSE  --skip-opt --create-options --routines "
                 "--quick --no-data --all-databases";
   dump_options += space + "-r" + file + space + "--log-error=" + file + ".err";
-	dump_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port) + space+ "-h" + host;
+	dump_options += space + "-u" + user + space + "-p" + password;
+  size_t pwd_len = strlen(password);
+  size_t pwd_pos = dump_options.size() - pwd_len;
+  dump_options += space + "-P" + to_string(port) + space+ "-h" + host;
   std::string err_file;
   err_file = std::string(file) + ".err"; 
   
@@ -77,21 +86,14 @@ int tc_dump_node_schema(
     return 1;
   }
   dump_options += space + "--default-character-set=" + charset;
+  std::string dump_options_log = dump_options;
+  dump_options_log.replace(pwd_pos, pwd_len, "xxxxx");
 
   dump_cmd = dump_bin + space + dump_options;
+  std::string dump_cmd_log = dump_bin + space + dump_options_log;
 
-  int ret;
-  if ((ret = system(dump_cmd.c_str())) != 0)
+  if (tc_system(dump_cmd.c_str(), dump_cmd_log.c_str()) != 0)
   {
-    // Log the return value of the system function
-    if (ret == -1) {
-      sql_print_error("The function 'system()' failed to execute with a return value of -1.");
-    } else if (WIFEXITED(ret)) {
-      sql_print_error("Command 'mysqldump' exited with status %d.", WEXITSTATUS(ret));
-    } else if (WIFSIGNALED(ret)) {
-      sql_print_error("Command 'mysqldump' terminated by signal %d.", WTERMSIG(ret));
-    }
-
     my_error(ER_TCADMIN_DUMP_NODE_ERROR, MYF(0), file, host, port, err_file.c_str());
     return 1;
   }
@@ -226,12 +228,21 @@ int tc_restore_to_node(
   restore_bin = mysql_home_ptr;
   restore_bin += "/bin/mysql";
 #endif
-  restore_options += space + "-u" + user + space + "-p" + password + space + "-P" + to_string(port) + space + "-h" + host + "<" + file;
+  restore_options += space + "-u" + user + space + "-p" + password;
+  size_t pwd_len = strlen(password);
+  size_t pwd_pos = restore_options.size() - pwd_len;
+
+  restore_options += space + "-P" + to_string(port) + space + "-h" + host + "<" + file;
+  std::string restore_options_log = restore_options;
+  restore_options_log.replace(pwd_pos, pwd_len, "xxxxx");
+
   restore_cmd = restore_bin + restore_options + space + ">&" + file + ".err";
+  std::string restore_cmd_log = restore_bin + restore_options_log + space + ">&" + file + ".err";
+
   std::string err_file;
   err_file = std::string(file) + ".err"; 
   
-  if (system(restore_cmd.c_str()) != 0)
+  if (tc_system(restore_cmd.c_str(), restore_cmd_log.c_str()) != 0)
   {
     my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), file, host, port, err_file.c_str());
     return 1;
@@ -251,7 +262,7 @@ int tc_restore_to_node(
   return 0;
 }
 
-bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
+bool tc_load_schema_to_new_node(THD *thd, LEX *lex, FOREIGN_SERVER *dump_server)
 {
   // sql_yacc.yy had filter wrapper name according to tc_with_schema option
   DBUG_ASSERT((strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
@@ -264,19 +275,74 @@ bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
     return false;
   }
 
-  // string server_name, add_address;
-  list<FOREIGN_SERVER *> server_list;
-  char schema_path[FN_REFLEN + 1];
-  // char grant_path[FN_REFLEN + 1];
-  char *p1 = my_stpnmov(schema_path, mysql_tmpdir, sizeof(schema_path));
-  // char *p2 = my_stpnmov(grant_path, mysql_tmpdir, sizeof(grant_path));
+  if (dump_server == NULL)
+  {
+    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), "Dump source server is not specified");
+    return true;
+  }
 
-  my_snprintf(p1, sizeof(schema_path) - (p1 - schema_path), "/%s_%lu%lx_%lx_schema.sql",
-              tmp_file_prefix, current_thd->query_start(), current_pid,
-              thd->thread_id());
-  /*my_snprintf(p2, sizeof(grant_path) - (p2 - grant_path), "/%s_%lu%lx_%lx_grant.sql",
-              tmp_file_prefix, current_thd->query_start(), current_pid,
-              thd->thread_id());*/
+  /*
+    Construct filename for mysqldump output
+    Format: wrapper_from_ip_port_to_ip_port_YYYYmmdd_HHMMSS.ms_tid.sql
+  */
+  char schema_path[FN_REFLEN + 1];
+  char *p1 = my_stpnmov(schema_path, mysql_tmpdir, sizeof(schema_path));
+  QUERY_START_TIME_INFO query_time_info;
+  thd->get_time(&query_time_info);
+  string query_time_str = timeval_to_str(query_time_info.start_time, "%Y%m%d_%H%M%S", 6);
+  my_snprintf(p1, sizeof(schema_path) - (p1 - schema_path), "/%s_from_%s_%ld_to_%s_%ld_%s_%u.sql",
+              dump_server->scheme, dump_server->host, (unsigned int)dump_server->port, 
+              lex->server_options.get_host(), (unsigned int)lex->server_options.get_port(), 
+              query_time_str.c_str(), thd->thread_id());
+
+  if (tc_dump_node_schema(
+          dump_server->host,
+          dump_server->port,
+          dump_server->username,
+          dump_server->password,
+          schema_path,
+          dump_server->scheme))
+  {
+    return true;
+  }
+
+  if (tc_restore_to_node(lex->server_options.get_host(),
+                         lex->server_options.get_port(),
+                         lex->server_options.get_username(),
+                         lex->server_options.get_password(),
+                         schema_path,
+                         lex->server_options.get_scheme()))
+  {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Find an appropriate server node to dump schema from
+ * 
+ * This function selects a suitable cluster server node to use as the source for schema dumping.
+ * The selection follows a priority order: 1) Not the newly added node, 2) Local server, 
+ * 3) Alphabetically first server.
+ *
+ * @param thd   The current thread handler
+ * @param lex   The LEX structure containing server options
+ * @return      A pair containing:
+ *              - FOREIGN_SERVER*: Pointer to selected server node (NULL if none found)
+ *              - std::string: Error message if any (empty if successful)
+ */
+std::pair<FOREIGN_SERVER *, std::string> tc_find_dump_source_node(THD *thd, LEX *lex)
+{
+  // Verify the wrapper type is valid (SPIDER, SPIDER_SLAVE or TDBCTL)
+  DBUG_ASSERT((strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
+               (strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0) ||
+               (strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0));
+
+  const char *warning_format = "'TDBCTL CREATE NODE WITH SCHEMA' failed to find dump source: %s";
+  FOREIGN_SERVER* dump_server = NULL;
+  std::string msg = "";
+  list<FOREIGN_SERVER *> server_list;
 
   /*
     get spider_list or tdbctl_list from mysql.servers, exclude slave spiders.
@@ -288,89 +354,57 @@ bool tc_load_schema_to_new_node(THD *thd, LEX *lex)
     get_server_by_wrapper(server_list, thd->mem_root, SPIDER_WRAPPER, FALSE);
   else
     get_server_by_wrapper(server_list, thd->mem_root, lex->server_options.get_scheme(), FALSE);
-  // the nodes of the specified type should not empty.
-  DBUG_ASSERT(server_list.empty() != true);
-  if (server_list.empty() ||
-      (server_list.size() == 1 && (strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0||
-                                   strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0)))
+
+  if (server_list.empty())
   {
-    // the first node of the specified type, no need to dump/restore schema/grant, only add to mysql.servers
-    push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
-                        "the created node is the first %s node, skip dump/restore schema/grant",
-                        lex->server_options.get_scheme());
-    return false;
+    msg = "No server to dump schema";
+    sql_print_warning(warning_format, msg.c_str());
+    return {NULL, msg};
   }
 
   /*
-    dump node's schema from first spider/tdbctl node.
-    we can't dump schema from the newly created node
-    *Note*: dump tdbctl schema will dump schema from local node generally.
+    Get current server's IP address from cluster connection manager
   */
+  auto tdbctl_auth_map = thd->cluster_conn_manager->get_auth_map(NODE_TYPE_CTL);
+  std::string my_server_name = thd->cluster_conn_manager->get_my_server_name();
+  // Validate cluster connection manager has cached current server info
+  if((my_server_name == Cluster_conn_manager::UNKOWN_SERVER_NAME) || 
+     (tdbctl_auth_map.find(my_server_name) == tdbctl_auth_map.end())) {
+    msg = "Failed to get current server IP address from cluster connection manager";
+    sql_print_warning(warning_format, msg.c_str());
+    return {NULL, msg};
+  }
+  std::string local_ip = tdbctl_auth_map.at(my_server_name).host;
 
-  FOREIGN_SERVER* dump_server = nullptr;
-  for(auto it = server_list.begin(); it != server_list.end(); it ++) {
+  /*
+    Node selection algorithm with priority:
+    1) Exclude the newly added node (host/port doesn't match)
+    2) Prefer local server (IP matches current node)
+    3) Fall back to first server in alphabetical order
+  */
+  for(auto it = server_list.begin(); it != server_list.end(); it++) {
+    // Skip the newly added node (current operation target)
     if(!(strcasecmp((*it)->host, lex->server_options.get_host()) == 0 &&
        (*it)->port == lex->server_options.get_port())) {
-      dump_server = *it;
-      break;
+      // First candidate server
+      if (dump_server == NULL) {
+        dump_server = *it;
+      } 
+      // Prefer local server (localhost/127.0.0.1 or matching IP)
+      if (!strcasecmp((*it)->host, local_ip.c_str()) || 
+          !strcasecmp((*it)->host, "127.0.0.1") ||
+          !strcasecmp((*it)->host, "localhost")) {
+        dump_server = *it;
+        break;  // Found optimal candidate, stop searching
+      }
     }
   }
 
   if(!dump_server) {
-    push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
-                        "No online %s Node to dump schema ",
-                        lex->server_options.get_scheme());
-    return false;
+    msg = "No valid dump source node was found by the selection strategy";
+    sql_print_warning(warning_format, msg.c_str());
+    return {NULL, msg};
   }
 
-  if (tc_dump_node_schema(
-          dump_server->host,
-          dump_server->port,
-          dump_server->username,
-          dump_server->password,
-          schema_path,
-          dump_server->scheme))
-  {
-    Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
-    drop_node->execute(thd);
-    return true;
-  }
-
-  /*
-  if (tc_dump_node_grant(
-          server_list.front()->host,
-          server_list.front()->port,
-          server_list.front()->username,
-          server_list.front()->password,
-          grant_path))
-  {
-    Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
-    drop_node->execute(thd);
-    goto error;
-  }*/
-
-  if (tc_restore_to_node(lex->server_options.get_host(),
-                         lex->server_options.get_port(),
-                         lex->server_options.get_username(),
-                         lex->server_options.get_password(),
-                         schema_path,
-                         lex->server_options.get_scheme()))
-  {
-    Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
-    drop_node->execute(thd);
-    return true;
-  }
-
-  /*
-  if (tc_restore_to_node(lex->server_options.get_host(),
-                         lex->server_options.get_port(),
-                         lex->server_options.get_username(),
-                         lex->server_options.get_password(),
-                         grant_path))
-  {
-    Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
-    drop_node->execute(thd);
-    goto error;
-  }*/
-  return false;
+  return {dump_server, msg};
 }

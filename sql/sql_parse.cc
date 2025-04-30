@@ -22,6 +22,9 @@
 #include "item_timefunc.h"    // Item_func_unix_timestamp
 #include "log.h"              // query_logger
 #include "log_event.h"        // slave_execute_deferred_events
+#include "mdl.h"
+#include "my_dbug.h"
+#include "mysqld_error.h"
 #include "mysys_err.h"        // EE_CAPACITY_EXCEEDED
 #include "opt_explain.h"      // mysql_explain_other
 #include "opt_trace.h"        // Opt_trace_start
@@ -2607,6 +2610,73 @@ static inline void binlog_gtid_end_transaction(THD *thd)
 }
 
 
+/**
+ * @class TC_routing_manager_lock_guard
+ * @brief RAII wrapper for acquiring and releasing routing manager MDL locks
+ */
+class TC_routing_manager_lock_guard {
+public:
+  /**
+   * @brief Constructor that acquires the routing manager lock
+   * @param thd Thread handler
+   * @param lock_type Type of lock to acquire (MDL_SHARED/MDL_EXCLUSIVE)
+   */
+  TC_routing_manager_lock_guard(THD *thd, enum_mdl_type lock_type)
+      : m_thd(thd) {
+    // Check for null thread pointer
+    if (m_thd == NULL) {
+      locked = false;
+      lock_error = "get null thread pointer when acquiring lock for routing management";
+      return;
+    }
+
+    // Construct lock name using server UUID
+    string name = server_uuid_ptr;
+    name += "#routing_manager";
+
+    // Initialize and acquire MDL lock
+    MDL_REQUEST_INIT(&mdl_request, MDL_key::TC_ROUTING, "", name.c_str(),
+                     lock_type, MDL_EXPLICIT);
+    locked = !m_thd->mdl_context.acquire_lock(&mdl_request,
+                                              thd->variables.lock_wait_timeout);
+    if(!locked) {
+      lock_error = "lock wait timeout for routing management";
+    }
+  }
+
+  /**
+   * @brief Destructor that releases the lock if acquired
+   */
+  ~TC_routing_manager_lock_guard() {
+    if (locked) {
+      m_thd->mdl_context.release_lock(mdl_request.ticket);
+    }
+  }
+
+  /**
+   * @brief Check if lock was successfully acquired
+   * @return true if lock was acquired, false otherwise
+   */
+  bool lock_successful() const { return locked; }
+
+  /**
+   * @brief Get error message if lock acquisition failed
+   * @return Error message string
+   */
+  string get_lock_error() const { return lock_error; }
+
+private:
+  TC_routing_manager_lock_guard() {}  // Disable default constructor
+  THD *m_thd;         // Thread handler
+  MDL_request mdl_request;  // MDL lock request
+  bool locked;        // Lock acquisition status
+  string lock_error;  // Error message if lock failed
+};
+
+/**
+  Mutex for 'TDBCTL CREATE NODE' command
+*/
+std::mutex tc_create_node_mutex;
 
 /**
   Execute command saved in thd and lex->sql_command.
@@ -3981,29 +4051,17 @@ mysql_execute_command(THD *thd, bool first_level)
       break;
     case TC_SQLCOM_CHECK_TABLE:
       DBUG_ASSERT(first_table == all_tables && first_table != 0);
-      /*
-      NB: use server_uuid as lock string here
-      we add S lock to block tdbctl flush routing and 
-      tdbctl add/drop/alter node(acquire X lock).
-     */
-      if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED)))
-      {
-        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), "lock wait timeout");
-        goto error;
-      }
+      /**
+        During command execution, if route changes occur,
+        the output results are not guaranteed to be correct
+      */
       res = tdbctl_check_table(thd, first_table);
       break;
     case TC_SQLCOM_CHECK_TABLES:
-      /*
-      NB: use server_uuid as lock string here
-      we add S lock to block tdbctl flush routing and 
-      tdbctl add/drop/alter node(acquire X lock).
-     */
-      if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED)))
-      {
-        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), "lock wait timeout");
-        goto error;
-      }
+      /**
+        During command execution, if route changes occur,
+        the output results are not guaranteed to be correct
+      */
       res = tdbctl_check_tables(thd, select_lex->db, lex->wild);
       break;
     case TC_SQLCOM_CHECK_ROUTING:
@@ -5435,16 +5493,183 @@ mysql_execute_command(THD *thd, bool first_level)
       break;
     }
     case TC_SQLCOM_CREATE_NODE:
+    {
+      /**
+       * Block the following types of commands:
+       * - Commands that modify routing: TC_SQLCOM_ALTER_NODE, TC_SQLCOM_DROP_NODE
+       * - Commands that flush routing: TC_SQLCOM_FLUSH_ROUTING
+       * - Commands that perform forwarding based on routing: DDL etc
+       *
+       * Allow concurrent execution of commands:
+       * - TC_SQLCOM_CREATE_NODE (Support parallel backup/import data with "WITH SCHEMA" option)
+       */      
+      TC_routing_manager_lock_guard routng_mgr_lock_guard(thd, MDL_INTENTION_EXCLUSIVE);
+      if(!routng_mgr_lock_guard.lock_successful()) {
+        my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), 
+                  routng_mgr_lock_guard.get_lock_error().c_str());
+        goto error;
+      }
+
+      std::pair<FOREIGN_SERVER *, std::string> dump_source{NULL, ""};
+    
+      /**
+       * !!! NOTICE !!!
+       * Prepare for "WITH SCHEMA" option related operations (executed serially).
+       */
+      if (lex->tc_with_schema)
+      {  
+        /* Lock to ensure thread-safe */
+        std::lock_guard<std::mutex> prepare_dump_schema_lock(tc_create_node_mutex);
+
+        /* always do reload first */
+        if (servers_reload(thd))
+        {
+          my_error(ER_SERVERS_LOAD, MYF(0));
+          goto error;
+        }
+
+        /* main purpose: identify current server */
+        if (init_cluster_conn_manager(thd, true, false, true)) {
+          goto error;
+        }
+
+        /**
+        * Complete node information and perform validation checks
+        * to determine if the node is eligible to join the cluster
+        */ 
+        string err_msg;
+        if(prepare_server_creation(thd, lex, err_msg)) {
+          my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), err_msg.c_str());
+          goto error;
+        }
+
+        // Flush routing for the node to be added
+        if (tc_flush_routing_to_foreign_server(lex))
+          goto error;
+
+        // Find a dump source node
+        dump_source = tc_find_dump_source_node(thd, lex);
+        if (dump_source.first == NULL) {
+          push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
+                        "WITH SCHEMA option skipped: %s", dump_source.second.c_str());
+        }
+      }
+
+      /**
+       * !!! NOTICE !!!
+       * Import table schema to the pending new node (this operation may take significant time)
+       * Only this step is actually allowed to execute in parallel
+       */ 
+      if (lex->tc_with_schema && dump_source.first) {
+        /*
+          If "WITH SCHEMA" option is specified, we need to dump schema from another 
+          same type node in the cluster to the newly added node.
+          Currently, only operations of creating spider/spider_slave/tdbctl types' nodes 
+          support and require this.
+        */
+        if(tc_load_schema_to_new_node(thd, lex, dump_source.first))
+          goto error;
+      }
+
+      /**
+       * !!! NOTICE !!!
+       * The actual operation of adding a new node, which is executed serially. 
+       */
+      {
+        std::lock_guard<std::mutex> add_node_lock(tc_create_node_mutex);
+
+        /* always do reload first */
+        if (servers_reload(thd))
+        {
+          my_error(ER_SERVERS_LOAD, MYF(0));
+          goto error;
+        }
+
+        /**
+        * Complete node information and perform validation checks
+        * to determine if the node is eligible to join the cluster
+        */ 
+        string err_msg;
+        if(prepare_server_creation(thd, lex, err_msg)) {
+          my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), err_msg.c_str());
+          goto error;
+        }
+
+        /* Add the new node to both the mysql.servers table and servers_cache */
+        DBUG_ASSERT(lex->m_sql_cmd != NULL);
+        if ((res = lex->m_sql_cmd->execute(thd)))
+          goto error;
+
+        /* Create a rollback command */
+        std::unique_ptr<Sql_cmd_drop_server> roll_back(
+          new Sql_cmd_drop_server(lex->server_options.m_server_name, true));
+
+        /*
+          Reset the thread OK status before changing the outcome.
+          We need to do this, otherwise tc_do_grants_internal may call my_error
+          and cause assert failure in debug mode.
+        */
+        if (thd->get_stmt_da()->is_ok())
+          thd->get_stmt_da()->reset_diagnostics_area();
+
+        if (lex->tc_do_grants &&
+            tc_enable_internal_grant &&
+            tc_do_grants_internal(thd, lex))
+        {
+          /*
+            We use this flag to tell the rollback action not to call my_ok().
+            Otherwise, the raised error would be suppressed.
+          */
+          thd->no_send = TRUE;  // todo :need to do this?
+          roll_back->execute(thd);
+          thd->no_send = FALSE;
+          goto error;
+        }
+
+        /* If "WITH SCHEMA" option is specified, we need to flush routing after adding the new node. */
+        if (lex->tc_with_schema) {
+          if (servers_reload(thd) || thd->cluster_conn_manager->refresh(FALSE, FALSE))
+          {
+            roll_back->execute(thd);
+            my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "reload servers failed before flush routing");
+            goto error;
+          }
+          if (tc_flush_routing(lex, thd->cluster_conn_manager))
+          {
+            roll_back->execute(thd);
+            goto error;
+          }
+        }
+      }
+
+      my_ok(thd, 1);
+      break;
+    }
     case TC_SQLCOM_ALTER_NODE:
     case TC_SQLCOM_DROP_NODE:
     {
-      /*
-        NB: use server_uuid as lock string here
-        we add x lock to block any DDL or flush command
-      */
-      if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE)))
-      {
-        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "lock wait timeout");
+      /**
+       * Block the following types of commands:
+       * - Commands that modify routing: TC_SQLCOM_CREATE_NODE, TC_SQLCOM_ALTER_NODE, TC_SQLCOM_DROP_NODE
+       * - Commands that flush routing: TC_SQLCOM_FLUSH_ROUTING
+       * - Commands that perform forwarding based on routing: DDL etc
+       */  
+      TC_routing_manager_lock_guard routng_mgr_lock_guard(thd, MDL_EXCLUSIVE);
+      if(!routng_mgr_lock_guard.lock_successful()) {
+        switch(lex->sql_command) 
+        {
+        case TC_SQLCOM_ALTER_NODE:
+          my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), 
+                    routng_mgr_lock_guard.get_lock_error().c_str());
+          break;
+        case TC_SQLCOM_DROP_NODE:
+          my_error(ER_TCADMIN_DROP_NODE_ERROR, MYF(0), 
+                    routng_mgr_lock_guard.get_lock_error().c_str());
+          break;
+        default:
+          my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), 
+                    routng_mgr_lock_guard.get_lock_error().c_str());
+        }
         goto error;
       }
 
@@ -5460,68 +5685,6 @@ mysql_execute_command(THD *thd, bool first_level)
 
       switch (lex->sql_command)
       {
-      case TC_SQLCOM_CREATE_NODE:
-      {
-        DBUG_ASSERT(lex->m_sql_cmd != NULL);
-        if (!(lex->server_options.get_host() &&
-              lex->server_options.get_port() &&
-              lex->server_options.get_username() &&
-              lex->server_options.get_password()))
-        {
-          my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "USER, PASSWORD, HOST, PORT options must be specified");
-          goto error;
-        }
-
-        std::string server_name;
-        if (lex->server_options.get_num() == lex->server_options.NUM_NOT_SET)
-        {
-          /* get an unique server_name by wrapper */
-          server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme());
-        } else {
-          // produce server_name with server_options->m_num
-          server_name = get_new_server_name_by_number(lex->server_options.get_scheme(),
-                                                      lex->server_options.get_num());
-        }
-        DBUG_ASSERT(server_name.length() != 0);
-        lex->server_options.m_server_name.length = server_name.length();
-        lex->server_options.m_server_name.str =
-            strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
-
-        list<FOREIGN_SERVER *> server_list;
-        string add_address = string(lex->server_options.get_host()) + "#" +
-                             to_string(lex->server_options.get_port());
-        get_server_by_wrapper(server_list, thd->mem_root, NULL_WRAPPER, TRUE);
-        /*
-          Create spider/tdbctl node must not exist in mysql.servers.
-          If create spider/tdbctl node, host#port must be unique.
-          At present, only consider SPIDER/TDBCTL wrapper.
-         */
-        std::string err_msg;
-        if (std::find_if(server_list.begin(), server_list.end(),
-                         [&](FOREIGN_SERVER *server) -> bool
-                         {
-                           string current_address = string(server->host) + "#" + to_string(server->port);
-                           if (strcasecmp(lex->server_options.m_server_name.str, server->server_name) == 0) {
-                             err_msg = "the server_name " + 
-                                       std::string(lex->server_options.m_server_name.str) + 
-                                       " already exists in the mysql.servers";
-                             return true;
-                           }
-                           if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 || strcasecmp(lex->server_options.get_scheme(), MYSQL_SLAVE_WRAPPER) == 0)
-                             return false;
-                           if (add_address.compare(current_address) == 0) {
-                             err_msg = "the ip#port " + add_address + " already exists in the mysql.servers";
-                             return true;
-                           }
-                           return false;
-                         }) != server_list.end())
-        {
-          my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), err_msg.c_str());
-          goto error;
-        }
-
-        break;
-      }
       case TC_SQLCOM_ALTER_NODE:
       {
         DBUG_ASSERT(lex->m_sql_cmd != NULL);
@@ -5582,43 +5745,13 @@ mysql_execute_command(THD *thd, bool first_level)
           Otherwise, the raised error would be suppressed.
         */
         thd->no_send = TRUE;
-        if (lex->sql_command == TC_SQLCOM_CREATE_NODE)
-        {
-          Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
-          drop_node->execute(thd);
-        }
-        else if (lex->sql_command == TC_SQLCOM_ALTER_NODE)
+        if (lex->sql_command == TC_SQLCOM_ALTER_NODE)
         {
           Sql_cmd_alter_server *resume_node = new Sql_cmd_alter_server(&old_server_options);
           resume_node->execute(thd);
         }
         thd->no_send = FALSE;
         goto error;
-      }
-
-      /*
-       For create spider/spider_slave/tdbctl node logic blow.
-       After add spider/spider_slave/tdbctl node, we need dump schema from any other spider/tdbctl node.
-       At present, only create spider/spider_slave/tdbctl node support and need to this.
-     */
-      if (lex->sql_command == TC_SQLCOM_CREATE_NODE && lex->tc_with_schema)
-      {
-        /* always do reload first */
-        if (servers_reload(thd) || thd->cluster_conn_manager->refresh(FALSE, FALSE))
-        {
-          Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
-          drop_node->execute(thd);
-          my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "reload servers failed when creating node with schema option");
-          goto error;
-        }
-        if (tc_flush_routing(lex, thd->cluster_conn_manager))
-        {
-          Sql_cmd_drop_server *drop_node = new Sql_cmd_drop_server(lex->server_options.m_server_name, true);
-          drop_node->execute(thd);
-          goto error;
-        }
-        if(tc_load_schema_to_new_node(thd, lex))
-          goto error;
       }
 
       /*
@@ -5649,13 +5782,16 @@ mysql_execute_command(THD *thd, bool first_level)
     }
     case TC_SQLCOM_FLUSH_ROUTING:
     {
-      /*
-        NB: use server_uuid as lock string here
-        we add x lock to block any DDL or flush command
-      */
-      if ((res = lock_statement_by_name(thd, server_uuid_ptr, MDL_EXCLUSIVE)))
-      {
-        my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), "lock wait timeout");
+      /**
+       * Block the following types of commands:
+       * - Commands that modify routing: TC_SQLCOM_CREATE_NODE, TC_SQLCOM_ALTER_NODE, TC_SQLCOM_DROP_NODE
+       * - Commands that flush routing: TC_SQLCOM_FLUSH_ROUTING
+       * - Commands that perform forwarding based on routing: DDL etc
+       */  
+      TC_routing_manager_lock_guard routng_mgr_lock_guard(thd, MDL_EXCLUSIVE);
+      if(!routng_mgr_lock_guard.lock_successful()) {
+        my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), 
+                  routng_mgr_lock_guard.get_lock_error().c_str());
         goto error;
       }
 
@@ -5707,12 +5843,22 @@ mysql_execute_command(THD *thd, bool first_level)
     (execute_flag & (TC_REMOTE_NEED_EXECUTE|TC_SPIDER_NEED_EXECUTE|TC_ONLY_ONE_SPIDER_NEED_EXECUTE|TC_DESIGNATED_NODE_NEED_EXECUTE)))
   {
     thd->get_stmt_da()->reset_diagnostics_area();
-    /*
-      NB: use server_uuid as lock string here
-      we add S lock to block tdbctl flush routing(acquire X lock)
-     */
-    if (lock_statement_by_name(thd, server_uuid_ptr, MDL_SHARED))
+
+    /**
+      * Block the following types of commands:
+      * - Commands that modify routing: TC_SQLCOM_CREATE_NODE, TC_SQLCOM_ALTER_NODE, TC_SQLCOM_DROP_NODE
+      * - Commands that flush routing: TC_SQLCOM_FLUSH_ROUTING
+      *
+      * Allow concurrent execution of commands:
+      * - Commands that perform forwarding based on routing: DDL etc
+      */ 
+    TC_routing_manager_lock_guard routng_mgr_lock_guard(thd, MDL_SHARED);
+    if(!routng_mgr_lock_guard.lock_successful()) {
+      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), 
+                routng_mgr_lock_guard.get_lock_error().c_str());
       goto error;
+    }
+
     if (lock_dbtb_name(thd, parse_result.db_name.c_str(),
                        parse_result.table_name.c_str(), MDL_EXCLUSIVE))
       goto error;

@@ -16,6 +16,7 @@
 
 #include "mdl.h"
 #include "debug_sync.h"
+#include "mysql/psi/psi.h"
 #include "prealloced_array.h"
 #include <lf.h>
 #include "mysqld.h"
@@ -105,7 +106,8 @@ PSI_stage_info MDL_key::m_namespace_to_wait_state_name[NAMESPACE_END]=
   {0, "User lock", 0}, /* Be compatible with old status. */
   {0, "Waiting for locking service lock", 0},
   {0, "Waiting for backup lock", 0},
-  {0, "Waiting for binlog lock", 0}
+  {0, "Waiting for binlog lock", 0},
+  {0, "Waiting for tdbctl's routing management lock", 0},
 };
 
 #ifdef HAVE_PSI_INTERFACE
@@ -1641,6 +1643,7 @@ inline void MDL_lock::reinit(const MDL_key *mdl_key)
     case MDL_key::COMMIT:
     case MDL_key::BACKUP:
     case MDL_key::BINLOG:
+    case MDL_key::TC_ROUTING:
       m_strategy= &m_scoped_lock_strategy;
       break;
     default:
@@ -1680,6 +1683,7 @@ MDL_lock::get_unobtrusive_lock_increment(const MDL_request *request)
     case MDL_key::COMMIT:
     case MDL_key::BACKUP:
     case MDL_key::BINLOG:
+    case MDL_key::TC_ROUTING:
       return m_scoped_lock_strategy.m_unobtrusive_lock_increment[request->type];
     default:
       return m_object_lock_strategy.m_unobtrusive_lock_increment[request->type];

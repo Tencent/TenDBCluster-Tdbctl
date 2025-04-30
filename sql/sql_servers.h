@@ -125,6 +125,20 @@ bool tc_flush_routing(LEX *lex, Cluster_conn_manager* conn_mgr);
  */
 bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flushed, Cluster_conn_manager* conn_mgr, const char* wrapper);
 
+/**
+ * Flush routing information to a foreign server.
+ * 
+ * This function creates a temporary Cluster_conn_manager object, adds the user-specified 
+ * foreign server to this temporary Cluster_conn_manager object, and then refreshes the 
+ * routing for this foreign server.
+ *
+ * Note: Please additionally ensure that the user-specified node is an external node of the cluster.
+ * 
+ * @param lex The LEX structure containing server options and other command information
+ * @return bool Returns true if any operation fails, false if all operations succeed
+ */
+bool tc_flush_routing_to_foreign_server(LEX* lex);
+
 enum FLUSH_ROUTING_RESULT {
   SUCCESS = 0,                   // success
   UNEXPECTED_WRAPPER,            // node type that cannot flush routing
@@ -136,6 +150,24 @@ enum FLUSH_ROUTING_RESULT {
 extern const char *FLUSH_ROUTING_INFO[];
 int tc_check_and_repair_routing();
 void create_check_and_repaire_routing_thread();
+
+/**
+ * @brief Prepare for 'TDBCTL CREATE NODE' command
+ * 
+ * This function will:
+ * - Check server options
+ * - Generate proper server name
+ * - Check ip#port conflicts
+ * - Validate IP consistency
+ * 
+ * @param[in]  thd      Thread handler
+ * @param[in]  lex      LEX structure containing server options
+ * @param[out] err_msg  Error message buffer
+ * @retval false        Preparation succeeded
+ * @retval true         Preparation failed (error message will be stored in err_msg)
+ */
+bool prepare_server_creation(THD *thd, LEX *lex, std::string &err_msg);
+
 
 /**
    This class represent server options as set by the parser.

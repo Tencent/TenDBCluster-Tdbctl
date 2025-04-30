@@ -3951,6 +3951,24 @@ my_time_t string_to_timestamp(const string s)
   return my_system_gmt_sec(&l_time, &dummy_my_timezone, &dummy_in_dst_time_gap);
 }
 
+string timeval_to_str(const struct timeval &tv, const char *format, uint dec) {
+  time_t sec = tv.tv_sec;
+  struct tm tm_info;
+  localtime_r(&sec, &tm_info);
+  char buf[128];
+  size_t result = strftime(buf, sizeof(buf), format, &tm_info);
+  if(result == 0) {
+    sql_print_warning("function timeval_to_str() failed to format time");
+    return "";
+  }
+
+  if(dec > 0) {
+    snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), 
+        ".%0*ld", dec > 6 ? 6 : dec, tv.tv_usec);
+  }
+  return buf;
+}
+
 void init_result_map(map<string, tc_exec_info>& result_map,
         set<string> &ipport_set)
 {
@@ -4795,9 +4813,12 @@ void Query_exec_manager::build_server_maps(Cluster_conn_manager *conn_mgr) {
   }
 }
 
+const std::string Cluster_conn_manager::UNKOWN_SERVER_NAME = "UNKNOWN_SERVER_NAME";
+
 Cluster_conn_manager::Cluster_conn_manager()
     : initialized(false), spider_count(0U), shard_count(0U),
-      server_version(0UL), MAX_NUM_CONN_THREADS(256UL) {
+      server_version(0UL), my_server_name(UNKOWN_SERVER_NAME), 
+      MAX_NUM_CONN_THREADS(256UL) {
   init_alloc_root(PSI_NOT_INSTRUMENTED, &mem_root, 8192, 0);
 }
 
@@ -4888,6 +4909,55 @@ bool Cluster_conn_manager::refresh(bool force, bool no_connect) {
   spider_count = server_conns[NODE_TYPE_SPIDER].size();
   shard_count = server_conns[NODE_TYPE_REMOTE].size();
   initialized = true;
+  DBUG_RETURN(false);
+}
+
+bool Cluster_conn_manager::add_foreign_server(const AUTH_INFO &foreign_server_info, 
+                                              const string &foreign_server_name,
+                                              bool no_connect) {
+  DBUG_ENTER("Cluster_conn_manager::add_foreign_server");
+
+  char errmsg[256];
+  // Get node type from wrapper name
+  int node_type = get_node_type_by_wrapper(foreign_server_info.wrapper.c_str());
+  if (node_type < 0) {
+    snprintf(errmsg, sizeof(errmsg), "invalid wrapper name %s", 
+             foreign_server_info.wrapper.c_str());
+    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
+    DBUG_RETURN(true);
+  }
+  
+  // Check if server already exists
+  if (server_auths[node_type].find(foreign_server_name) != server_auths[node_type].end()) {
+    snprintf(errmsg, sizeof(errmsg), "server %s already exists", foreign_server_name.c_str());
+    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
+    DBUG_RETURN(true);
+  }
+  
+  // Add server authentication info
+  server_auths[node_type][foreign_server_name] = foreign_server_info;
+
+  // Skip connection if requested
+  if (no_connect) {
+    server_conns[node_type][foreign_server_name] = NULL;
+    DBUG_RETURN(false);
+  }
+
+  // Attempt to connect to the server
+  MYSQL *mysql = tc_conn_connect(foreign_server_info);
+  if (mysql == NULL) {
+    // Clean up if connection failed
+    server_auths[node_type].erase(foreign_server_name);
+    my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), foreign_server_info.ipport_str.c_str());
+    DBUG_RETURN(true);
+  }
+
+  // Store connection handle
+  server_conns[node_type][foreign_server_name] = mysql;
+  
+  // Update connection counts
+  spider_count = server_conns[NODE_TYPE_SPIDER].size();
+  shard_count = server_conns[NODE_TYPE_REMOTE].size();
   DBUG_RETURN(false);
 }
 
@@ -5561,4 +5631,46 @@ bool tc_distribute_spider_only(int sql_type) {
 bool tc_distribute_spider_and_remote(int sql_type) {
   return std::any_of(std::begin(tc_distribute_spider_remote_types), std::end(tc_distribute_spider_remote_types), [=](int i)
     { return i == sql_type; });
+}
+
+int tc_system(const char *cmd, const char *cmd_log) {
+  int ret = system(cmd);
+  if(cmd == NULL) {  /* Null pointer for system() */
+    sql_print_warning("Null pointer for system() (return %d): Command is NULL", ret);
+  } else {  /* Normal system() call */
+    char err_buf[256];
+    if (cmd_log == NULL) {
+      cmd_log = cmd;
+    }
+    if (ret == -1) {
+      // Error in system() itself (e.g., fork failure, etc.)
+      int system_errno = errno;
+      errno = 0;
+      char *ret_buff = strerror_r(errno, err_buf, sizeof(err_buf));
+      if(errno != 0) {       
+        sql_print_warning("In tc_system(), strerror_r failed with errno=%d", errno);
+      }
+      sql_print_error("Error in system() (return %d) itself: %s (errno=%d). Input command: %s", 
+                      ret, ret_buff, system_errno, cmd_log);
+    } else if (WIFEXITED(ret)) {
+      if(WEXITSTATUS(ret) != 0) {
+        // Command exited normally but with non-zero exit code
+        sql_print_error("When calling system() (return %d), command exited normally but with "
+                        "non-zero exit code: %d. Input command: %s", ret, WEXITSTATUS(ret), cmd_log);
+      } else {
+        // Command exited normally with zero exit code
+        sql_print_information("When calling system() (return %d), command exited normally with "
+                              "zero exit code. Input command: %s", ret, cmd_log);
+      }
+    } else if (WIFSIGNALED(ret)) {
+      // Command exited due to a signal
+      sql_print_error("When calling system() (return %d), command exited due to a signal: %d. "
+                      "Input command: %s", ret, WTERMSIG(ret), cmd_log);
+    } else {
+      // Command exited for some other reason
+      sql_print_error("When calling system() (return %d), command exited for some other reason. "
+                      "Input command: %s", ret, cmd_log);
+    }
+  }
+  return ret;
 }

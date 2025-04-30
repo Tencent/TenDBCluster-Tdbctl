@@ -5,6 +5,7 @@
 #ifndef TC_BASE_INCLUDED
 #define TC_BASE_INCLUDED
 
+#include "my_time.h"
 #include <iostream>
 #include <string>
 #include <map>
@@ -379,6 +380,30 @@ public:
    * @retval FALSE on success, TRUE on error
    * */
   bool refresh(bool force, bool no_connect);
+  
+  /**
+   * @brief This function is used to intentionally skip the refresh operation and set 'initialized' to true. 
+   * 
+   * If a Cluster_conn_manager object has not called either the refresh() function or this function, 
+   * 'initialized' will remain false, and all connect functions of this Cluster_conn_manager object 
+   * will become invalid.
+   * 
+   * @see refresh()
+   * @see initialized
+   */
+  void skip_refresh_intentionally() { initialized = true; }
+
+  /**
+  * Add a foreign server to the cluster connection manager
+  * 
+  * @param foreign_server_info Authentication information for the server
+  * @param foreign_server_name Name of the foreign server
+  * @param no_connect If true, skip connection attempt after adding server info
+  * @return bool Returns true on failure, false on success
+  */
+  bool add_foreign_server(const AUTH_INFO &foreign_server_info, 
+                          const string &foreign_server_name,
+                          bool no_connect=true);
 
   /**
    * @brief Connect to a server identified by server_name (w/ node_type)
@@ -477,6 +502,8 @@ public:
     reset write timeout for connections established by tdbctl to other nodes in the cluster
   */
   void reset_conn_write_timeout(ulong timeout);
+
+  static const std::string UNKOWN_SERVER_NAME;
 
 private:
 
@@ -826,6 +853,16 @@ string tc_get_remote_grant_sql(
 	map<string, string> &tdbctl_passwd_map);
 
 my_time_t string_to_timestamp(const string s);
+
+/**
+ * Convert timeval structure to formatted string
+ * 
+ * @param tv Timeval structure to convert
+ * @param format   Format string (default: "%Y-%m-%d %H:%M:%S")
+ * @param dec Decimal precision for the microseconds part(0-6)
+ * @return string Formatted time string
+ */
+string timeval_to_str(const struct timeval &tv, const char *format="%Y-%m-%d %H:%M:%S", uint dec=6);
 void init_result_map(map<string, tc_exec_info>& result_map, set<string> &ipport_set);
 void init_result_map2(map<string, tc_exec_info>& result_map, map<string, string> &ipport_map);
 string concat_result_map(map<string, tc_exec_info> result_map);
@@ -998,5 +1035,15 @@ bool tdbctl_check_table(THD *thd, TABLE_LIST *tables);
 int tdbctl_check_tables(THD *thd, const char *db, String *wild);
 
 bool tdbctl_check_routing(THD *thd);
+
+/**
+ * @brief Execute a command by system() function and 
+ * log the execution status into error log.
+ * 
+ * @param cmd The command to execute.
+ * @param cmd_log The command to log.
+ * @return int Return value of system() function.
+ */
+int tc_system(const char *cmd, const char *cmd_log=NULL);
 
 #endif /* TC_BASE_INCLUDED */

@@ -29,6 +29,7 @@
 #include "pfs_program.h"
 #include "field.h"
 #include "pfs_variable.h"
+#include "storage/perfschema/pfs_column_types.h"
 
 int PFS_host_row::make_row(PFS_host *pfs)
 {
@@ -284,6 +285,11 @@ int PFS_object_row::make_row(const MDL_key *mdl)
   case MDL_key::LOCKING_SERVICE:
     m_object_type= OBJECT_TYPE_LOCKING_SERVICE;
     m_schema_name_length= mdl->db_name_length();
+    m_object_name_length= mdl->name_length();
+    break;
+  case MDL_key::TC_ROUTING:
+    m_object_type= OBJECT_TYPE_TC_ROUTING;
+    m_schema_name_length= 0;
     m_object_name_length= mdl->name_length();
     break;
   case MDL_key::NAMESPACE_END:
@@ -574,6 +580,9 @@ void set_field_object_type(Field *f, enum_object_type object_type)
     break;
   case OBJECT_TYPE_LOCKING_SERVICE:
     PFS_engine_table::set_field_varchar_utf8(f, "LOCKING SERVICE", 15);
+    break;
+  case OBJECT_TYPE_TC_ROUTING:
+    PFS_engine_table::set_field_varchar_utf8(f, "TDBCTL ROUTING LOCK", 19);
     break;
   case NO_OBJECT_TYPE:
   default:

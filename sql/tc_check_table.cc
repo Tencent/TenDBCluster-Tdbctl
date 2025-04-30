@@ -7,6 +7,7 @@
 #include <unordered_set>
 
 #include "auth_common.h"
+#include "mdl.h"
 #include "sql_class.h"
 #include "sql_db.h"
 #include "sql_show.h" // IS_COLUMNS_* indices
@@ -216,7 +217,7 @@ public:
     string name = db + "#" + table;
 
     MDL_REQUEST_INIT(&mdl_request, MDL_key::USER_LEVEL_LOCK, "", name.c_str(),
-                     MDL_SHARED, MDL_STATEMENT);
+                     MDL_SHARED, MDL_EXPLICIT);
     locked = !m_thd->mdl_context.acquire_lock(&mdl_request,
                                               thd->variables.lock_wait_timeout);
   }
