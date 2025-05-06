@@ -7,7 +7,6 @@
 #include <unordered_set>
 
 #include "auth_common.h"
-#include "mdl.h"
 #include "sql_class.h"
 #include "sql_db.h"
 #include "sql_show.h" // IS_COLUMNS_* indices

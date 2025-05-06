@@ -5,7 +5,6 @@
 #ifndef TC_BASE_INCLUDED
 #define TC_BASE_INCLUDED
 
-#include "my_time.h"
 #include <iostream>
 #include <string>
 #include <map>

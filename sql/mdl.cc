@@ -16,7 +16,6 @@
 
 #include "mdl.h"
 #include "debug_sync.h"
-#include "mysql/psi/psi.h"
 #include "prealloced_array.h"
 #include <lf.h>
 #include "mysqld.h"

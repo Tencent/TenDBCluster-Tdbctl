@@ -6,15 +6,9 @@
 Add for node's control
 */
 #include "tc_node.h"
-#include "my_sys.h"
-#include "mysqld.h"
-#include "mysqld_error.h"
 #include "sql_base.h"         // open_tables, open_and_lock_tables,
 #include "log.h"
-#include "sql_servers.h"
 #include "tc_base.h"
-#include <cstring>
-#include <string>
 #include <thread>
 #include <fstream>
 #include <iostream>

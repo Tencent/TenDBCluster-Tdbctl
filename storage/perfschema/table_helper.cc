@@ -29,7 +29,6 @@
 #include "pfs_program.h"
 #include "field.h"
 #include "pfs_variable.h"
-#include "storage/perfschema/pfs_column_types.h"
 
 int PFS_host_row::make_row(PFS_host *pfs)
 {
