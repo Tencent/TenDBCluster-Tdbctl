@@ -3008,10 +3008,10 @@ bool prepare_server_creation(THD *thd, LEX *lex, std::string &err_msg)
   err_msg.clear();
 
   /* Check if all USER, PASSWORD, HOST, PORT options are specified */
-  if (!(lex->server_options.get_host() &&
-        lex->server_options.get_port() &&
-        lex->server_options.get_username() &&
-        lex->server_options.get_password()))
+  if (!lex->server_options.get_host() ||
+      (lex->server_options.get_port() == lex->server_options.PORT_NOT_SET) ||
+      !lex->server_options.get_username() ||
+      !lex->server_options.get_password())
   {
     err_msg = "USER, PASSWORD, HOST, and PORT options should all be specified";
     return true;

@@ -18,6 +18,55 @@ TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL
 TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
 TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
 
+# Set routing.
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+
+# Show routing.
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Case 0: TDBCTL CREATE NODE execution failed due to option validation check failure.
+SET tc_admin=ON;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+# Missing required options
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: USER, PASSWORD, HOST, and PORT options should all be specified
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql') WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: USER, PASSWORD, HOST, and PORT options should all be specified
+# The specified NUMBER already exists
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306, NUMBER 1);
+ERROR HY000: CREATE NODE FAILED: the server_name SPIDER1 already exists in the mysql.servers
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306, NUMBER 1) WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: the server_name SPIDER1 already exists in the mysql.servers
+# The specified ip#port already exists
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.5', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: the ip#port 172.18.0.5#3306 already exists in the mysql.servers
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.11', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: the ip#port 172.18.0.11#3306 already exists in the mysql.servers
+# The specified ip is not consistent with the cluster
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '127.0.0.1', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: mysql.servers can't contain both loop-back network address and external network address, please change the value of 'host' column
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST 'localhost', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: mysql.servers can't contain both loop-back network address and external network address, please change the value of 'host' column
+
+# Restore mysql.servers;
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
 # Set general_log output to table.
 Set general log for all cluster nodes.
 

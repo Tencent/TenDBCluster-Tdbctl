@@ -14,6 +14,54 @@ INSERT INTO origin_servers SELECT * FROM mysql.servers;
 SELECT * FROM mysql.servers;
 
 --echo
+--echo # Set routing.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Show routing.
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Case 0: TDBCTL CREATE NODE execution failed due to option validation check failure.
+--connection tdbctl0
+SET tc_admin=ON;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+--echo # Missing required options
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PORT 3306);
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql') WITH SCHEMA;
+--echo # The specified NUMBER already exists
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306, NUMBER 1);
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306, NUMBER 1) WITH SCHEMA;
+--echo # The specified ip#port already exists
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.5', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.11', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+--echo # The specified ip is not consistent with the cluster
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '127.0.0.1', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST 'localhost', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+
+--echo
+--echo # Restore mysql.servers;
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+
+--echo
 --echo # Set general_log output to table.
 --source suite/tdbctl/inc/set_cluster_general_log_to_table.inc
 

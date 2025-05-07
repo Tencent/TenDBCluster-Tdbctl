@@ -5503,10 +5503,10 @@ mysql_execute_command(THD *thd, bool first_level)
        * Allow concurrent execution of commands:
        * - TC_SQLCOM_CREATE_NODE (Support parallel backup/import data with "WITH SCHEMA" option)
        */      
-      TC_routing_manager_lock_guard routng_mgr_lock_guard(thd, MDL_INTENTION_EXCLUSIVE);
-      if(!routng_mgr_lock_guard.lock_successful()) {
+      TC_routing_manager_lock_guard routing_mgr_lock_guard(thd, MDL_INTENTION_EXCLUSIVE);
+      if(!routing_mgr_lock_guard.lock_successful()) {
         my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), 
-                  routng_mgr_lock_guard.get_lock_error().c_str());
+                  routing_mgr_lock_guard.get_lock_error().c_str());
         goto error;
       }
 
@@ -5620,7 +5620,7 @@ mysql_execute_command(THD *thd, bool first_level)
             We use this flag to tell the rollback action not to call my_ok().
             Otherwise, the raised error would be suppressed.
           */
-          thd->no_send = TRUE;  // todo :need to do this?
+          thd->no_send = TRUE;
           roll_back->execute(thd);
           thd->no_send = FALSE;
           goto error;
@@ -5654,21 +5654,21 @@ mysql_execute_command(THD *thd, bool first_level)
        * - Commands that flush routing: TC_SQLCOM_FLUSH_ROUTING
        * - Commands that perform forwarding based on routing: DDL etc
        */  
-      TC_routing_manager_lock_guard routng_mgr_lock_guard(thd, MDL_EXCLUSIVE);
-      if(!routng_mgr_lock_guard.lock_successful()) {
+      TC_routing_manager_lock_guard routing_mgr_lock_guard(thd, MDL_EXCLUSIVE);
+      if(!routing_mgr_lock_guard.lock_successful()) {
         switch(lex->sql_command) 
         {
         case TC_SQLCOM_ALTER_NODE:
           my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), 
-                    routng_mgr_lock_guard.get_lock_error().c_str());
+                    routing_mgr_lock_guard.get_lock_error().c_str());
           break;
         case TC_SQLCOM_DROP_NODE:
           my_error(ER_TCADMIN_DROP_NODE_ERROR, MYF(0), 
-                    routng_mgr_lock_guard.get_lock_error().c_str());
+                    routing_mgr_lock_guard.get_lock_error().c_str());
           break;
         default:
           my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), 
-                    routng_mgr_lock_guard.get_lock_error().c_str());
+                    routing_mgr_lock_guard.get_lock_error().c_str());
         }
         goto error;
       }
@@ -5788,10 +5788,10 @@ mysql_execute_command(THD *thd, bool first_level)
        * - Commands that flush routing: TC_SQLCOM_FLUSH_ROUTING
        * - Commands that perform forwarding based on routing: DDL etc
        */  
-      TC_routing_manager_lock_guard routng_mgr_lock_guard(thd, MDL_EXCLUSIVE);
-      if(!routng_mgr_lock_guard.lock_successful()) {
+      TC_routing_manager_lock_guard routing_mgr_lock_guard(thd, MDL_EXCLUSIVE);
+      if(!routing_mgr_lock_guard.lock_successful()) {
         my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), 
-                  routng_mgr_lock_guard.get_lock_error().c_str());
+                  routing_mgr_lock_guard.get_lock_error().c_str());
         goto error;
       }
 
@@ -5852,10 +5852,10 @@ mysql_execute_command(THD *thd, bool first_level)
       * Allow concurrent execution of commands:
       * - Commands that perform forwarding based on routing: DDL etc
       */ 
-    TC_routing_manager_lock_guard routng_mgr_lock_guard(thd, MDL_SHARED);
-    if(!routng_mgr_lock_guard.lock_successful()) {
+    TC_routing_manager_lock_guard routing_mgr_lock_guard(thd, MDL_SHARED);
+    if(!routing_mgr_lock_guard.lock_successful()) {
       my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), 
-                routng_mgr_lock_guard.get_lock_error().c_str());
+                routing_mgr_lock_guard.get_lock_error().c_str());
       goto error;
     }
 
