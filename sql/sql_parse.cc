@@ -2631,14 +2631,14 @@ public:
     }
 
     // Construct lock name using server UUID
-    string name = server_uuid_ptr;
+    std::string name(server_uuid_ptr ? server_uuid_ptr : "");
     name += "#routing_manager";
 
     // Initialize and acquire MDL lock
     MDL_REQUEST_INIT(&mdl_request, MDL_key::TC_ROUTING, "", name.c_str(),
                      lock_type, MDL_EXPLICIT);
     locked = !m_thd->mdl_context.acquire_lock(&mdl_request,
-                                              thd->variables.lock_wait_timeout);
+                                              m_thd->variables.lock_wait_timeout);
     if(!locked) {
       lock_error = "lock wait timeout for routing management";
     }
