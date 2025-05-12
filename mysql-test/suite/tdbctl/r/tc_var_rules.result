@@ -41,7 +41,7 @@ SET tc_set_forwarding_rules = '{"time_zone": "SPIDER_ALL, TDBCTL, SPIDER_ONE"}';
 ERROR HY000: Failed to set variable-level forwarding rules: Conflicting execute flags exist for 'time_zone'
 SET tc_set_forwarding_rules = '{"Unknown_sys_var": "TDBCTL"}';
 Warnings:
-Warning	12056	When setting variable-level forwarding rules: unknown system variables: Unknown_sys_var
+Warning	12057	When setting variable-level forwarding rules: unknown system variables: Unknown_sys_var
 SHOW VARIABLES LIKE 'tc_set_forwarding_rules';
 Variable_name	Value
 tc_set_forwarding_rules	{"Unknown_sys_var": "TDBCTL"}

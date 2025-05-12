@@ -3007,13 +3007,22 @@ mysql_execute_command(THD *thd, bool first_level)
       goto error;
     }
 
+    // Check whether there is a connection to the target forwarding-type node.
+    Exec_Flag ret_flag = check_target_forwarding_nodes(execute_flag, thd->cluster_conn_manager);
+    if (ret_flag > 0)
+    {
+      std::string err_flag_str = exec_flag_to_string(ret_flag);
+      my_error(ER_LACK_TARGET_FORWARDING_NODE, MYF(0), get_stmt_type_str(lex->sql_command), err_flag_str.c_str());
+      goto error;
+    }
+
     parse_result.shard_count = thd->cluster_conn_manager->get_shard_count();
 
     if (!tc_command_convert(thd, lex, &parse_result))
       goto error;
     
     // Check whether the rewritten sqls is complete
-    Exec_Flag ret_flag = check_rewritten_sql(execute_flag, &parse_result);
+    ret_flag = check_rewritten_sql(execute_flag, &parse_result);
     if (ret_flag > 0)
     {
       std::string err_flag_str = exec_flag_to_string(ret_flag);

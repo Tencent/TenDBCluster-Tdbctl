@@ -2484,6 +2484,33 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
 }
 
 /**
+  @brief Check whether there is a connection to the target forwarding-type node.
+
+  @param exec_flag          [IN]        The execute flag.
+  @param conn_mgr           [IN]        The connection manager.
+
+  @return
+    0                    complete
+    > 0                  incomplete. return value contains the execute flags that lack target forwarding node.
+*/
+Exec_Flag check_target_forwarding_nodes(Exec_Flag exec_flag, Cluster_conn_manager *conn_mgr) {
+  Exec_Flag err_flag = 0;
+  if(conn_mgr == nullptr) {
+    return err_flag;
+  }
+  if((exec_flag & TC_SPIDER_NEED_EXECUTE) && (conn_mgr->get_spider_count() <= 0)) {
+    err_flag |= TC_SPIDER_NEED_EXECUTE;
+  }
+  if((exec_flag & TC_ONLY_ONE_SPIDER_NEED_EXECUTE) && (conn_mgr->get_spider_count() <= 0)) {
+    err_flag |= TC_ONLY_ONE_SPIDER_NEED_EXECUTE;
+  }
+  if((exec_flag & TC_REMOTE_NEED_EXECUTE) && (conn_mgr->get_shard_count() <= 0)) {
+    err_flag |= TC_REMOTE_NEED_EXECUTE;
+  }
+  return err_flag;
+}
+
+/**
   @brief Check whether the rewritten sql is complete according to the execute flag.
 
   @param exec_flag          [IN]        The execute flag.
