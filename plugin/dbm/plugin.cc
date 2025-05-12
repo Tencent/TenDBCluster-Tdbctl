@@ -13,6 +13,8 @@
 #include "dbm.h"
 
 my_bool opt_allow_standalone_primary = FALSE;
+uint opt_enable_primary_retry_times = 6;
+uint opt_enable_primary_initial_interval = 3;
 
 extern ST_FIELD_INFO tdbctl_nodes_fields_info[];
 extern int i_s_tdbctl_nodes_fill(THD *thd, TABLE_LIST *tables, Item *cond);
@@ -29,9 +31,22 @@ static MYSQL_SYSVAR_BOOL(
     "Whether a Primary node with no replicas should be allowed.", NULL, NULL,
     FALSE);
 
+static MYSQL_SYSVAR_UINT(
+    enable_primary_retry_times, opt_enable_primary_retry_times, PLUGIN_VAR_OPCMDARG, 
+    "The number of retries for attempting to set itself "
+    "as the primary node during startup.",
+    NULL, NULL, 6, 1, 25, 1);
+
+static MYSQL_SYSVAR_UINT(
+    enable_primary_initial_interval, opt_enable_primary_initial_interval, PLUGIN_VAR_OPCMDARG, 
+    "Initial retry interval (seconds) for attempting to set itself "
+    "as the primary node during startup.",
+    NULL, NULL, 3, 1, 120, 1);
+
 static struct st_mysql_sys_var *dbm_vars[] = {
     MYSQL_SYSVAR(allow_standalone_primary),
-    NULL
+    MYSQL_SYSVAR(enable_primary_retry_times),
+    MYSQL_SYSVAR(enable_primary_initial_interval),
 };
 
 /* Init/Deinit functions */

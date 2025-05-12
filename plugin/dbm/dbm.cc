@@ -4,6 +4,7 @@
 
 #ifndef MYSQL_SERVER
 #define MYSQL_SERVER
+#include <climits>
 #endif
 #include <my_global.h>
 #include <my_thread.h>
@@ -65,7 +66,7 @@ using std::string;
     if ((A)) {                                                                 \
       my_error(ER_TCADMIN_ENABLE_PRIMARY, MYF(0), (B));                        \
     } else {                                                                   \
-      sql_print_warning((B));                                                  \
+      sql_print_warning("Failed to enable Primary: %s", (B));                  \
     }                                                                          \
   } while (0)
 
@@ -269,13 +270,24 @@ static void examine_tdbctl_node(THD *thd, Cluster_conn_manager *conn_mgr,
   DBUG_VOID_RETURN;
 }
 
+enum CHECK_PRIMARY_RESULT {
+  VALID_CANDIDATE = 0,             // Valid primary node candidate
+  IS_ALREADY_PRIMARY,              // Already a primary node
+  IDENTIFY_SELF_FAILED,            // Failed to identify current server
+  SLAVE_CANNOT_BE_PRIMARY,         // Slave nodes cannot be the primary
+  SELF_WRONG_STATUS,               // Current server has wrong status
+  PRIMARY_ALREADY_EXISTS,          // Another primary node already exists
+  STANDALONE_PRIMARY_NOT_ALLOWED,  // The standalone primary node is not allowed
+  INVALID_FOR_UNKNOWN_REASON,
+};
+
 /**
  * @brief Check if current node is valid to enable Primary Mode
  *
  * @retval 0 OK to enable Primary Mode
- * @retval 1 Failed to pass all Primary checks
+ * @retval >0 Failed to pass all Primary checks
  * */
-static int check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
+static CHECK_PRIMARY_RESULT check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
   char errmsg[512];
   map<string, AUTH_INFO> auths;
   map<string, MYSQL *> conns;
@@ -286,7 +298,7 @@ static int check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
 
   if (conn_mgr->identify_self()) {
     enable_primary_error(thd, ERR_IDENTIFY_SELF_STR);
-    return 1;
+    return CHECK_PRIMARY_RESULT::IDENTIFY_SELF_FAILED;
   }
   this_server = conn_mgr->get_my_server_name();
   auths = conn_mgr->get_auth_map(NODE_TYPE_CTL);
@@ -298,7 +310,7 @@ static int check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
                         repl_master_name, cluster_role, status, message, repl_info);
     if (cluster_role == CLUSTER_ROLE_PRIMARY_STR)
       /* Already a Primary, do nothing */
-      return 0;
+      return CHECK_PRIMARY_RESULT::IS_ALREADY_PRIMARY;
 
     /* ERROR: Current server is a replica */
     if (repl_master_name.length()) {
@@ -306,7 +318,7 @@ static int check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
                "current server is a replica of %s; RESET SLAVE first",
                repl_master_name.c_str());
       enable_primary_error(thd, errmsg);
-      return 1;
+      return CHECK_PRIMARY_RESULT::SLAVE_CANNOT_BE_PRIMARY;
     }
 
     if (status != NODE_STATUS_ONLINE_STR) {
@@ -314,7 +326,7 @@ static int check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
                "current server's status: %s, errmsg: %s", status.c_str(),
                (message.length() ? message.c_str() : "<empty>"));
       enable_primary_error(thd, errmsg);
-      return 1;
+      return CHECK_PRIMARY_RESULT::SELF_WRONG_STATUS;
     }
   }
 
@@ -334,7 +346,7 @@ static int check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
                "existing Primary node: %s; disable it first",
                server_name.c_str());
       enable_primary_error(thd, errmsg);
-      return 1;
+      return CHECK_PRIMARY_RESULT::PRIMARY_ALREADY_EXISTS;
     }
 
     /* Count online replicas */
@@ -348,10 +360,10 @@ static int check_primary_conditions(THD *thd, Cluster_conn_manager *conn_mgr) {
     enable_primary_error(
         thd, "with dbm_allow_standalone_primary=OFF, current server needs at "
              "least 1 ONLINE replica to enable Primary Mode");
-    return 1;
+    return CHECK_PRIMARY_RESULT::STANDALONE_PRIMARY_NOT_ALLOWED;
   }
 
-  return 0;
+  return CHECK_PRIMARY_RESULT::VALID_CANDIDATE;
 }
 
 int i_s_tdbctl_nodes_fill(THD *thd, TABLE_LIST *tables, Item *cond) {
@@ -371,7 +383,7 @@ int i_s_tdbctl_nodes_fill(THD *thd, TABLE_LIST *tables, Item *cond) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
   conn_mgr = thd->cluster_conn_manager;
-  if (conn_mgr->refresh(FALSE, TRUE) || conn_mgr->connect(NODE_TYPE_CTL, TRUE))
+  if (conn_mgr->refresh(FALSE, TRUE) || conn_mgr->connect_paral(NODE_TYPE_CTL, TRUE))
     return 1;
 
   table = tables->table;
@@ -419,6 +431,7 @@ int i_s_tdbctl_nodes_fill(THD *thd, TABLE_LIST *tables, Item *cond) {
 /* Enable Primary Mode */
 int dbm_enable_primary(THD *thd) {
   Cluster_conn_manager *conn_mgr;
+  CHECK_PRIMARY_RESULT check_result = CHECK_PRIMARY_RESULT::INVALID_FOR_UNKNOWN_REASON;
 
   if (thd->lex->tc_force)
     /* No checks are needed */
@@ -428,9 +441,11 @@ int dbm_enable_primary(THD *thd) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
   conn_mgr = thd->cluster_conn_manager;
-  if (conn_mgr->refresh(FALSE, TRUE) || conn_mgr->connect(NODE_TYPE_CTL, TRUE))
+  if (conn_mgr->refresh(FALSE, TRUE) || conn_mgr->connect_paral(NODE_TYPE_CTL, TRUE))
     return 1;
-  if (check_primary_conditions(thd, conn_mgr))
+  check_result = check_primary_conditions(thd, conn_mgr);
+  if ((check_result != CHECK_PRIMARY_RESULT::VALID_CANDIDATE) && 
+      (check_result != CHECK_PRIMARY_RESULT::IS_ALREADY_PRIMARY))
     return 1;
 
 ok:
@@ -473,7 +488,7 @@ int dbm_get_primary(THD *thd) {
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
   conn_mgr = thd->cluster_conn_manager;
-  if (conn_mgr->refresh(FALSE, TRUE) || conn_mgr->connect(NODE_TYPE_CTL, TRUE))
+  if (conn_mgr->refresh(FALSE, TRUE) || conn_mgr->connect_paral(NODE_TYPE_CTL, TRUE))
     return 1;
   if (conn_mgr->identify_self()) {
     my_error(ER_TCADMIN_GET_PRIMARY, MYF(0), ERR_IDENTIFY_SELF_STR);
@@ -531,10 +546,44 @@ int dbm_startup_enable_primary() {
   int err = 0;
   Cluster_conn_manager *conn_mgr = new Cluster_conn_manager;
 
-  if (conn_mgr->refresh(FALSE, TRUE) ||
-      conn_mgr->connect(NODE_TYPE_CTL, TRUE) ||
-      check_primary_conditions(NULL, conn_mgr))
+  uint retry_times = opt_enable_primary_retry_times;
+  uint retry_interval = opt_enable_primary_initial_interval;
+
+  while(retry_times > 0) {
+    /* unexpected connection error cannot be ignored */
+    if (conn_mgr->refresh(FALSE, TRUE) ||
+        conn_mgr->connect_paral(NODE_TYPE_CTL, TRUE)) {
+      err = 1;
+      break;
+    }
+
+    CHECK_PRIMARY_RESULT check_result = check_primary_conditions(NULL, conn_mgr);
+    /* Valid primary node candidate */
+    if((check_result == CHECK_PRIMARY_RESULT::VALID_CANDIDATE) || 
+       (check_result == CHECK_PRIMARY_RESULT::IS_ALREADY_PRIMARY)) {
+      err = 0;
+      break;
+    }
+
     err = 1;
+    --retry_times;
+    /* In this case, the slave may not have finished booting, so we wait and try again */
+    if((check_result == CHECK_PRIMARY_RESULT::STANDALONE_PRIMARY_NOT_ALLOWED) || 
+       (check_result == CHECK_PRIMARY_RESULT::SELF_WRONG_STATUS)) {
+      if(retry_times > 0) {
+        sql_print_warning("Startup Enable Primary Thread: Wait %u seconds"
+                          " and then try to enable primary", retry_interval); 
+        sleep(retry_interval);
+        if(retry_interval <= UINT_MAX - retry_interval)
+          retry_interval *= 2;
+        else
+          retry_interval = UINT_MAX;
+      }
+    } else {
+      /* In other case, we won't retry. */
+      break;
+    }
+  }
 
   if (!err) { /* OK */
     TDBCTL_SET_PRIMARY_MODE_ON;

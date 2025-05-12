@@ -9951,7 +9951,7 @@ void *tdbctl_startup_enable_primary_worker(void *arg) {
     We need to connect to this server itself before attempting to ENABLE
     PRIMARY, so we wait here before the server is ready for connection.
   */
-  sql_print_information("Tdbctl: waiting for server's readiness to connect");
+  sql_print_information("Startup Enable Primary Thread: waiting for server's readiness to connect");
 
 #if !defined(EMBEDDED_LIBRARY) && !defined(_WIN32)
   bool ready = FALSE;
@@ -9968,11 +9968,11 @@ void *tdbctl_startup_enable_primary_worker(void *arg) {
 #endif
 
   /* Try enabling Primary once, then quit regardless of the result */
-  sql_print_information("Tdbctl: trying to enable Primary Mode at startup");
+  sql_print_information("Startup Enable Primary Thread: trying to enable Primary Mode at startup");
   if ((*tdbctl_startup_enable_primary)()) {
-    sql_print_information("Tdbctl: Primary Mode is not enabled");
+    sql_print_information("Startup Enable Primary Thread: Primary Mode is not enabled");
   } else {
-    sql_print_information("Tdbctl: Primary Mode is enabled successfully");
+    sql_print_information("Startup Enable Primary Thread: Primary Mode is enabled successfully");
   }
   return 0;
 }

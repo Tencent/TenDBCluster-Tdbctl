@@ -97,6 +97,15 @@ enum enum_node_type {
 #define TC_STR_SINGLE_QUOTED(a) std::string("'" + (a) + "'")
 #define TC_STR_BACK_QUOTED(a) std::string("`" + (a) + "`")
 
+#define connect_paral_error(A, B)                                              \
+  do {                                                                         \
+    if ((A)) {                                                                 \
+      my_error(ER_TCADMIN_PARAL_CONNECT_ERROR, MYF(0), (B));                   \
+    } else {                                                                   \
+      sql_print_error("Failed to build connections in parallel: %s", (B));     \
+    }                                                                          \
+  } while (0)
+
 //mysql guard to free mysql connection
 #define MYSQL_GUARD(p) std::shared_ptr<MYSQL> p##p(p, \
 [](MYSQL *p) {mysql_close(p);});
@@ -328,6 +337,28 @@ private:
   int exec_flag;
 };
 
+enum Node_conn_status {
+  CONNECT_SUCCEED = 0,          // connection is valid
+  CONNECT_FAILED,               // failed to connect the server
+  UNEXPECTED_CONNECTION_ERROR,  // connection errors below cannot be ignored
+  WRONG_SERVERNAME_OR_TYPE,     // wrong server name or server type
+  AUTO_REPAIR_DISABLED,  // connection is invalid and tc_auto_fix_conns is disabled
+};
+
+inline bool is_unexpected_connect_error(Node_conn_status s) {
+  return s >= Node_conn_status::UNEXPECTED_CONNECTION_ERROR;
+}
+
+struct Node_to_conn {
+public:
+  std::string server_name;
+  Node_conn_status conn_status;
+  std::string err_msg;
+  Node_to_conn(const std::string &name, Node_conn_status status, 
+               const std::string &err): server_name(name), 
+               conn_status(status), err_msg(err) {}
+};
+
 class Cluster_conn_manager {
 public:
   friend class Query_exec_manager;
@@ -382,6 +413,17 @@ public:
    * @retval TRUE on failure, FALSE on success
    * */
   bool connect(enum_node_type type, bool passive);
+
+  /**
+   * @brief Connect to all nodes of a specific type in parallel
+   *
+   * @param type Node type
+   * @param passive If true, simply set conn=NULL when connection fails, instead
+   * of raising an error
+   *
+   * @retval TRUE on failure, FALSE on success
+   * */
+  bool connect_paral(enum_node_type type, bool passive);
 
   /**
    * @brief Clear everything
@@ -474,6 +516,25 @@ private:
   bool check_server_version();
 
   int ping(MYSQL *mysql);
+
+  /*
+    Maximum number of parallel connection threads
+  */
+  const unsigned long MAX_NUM_CONN_THREADS;
+
+  /**
+   * @brief Connect to a server identified by server_name (thread-safe)
+   *
+   * @param thd the Thread Handler
+   * @param server_name Server's identifier
+   * @param type Node type of server
+   * @param safe_mtx A mutex for thread safety
+   * @param conn_status Node_conn_status enum type
+   * @param err_msg Pass error massage if the connection fails to be established
+   * */
+  void connect_safe(THD *thd, const std::string &server_name, 
+                    enum_node_type type, std::mutex &safe_mtx, 
+                    Node_conn_status &conn_status, std::string &err_msg);
 };
 
 bool init_cluster_conn_manager(THD *thd, bool force_refresh, bool no_connect,
