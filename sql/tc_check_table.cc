@@ -1,6 +1,7 @@
 /*
   Copyright (C) 2020 THL A29 Limited, a Tencent company. All rights reserved.
 */
+#include <iterator>
 #include <map>
 #include <string>
 #include <list>
@@ -73,6 +74,18 @@ using std::list;
 #define COLUMN_DIFF_COLUMN_KEY            (1 << 5)
 
 #define MAX_NUM_CHECK_THREADS 20UL
+
+/**
+ * Node types that need to be checked
+ * 
+ * @note TDBCTL node is explicitly excluded as it serves as the reference baseline
+ *       for comparison operations.
+ */
+static const enum_node_type CHECK_NODE_TYPES[] = {
+    NODE_TYPE_SPIDER,
+    NODE_TYPE_SPIDER_SLAVE,
+    NODE_TYPE_REMOTE
+};
 
 struct Column_record;
 struct Table_info;
@@ -274,9 +287,9 @@ public:
     m_nodes_to_check = {{my_server, Query_job_status::QUERY_JOB_COMPLETED}};
     m_nodes_type = {{my_server, NODE_TYPE_CTL}};
 
-    for(enum_node_type node_type: {NODE_TYPE_SPIDER, NODE_TYPE_REMOTE}) {
+    for(enum_node_type node_type: CHECK_NODE_TYPES) {
       const map<string, MYSQL *> &conns_map = conn_mgr->get_conn_map(node_type);
-      for(const std::pair<const std::string, MYSQL *> &conn_item: conns_map) {
+      for(const auto &conn_item: conns_map) {
         m_nodes_to_check.insert({conn_item.first, Query_job_status::QUERY_JOB_COMPLETED});
         m_nodes_type.insert({conn_item.first, node_type});
       }
@@ -349,7 +362,7 @@ public:
   */
   void wait_parallel_query_to_finish() {
     mysql_mutex_lock(&m_lock_nodes_to_check);
-    for(const std::pair<std::string, Query_job_status> &one_node: m_nodes_to_check) {
+    for(const auto &one_node: m_nodes_to_check) {
       m_nodes_to_check[one_node.first] = Query_job_status::QUERY_JOB_NOT_STARTED;
     }
     mysql_cond_broadcast(&m_cond_new_query);
@@ -454,7 +467,7 @@ private:
 
   void free_query_result() {
     tc_exec_info exec_info;
-    for(const std::pair<string, enum_node_type> &one_node: m_nodes_type) {
+    for(const auto &one_node: m_nodes_type) {
       for(Query_exec_manager *query_mgr: {&m_query_table_mgr, &m_query_column_mgr}) {
         if(!query_mgr->get_exec_info(one_node.first, exec_info, one_node.second)) {
           if(exec_info.res) {
@@ -471,7 +484,7 @@ private:
     bool is_finished = true;
     if(need_lock)
       mysql_mutex_lock(&m_lock_nodes_to_check);
-    for(const std::pair<std::string, Query_job_status> &one_node: m_nodes_to_check) {
+    for(const auto &one_node: m_nodes_to_check) {
       if(one_node.second == Query_job_status::QUERY_JOB_NOT_STARTED ||
          one_node.second == Query_job_status::QUERY_JOB_IN_PROCESS) {
         is_finished = false;
@@ -1011,8 +1024,7 @@ static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
     Compare table & column definition from each Spider/Remote server against
     this server's.
   */
-  enum_node_type type = NODE_TYPE_SPIDER;
-  while (type != NODE_TYPE_END) {
+  for (enum_node_type type: CHECK_NODE_TYPES) {
     map<string, MYSQL *>::const_iterator conn_it;
     map<string, MYSQL *> conns = conn_mgr->get_conn_map(type);
     for (conn_it = conns.begin(); conn_it != conns.end(); ++conn_it) {
@@ -1074,11 +1086,6 @@ static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
           DBUG_RETURN(TRUE);
       }
     }
-    /* Once Spiders are finished, move on to Remotes */
-    if (type == NODE_TYPE_SPIDER)
-      type = NODE_TYPE_REMOTE;
-    else /* Remotes are done, end the loop */
-      type = NODE_TYPE_END;
   }
 
   DBUG_RETURN(FALSE);
@@ -1187,8 +1194,7 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
     Compare table & column definition from each Spider/Remote server against
     this server's.
   */
-  enum_node_type type = NODE_TYPE_SPIDER;
-  while (type != NODE_TYPE_END) {
+  for (enum_node_type type: CHECK_NODE_TYPES) {
     map<string, MYSQL *>::const_iterator conn_it;
     map<string, MYSQL *> conns = conn_mgr->get_conn_map(type);
     for (conn_it = conns.begin(); conn_it != conns.end(); ++conn_it) {
@@ -1253,11 +1259,6 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
         }
       }
     }
-    /* Once Spiders are finished, move on to Remotes */
-    if (type == NODE_TYPE_SPIDER)
-      type = NODE_TYPE_REMOTE;
-    else /* Remotes are done, end the loop */
-      type = NODE_TYPE_END;
   }
 
   DBUG_RETURN(FALSE);
@@ -1282,9 +1283,9 @@ static bool check_redundant_tables(THD *thd, Cluster_conn_manager *conn_mgr,
   /*
     Find tables present on Spider/Remote nodes but not found on the current node.
   */
-  for(enum_node_type node_type: {NODE_TYPE_SPIDER, NODE_TYPE_REMOTE}) {
+  for(enum_node_type node_type: CHECK_NODE_TYPES) {
     map<std::string, MYSQL *> conns_map = conn_mgr->get_conn_map(node_type);
-    for(const std::pair<std::string, MYSQL *> &node_conn: conns_map) {
+    for(const auto &node_conn: conns_map) {
       string server_name = node_conn.first;
       string fixed_db_name = fix_db_name(db_name, server_name, node_type);
 
@@ -1355,10 +1356,13 @@ static bool get_table_cache(THD *thd, Cluster_conn_manager *conn_mgr,
 
   open_cache_map.clear();
   def_cache_map.clear();
+  
+  vector<enum_node_type> node_type_array{NODE_TYPE_CTL};
+  std::copy(std::begin(CHECK_NODE_TYPES), std::end(CHECK_NODE_TYPES), std::back_inserter(node_type_array));
 
-  for(enum_node_type node_type: {NODE_TYPE_CTL, NODE_TYPE_SPIDER, NODE_TYPE_REMOTE}) {
+  for(enum_node_type node_type: node_type_array) {
     map<std::string, MYSQL *> conns_map = conn_mgr->get_conn_map(node_type);
-    for(const std::pair<std::string, MYSQL *> &node_conn: conns_map) {
+    for(const auto &node_conn: conns_map) {
       server_name = node_conn.first;
       server_conn = node_conn.second;
       if((node_type == NODE_TYPE_CTL) && 
@@ -1404,9 +1408,12 @@ static bool set_table_cache(THD *thd, Cluster_conn_manager *conn_mgr,
   string err_msg;
   char info_buff[512];
 
-  for(enum_node_type node_type: {NODE_TYPE_CTL, NODE_TYPE_SPIDER, NODE_TYPE_REMOTE}) {
+  vector<enum_node_type> node_type_array{NODE_TYPE_CTL};
+  std::copy(std::begin(CHECK_NODE_TYPES), std::end(CHECK_NODE_TYPES), std::back_inserter(node_type_array));
+
+  for(enum_node_type node_type: node_type_array) {
     map<std::string, MYSQL *> conns_map = conn_mgr->get_conn_map(node_type);
-    for(const std::pair<std::string, MYSQL *> &node_conn: conns_map) {
+    for(const auto &node_conn: conns_map) {
       server_name = node_conn.first;
       server_conn = node_conn.second;
       if((node_type == NODE_TYPE_CTL) && 
@@ -1461,9 +1468,12 @@ static bool set_table_cache(THD *thd, Cluster_conn_manager *conn_mgr,
   string err_msg;
   char info_buff[512];
 
-  for(enum_node_type node_type: {NODE_TYPE_CTL, NODE_TYPE_SPIDER, NODE_TYPE_REMOTE}) {
+  vector<enum_node_type> node_type_array{NODE_TYPE_CTL};
+  std::copy(std::begin(CHECK_NODE_TYPES), std::end(CHECK_NODE_TYPES), std::back_inserter(node_type_array));
+
+  for(enum_node_type node_type: node_type_array) {
     map<std::string, MYSQL *> conns_map = conn_mgr->get_conn_map(node_type);
-    for(const std::pair<std::string, MYSQL *> &node_conn: conns_map) {
+    for(const auto &node_conn: conns_map) {
       server_name = node_conn.first;
       server_conn = node_conn.second;
       if((node_type == NODE_TYPE_CTL) && 
@@ -1521,23 +1531,25 @@ bool compare_table_info(const Table_info &expected, const Table_info &actual,
     ret = true;
   }
 
-  /* Compare engines (for Spiders) */
-  if (node_type == NODE_TYPE_SPIDER &&
-      "SPIDER" != actual.table_engine) {
-    writer.write(Message_writer::MSG_LEVEL_ERROR,
+  /* Compare engines */
+  if ((node_type == NODE_TYPE_SPIDER) || (node_type == NODE_TYPE_SPIDER_SLAVE)) {
+    /* for Spiders */
+    if("SPIDER" != actual.table_engine) {
+      writer.write(Message_writer::MSG_LEVEL_ERROR,
                   "Expected table engine to be '%s', but actually is '%s'",
                   "SPIDER", actual.table_engine.c_str());
-    ret = true;
+      ret = true;
+    }
   }
-
-  /* Compare engines (skip Spiders) */
-  if (node_type != NODE_TYPE_SPIDER &&
-      expected.table_engine != actual.table_engine) {
-    writer.write(Message_writer::MSG_LEVEL_ERROR,
-                  "Expected table engine to be '%s', but actually is '%s'",
-                  expected.table_engine.c_str(), 
-                  actual.table_engine.c_str());
-    ret = true;
+  else {
+    /* skip Spiders */
+    if (expected.table_engine != actual.table_engine) {
+      writer.write(Message_writer::MSG_LEVEL_ERROR,
+                    "Expected table engine to be '%s', but actually is '%s'",
+                    expected.table_engine.c_str(), 
+                    actual.table_engine.c_str());
+      ret = true;
+    }
   }
 
   return ret;
