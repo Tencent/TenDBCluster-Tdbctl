@@ -2217,6 +2217,47 @@ finish:
   return result;
 }
 
+bool tc_flush_routing_to_foreign_server(LEX* lex)
+{
+  DBUG_ENTER("tc_flush_routing_to_foreign_server");
+  // Create a temporary Cluster_conn_manager instance
+  std::unique_ptr<Cluster_conn_manager> conn_mgr(new Cluster_conn_manager());
+  conn_mgr->skip_refresh_intentionally();
+
+  // Prepare authentication information for the foreign server
+  AUTH_INFO foreign_server_info;
+  DBUG_ASSERT(lex->server_options.get_host() != NULL);
+  DBUG_ASSERT(lex->server_options.get_port() != NULL);
+  DBUG_ASSERT(lex->server_options.get_username() != NULL);
+  DBUG_ASSERT(lex->server_options.get_password() != NULL);
+  DBUG_ASSERT(lex->server_options.get_scheme() != NULL);
+
+  std::string foreign_server_wrapper = lex->server_options.get_scheme();
+  fill_auth_info(&foreign_server_info, 
+                 lex->server_options.get_host(), 
+                 lex->server_options.get_port(), 
+                 lex->server_options.get_username(), 
+                 lex->server_options.get_password(), 
+                 foreign_server_wrapper);
+  
+  // Generate foreign server name by combining wrapper prefix and IP:port string
+  std::string foreign_server_name = get_wrapper_prefix_by_wrapper(foreign_server_wrapper.c_str());
+  foreign_server_name += "_foreign_" + foreign_server_info.ipport_str;
+  
+  // Add the foreign server to the temporary connection manager
+  if(conn_mgr->add_foreign_server(foreign_server_info, foreign_server_name)) {
+    DBUG_RETURN(true);
+  }
+
+  std::set<std::string> foreign_nodes{ foreign_server_name };
+  // Flush routing information to the specified nodes
+  if(tc_flush_routing_to_nodes(lex, foreign_nodes, conn_mgr.get(), foreign_server_wrapper.c_str())) {
+    DBUG_RETURN(true);
+  }
+
+  DBUG_RETURN(false);
+}
+
 bool compare_server_list(list<FOREIGN_SERVER*>& first, list<FOREIGN_SERVER*>& second)
 {
   list<FOREIGN_SERVER*>::iterator its1;
@@ -2962,3 +3003,93 @@ int get_remote_changed_servers(
 //   return 0;
 // }
 
+bool prepare_server_creation(THD *thd, LEX *lex, std::string &err_msg) 
+{
+  err_msg.clear();
+
+  /* Check if all USER, PASSWORD, HOST, PORT options are specified */
+  if (!lex->server_options.get_host() ||
+      (lex->server_options.get_port() == lex->server_options.PORT_NOT_SET) ||
+      !lex->server_options.get_username() ||
+      !lex->server_options.get_password())
+  {
+    err_msg = "USER, PASSWORD, HOST, and PORT options should all be specified";
+    return true;
+  }
+  
+  /* Generate new node's server name string */
+  std::string server_name;
+  if (lex->server_options.get_num() == lex->server_options.NUM_NOT_SET)
+  {
+    /* get an unique server_name by wrapper */
+    server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme());
+  } else {
+    // produce server_name with server_options->m_num
+    server_name = get_new_server_name_by_number(lex->server_options.get_scheme(),
+                                                lex->server_options.get_num());
+  }
+  DBUG_ASSERT(server_name.length() != 0);
+  lex->server_options.m_server_name.length = server_name.length();
+  lex->server_options.m_server_name.str =
+      strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
+  
+  /* Get all servers */
+  list<FOREIGN_SERVER *> server_list;
+  get_server_by_wrapper(server_list, thd->mem_root, NULL_WRAPPER, TRUE);
+  if(server_list.empty()) {
+    return false;
+  }
+
+  /*
+    Check if server name or ip#port already exists
+    For mysql and mysql_slave nodes, skip ip#port check
+    For other node types, the new node's ip#port must be unique in the cluster
+  */
+  bool is_already_exist = false;
+  string external_ip_port = string(lex->server_options.get_host()) + "#" +
+                            to_string(lex->server_options.get_port());
+  string err_buff;
+  for(FOREIGN_SERVER *server : server_list) {
+    if (strcasecmp(lex->server_options.m_server_name.str, server->server_name) == 0) {
+      err_buff = "the server_name " + std::string(lex->server_options.m_server_name.str) + 
+                " already exists in the mysql.servers";
+      is_already_exist = true;
+      break;
+    }
+    if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 || 
+        strcasecmp(lex->server_options.get_scheme(), MYSQL_SLAVE_WRAPPER) == 0) {
+      continue;
+    }
+    string internal_ip_port = string(server->host) + "#" + to_string(server->port);
+    if (external_ip_port.compare(internal_ip_port) == 0) {
+      err_buff = "the ip#port " + external_ip_port + " already exists in the mysql.servers";
+      is_already_exist = true;
+      break;
+    }
+  }
+  if (is_already_exist) {
+    err_msg = err_buff;
+    return true;
+  }
+
+  /* Check if IPs are consistent (all non-localhost or all localhost) */
+  unsigned int localhost_count = 0;
+  auto is_localhost = [](const char *ip) -> bool {
+    return (!strcasecmp(ip, "127.0.0.1") || !strcasecmp(ip, "localhost"));
+  };
+  if (is_localhost(lex->server_options.get_host())) {
+    ++localhost_count;
+  }
+  for(FOREIGN_SERVER *server: server_list) {
+    if (is_localhost(server->host)) {
+      ++localhost_count;
+    }
+  }
+  if ((localhost_count > 0) && (localhost_count != server_list.size() + 1)) {
+    err_msg = "mysql.servers can't contain both loop-back network address and "
+              "external network address, please change the value of 'host' column";
+    return true;
+  }
+
+  return false;
+}

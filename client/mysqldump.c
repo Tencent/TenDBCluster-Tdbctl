@@ -1888,6 +1888,10 @@ static int connect_to_db(char *host, char *user,char *passwd)
     cannot reconnect.
   */
   mysql->reconnect= 0;
+
+  // Set tc_admin=0 to prevent forwarding of SET commands
+  set_session_tc_admin();
+
   my_snprintf(buff, sizeof(buff), "/*!40100 SET @@SQL_MODE='%s' */",
               compatible_mode_normal_str);
   if (mysql_query_with_error_report(mysql, 0, buff))

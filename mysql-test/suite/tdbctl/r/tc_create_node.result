@@ -18,6 +18,55 @@ TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL
 TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
 TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
 
+# Set routing.
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+
+# Show routing.
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Case 0: TDBCTL CREATE NODE execution failed due to option validation check failure.
+SET tc_admin=ON;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+# Missing required options
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: USER, PASSWORD, HOST, and PORT options should all be specified
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql') WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: USER, PASSWORD, HOST, and PORT options should all be specified
+# The specified NUMBER already exists
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306, NUMBER 1);
+ERROR HY000: CREATE NODE FAILED: the server_name SPIDER1 already exists in the mysql.servers
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306, NUMBER 1) WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: the server_name SPIDER1 already exists in the mysql.servers
+# The specified ip#port already exists
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.5', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: the ip#port 172.18.0.5#3306 already exists in the mysql.servers
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.11', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: the ip#port 172.18.0.11#3306 already exists in the mysql.servers
+# The specified ip is not consistent with the cluster
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '127.0.0.1', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: mysql.servers can't contain both loop-back network address and external network address, please change the value of 'host' column
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST 'localhost', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: mysql.servers can't contain both loop-back network address and external network address, please change the value of 'host' column
+
+# Restore mysql.servers;
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
 # Set general_log output to table.
 Set general log for all cluster nodes.
 
@@ -209,6 +258,10 @@ TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASS
 
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
+SELECT @@server_uuid
+
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
 set tc_admin=0
 select user,host from mysql.user where user = 'mysql'and host = '172.18.0.8'
 set tc_admin = 0;
@@ -220,6 +273,9 @@ show variables like  'server_uuid'
 --------------------
 SELECT argument AS tdbctl1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%tdbctl1_log%' AND command_type NOT LIKE 'Connect';
 tdbctl1_log
+
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
 
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
@@ -244,6 +300,9 @@ tdbctl2_log
 
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
+
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
 set tc_admin=0
 select user,host from mysql.user where user = 'mysql'and host = '172.18.0.8'
 set tc_admin = 0;
@@ -265,7 +324,8 @@ spider0_log
 
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-select @@character_set_server
+SELECT @@character_set_server
+SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE table_schema = 'performance_schema' AND table_name = 'session_variables'
 /*!40100 SET @@SQL_MODE='' */
 /*!40103 SET TIME_ZONE='+00:00' */
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE table_schema = 'performance_schema' AND table_name = 'session_variables'
@@ -280,36 +340,26 @@ SHOW DATABASES
 SHOW VARIABLES LIKE 'ndbinfo\_version'
 
 
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SHOW GRANTS
-select user,host from mysql.user where user = 'mysql'and host = '172.18.0.9'
-drop user 'mysql'@'172.18.0.9'
-CREATE USER /*!50706 IF NOT EXISTS*/ 'mysql'@'172.18.0.9' IDENTIFIED BY 'mysql'
-GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.9' WITH GRANT OPTION
-select user,host from mysql.user where user = 'mysql'and host = '172.18.0.10'
-drop user 'mysql'@'172.18.0.10'
-CREATE USER /*!50706 IF NOT EXISTS*/ 'mysql'@'172.18.0.10' IDENTIFIED BY 'mysql'
-GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.10' WITH GRANT OPTION
-select user,host from mysql.user where user = 'mysql'and host = '172.18.0.11'
-drop user 'mysql'@'172.18.0.11'
-CREATE USER /*!50706 IF NOT EXISTS*/ 'mysql'@'172.18.0.11' IDENTIFIED BY 'mysql'
-GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.11' WITH GRANT OPTION
-
-/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
-begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 flush tables with no block
 flush table with read lock
 flush privileges
 unlock tables
+
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 /*!50600 set @old_ddl_execute_by_ctl = @@ddl_execute_by_ctl*/
 /*!50600 set global ddl_execute_by_ctl=0*/
@@ -343,6 +393,28 @@ SET @dummy_rocksdb_bulk_load = 0
 
 /*!50600 set global ddl_execute_by_ctl = @old_ddl_execute_by_ctl */
 
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SHOW GRANTS
+select user,host from mysql.user where user = 'mysql'and host = '172.18.0.9'
+drop user 'mysql'@'172.18.0.9'
+CREATE USER /*!50706 IF NOT EXISTS*/ 'mysql'@'172.18.0.9' IDENTIFIED BY 'mysql'
+GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.9' WITH GRANT OPTION
+select user,host from mysql.user where user = 'mysql'and host = '172.18.0.10'
+drop user 'mysql'@'172.18.0.10'
+CREATE USER /*!50706 IF NOT EXISTS*/ 'mysql'@'172.18.0.10' IDENTIFIED BY 'mysql'
+GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.10' WITH GRANT OPTION
+select user,host from mysql.user where user = 'mysql'and host = '172.18.0.11'
+drop user 'mysql'@'172.18.0.11'
+CREATE USER /*!50706 IF NOT EXISTS*/ 'mysql'@'172.18.0.11' IDENTIFIED BY 'mysql'
+GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.11' WITH GRANT OPTION
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+set lock_wait_timeout = 60;set wait_timeout = 180
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+flush tables with no block
+flush table with read lock
+flush privileges
+unlock tables
 --------------------
 # tdbctl0 routing table
 SELECT * FROM mysql.servers;

@@ -339,6 +339,7 @@ public:
      - COMMIT is for enabling the global read lock to block commits.
      - USER_LEVEL_LOCK is for user-level locks.
      - LOCKING_SERVICE is for the name plugin RW-lock service
+     - TC_ROUTING is for TDBCTL's routing consistency management.
     Note that although there isn't metadata locking on triggers,
     it's necessary to have a separate namespace for them since
     MDL_key is also used outside of the MDL subsystem.
@@ -358,6 +359,7 @@ public:
                             LOCKING_SERVICE,
                             BACKUP,
                             BINLOG,
+                            TC_ROUTING,
                             /* This should be the last ! */
                             NAMESPACE_END };
 
