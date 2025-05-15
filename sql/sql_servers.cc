@@ -50,6 +50,8 @@
 #include <string>
 #include <list>
 #include <mutex>
+#include <boost/algorithm/string/join.hpp>
+
 /*
   We only use 1 mutex to guard the data structures - THR_LOCK_servers.
   Read locked when only reading data and write-locked for all other access.
@@ -3091,5 +3093,197 @@ bool prepare_server_creation(THD *thd, LEX *lex, std::string &err_msg)
     return true;
   }
 
+  return false;
+}
+
+/**
+ * @brief Get auto-increment related information from spider connections
+ * 
+ * @param spider_conns Map of spider connections (key: Server name, value: MYSQL pointer)
+ * @param autoinc_info Output parameter to store retrieved auto-increment information
+ * @param errmsg Output parameter for error message
+ * @return true if failed to get variables, false otherwise
+ */
+bool get_spider_autoinc_info(const std::map<std::string, MYSQL *> &spider_conns,
+                             std::map<std::string, SPIDER_AUTOINC_INFO> &autoinc_info, 
+                             std::string &errmsg)
+{
+  static const std::string autoinc_variables[] = {"SPIDER_AUTO_INCREMENT_MODE_SWITCH",
+                                                  "SPIDER_AUTO_INCREMENT_MODE_VALUE",
+                                                  "SPIDER_AUTO_INCREMENT_STEP"};
+
+  autoinc_info.clear();
+  errmsg.clear();
+  const size_t var_count = sizeof(autoinc_variables) / sizeof(string);
+  std::string var_values[var_count];
+  for (auto it = spider_conns.begin(); it != spider_conns.end(); ++it)
+  {
+    if (tc_get_multi_variable_values(it->second, autoinc_variables, 
+        var_values, var_count)) {
+      errmsg = "Failed to get auto-increment related variable values from spider node " + it->first;
+      // sql_print_warning("get_spider_autoinc_info: %s", errmsg.c_str());
+      return true;
+    }
+    autoinc_info[it->first] = SPIDER_AUTOINC_INFO(var_values[0] == "ON",
+      (unsigned int)std::strtoul(var_values[1].c_str(), nullptr, 10),
+      (unsigned int)std::strtoul(var_values[2].c_str(), nullptr, 10));
+  }
+  return false;
+}
+
+
+/**
+ * Validates auto-increment settings across spider nodes for consistency.
+ * 
+ * This function checks if all spider nodes have consistent auto-increment configurations.
+ * It identifies conflicts in mode switch status, mode values, and increment steps.
+ * 
+ * @param autoinc_info Map containing auto-increment info keyed by node name
+ * @param failure_details Output vector to store conflict details
+ * @return bool True if all settings are consistent, false if conflicts exist
+ */
+bool validate_auto_increment_settings(const std::map<std::string, SPIDER_AUTOINC_INFO> &autoinc_info, 
+                                      std::vector<SPIDER_AUTOINC_CONFLICT_ITEM> &failure_details)
+{
+  bool is_ok = true;
+  failure_details.clear();
+  std::vector<std::string> switch_on;
+  std::vector<std::string> switch_off;
+  std::map<unsigned int, vector<std::string>> mode_value_map;
+  std::map<unsigned int, vector<std::string>> inc_step_map;
+
+  // Classify nodes based on their auto-increment settings
+  for(auto it = autoinc_info.begin(); it != autoinc_info.end(); ++it)
+  {
+    if (it->second.mode_switch) {
+      switch_on.push_back(it->first);  // Add to enabled nodes list
+      mode_value_map[it->second.mode_value].push_back(it->first);  // Group by mode value
+      inc_step_map[it->second.inc_step].push_back(it->first);  // Group by increment step
+    } else {
+      switch_off.push_back(it->first);  // Add to disabled nodes list
+    }
+  }
+
+  // Check if some nodes have auto-increment enabled while others don't
+  if(switch_on.size() && switch_off.size()) {
+    is_ok = false;
+    std::string conflict_str = "";
+    conflict_str += "Spider nodes with auto-increment enabled: "
+                    + boost::algorithm::join(switch_on, ", ");
+    conflict_str += "; ";
+    conflict_str += "Spider nodes with auto-increment disabled: "
+                    + boost::algorithm::join(switch_off, ", ");
+    failure_details.emplace_back(SPIDER_AUTOINC_CONFLICT_MODE_SWITCH, conflict_str);
+  }
+
+  // Only perform these checks if there are nodes with auto-increment enabled
+  if(!switch_on.empty()) {
+    // Check for nodes with same mode value
+    for(auto it = mode_value_map.begin(); it != mode_value_map.end(); ++it) {
+      if(it->second.size() > 1) {  // More than one node shares this mode value
+        is_ok = false;
+        std::string conflict_str = "";
+        conflict_str += "Spider nodes with same auto-increment mode value "
+                        + std::to_string(it->first) + ": "
+                        + boost::algorithm::join(it->second, ", ");
+        failure_details.emplace_back(SPIDER_AUTOINC_CONFLICT_MODE_VALUE, conflict_str);
+      }
+    }
+
+    // Check for multiple increment step values
+    if(inc_step_map.size() > 1) {  // More than one unique increment step value exists
+      is_ok = false;
+      std::string conflict_str = "";
+      for(auto it = inc_step_map.begin(); it != inc_step_map.end(); ++it) {
+        if(!conflict_str.empty()) {
+          conflict_str += "; ";
+        }
+        conflict_str += "Spider nodes with auto-increment step value "
+                        + std::to_string(it->first) + ": "
+                        + boost::algorithm::join(it->second, ", ");
+      }
+      failure_details.emplace_back(SPIDER_AUTOINC_CONFLICT_INC_STEP, conflict_str);
+    }
+  }
+
+  return is_ok;
+}
+
+/**
+ * Check auto-increment compatibility between cluster nodes and foreign server
+ * 
+ * @param cluster_autoinc_map Map of auto-increment info for all cluster nodes
+ * @param foreign_server_name Name of the foreign server to check
+ * @param foreign_server_autoinc Auto-increment info of the foreign server
+ * @param[out] conflict_type Type of conflict detected (output parameter)
+ * @param[out] conflict_str Description of conflict (output parameter)
+ * @return bool True if any conflict found, false otherwise
+ */
+bool check_auto_increment_compatibility(const std::map<std::string, SPIDER_AUTOINC_INFO> &cluster_autoinc_map, 
+                                        const std::string &foreign_server_name, 
+                                        const SPIDER_AUTOINC_INFO &foreign_server_autoinc,
+                                        SPIDER_AUTOINC_CONFLICT &conflict_type,
+                                        std::string &conflict_str) 
+{
+  bool found_conflict = false;
+  conflict_type = SPIDER_AUTOINC_CONFLICT_NONE;
+  conflict_str.clear();
+
+  // Iterate through all cluster nodes to check compatibility
+  for(auto it = cluster_autoinc_map.begin(); it != cluster_autoinc_map.end(); ++it)
+  {
+    // Skip comparison with self
+    if(it->first == foreign_server_name) {
+      continue;
+    }
+
+    // Check mode switch (enabled/disabled) conflict
+    if(it->second.mode_switch != foreign_server_autoinc.mode_switch) {
+      found_conflict = true;
+      conflict_type = SPIDER_AUTOINC_CONFLICT_MODE_SWITCH;
+      conflict_str += "Spider node " + it->first + " has auto-increment mode "
+                      + (it->second.mode_switch ? "enabled" : "disabled")
+                      + " while foreign server " + foreign_server_name 
+                      + " has auto-increment mode "
+                      + (foreign_server_autoinc.mode_switch ? "enabled" : "disabled");
+      break;
+    }
+
+    // Check mode value conflict (same value not allowed)
+    if(it->second.mode_value == foreign_server_autoinc.mode_value) {
+      found_conflict = true;
+      conflict_type = SPIDER_AUTOINC_CONFLICT_MODE_VALUE;
+      conflict_str += "Spider node " + it->first + " and the foreign server "
+                      + foreign_server_name + " have the same auto-increment mode value "
+                      + std::to_string(it->second.mode_value);
+      break;
+    }
+
+    // Check increment step conflict
+    if(it->second.inc_step != foreign_server_autoinc.inc_step) {
+      found_conflict = true;
+      conflict_type = SPIDER_AUTOINC_CONFLICT_INC_STEP;
+      conflict_str += "Spider node " + it->first + "\'s auto-increment step is "
+                      + std::to_string(it->second.inc_step)
+                      + " while foreign server " + foreign_server_name + "\'s step is "
+                      + std::to_string(foreign_server_autoinc.inc_step);
+      break;
+    }
+  }
+
+  return found_conflict;
+}
+
+bool check_spider_autoinc_settings(THD *thd, LEX *lex)
+{
+  Cluster_conn_manager *conn_mgr = new Cluster_conn_manager();
+  const std::map<std::string, MYSQL *> spider_conn_map = conn_mgr->get_spider_conn_map();
+
+  std::map<std::string, SPIDER_AUTOINC_INFO> spider_autoinc_map;
+  std::string errmsg;
+  if(get_spider_autoinc_info(spider_conn_map, spider_autoinc_map, errmsg)) {
+    // todo: log error message
+    return true;
+  }
   return false;
 }

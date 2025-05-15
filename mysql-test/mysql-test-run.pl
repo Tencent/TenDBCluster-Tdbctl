@@ -3832,8 +3832,8 @@ sub check_ports_free ($)
 }
 
 sub remove_docker_compose {
-  my $rm_compose_cmd = "cd tendbcluster-compose && docker-compose down && rm -r ./data && cd ..";
-  # my $rm_compose_cmd = "cd tendbcluster-compose && docker-compose down && sudo rm -r ./data && cd ..";  # try this if you have no permission to remove './dara' directory.
+  # my $rm_compose_cmd = "cd tendbcluster-compose && docker-compose down && rm -r ./data && cd ..";
+  my $rm_compose_cmd = "cd tendbcluster-compose && docker-compose down && sudo rm -r ./data && cd ..";  # try this if you have no permission to remove './dara' directory.
   my $result = system($rm_compose_cmd);
 
   if ($result == 0) {

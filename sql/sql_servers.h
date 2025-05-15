@@ -20,9 +20,11 @@
 #include "sql_cmd.h"
 #include "sql_string.h"
 #include "sql_alloc.h"
+#include "mysql.h"
 #include <list>
 #include <string>
 #include <set>
+#include <map>
 
 class THD;
 struct LEX;
@@ -380,5 +382,30 @@ public:
 };
 
 bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second);
+
+struct SPIDER_AUTOINC_INFO {
+  bool mode_switch;
+  unsigned int mode_value;
+  unsigned int inc_step;
+
+  SPIDER_AUTOINC_INFO() : mode_switch(false), mode_value(0), inc_step(0) {}
+  SPIDER_AUTOINC_INFO(bool mode_switch, unsigned int mode_value, unsigned int inc_step) :
+    mode_switch(mode_switch), mode_value(mode_value), inc_step(inc_step) {}
+};
+
+enum SPIDER_AUTOINC_CONFLICT {
+  SPIDER_AUTOINC_CONFLICT_NONE = 0,     // no conflict
+  SPIDER_AUTOINC_CONFLICT_MODE_SWITCH,  // different mode switch
+  SPIDER_AUTOINC_CONFLICT_MODE_VALUE,   // same mode value
+  SPIDER_AUTOINC_CONFLICT_INC_STEP,     // different inc step
+};
+using SPIDER_AUTOINC_CONFLICT_ITEM = std::pair<SPIDER_AUTOINC_CONFLICT, std::string>;
+
+bool get_spider_autoinc_info(const std::map<std::string, MYSQL *> &spider_conns,
+                             std::map<std::string, SPIDER_AUTOINC_INFO> &autoinc_info, 
+                             std::string &errmsg);
+
+bool check_spider_autoinc_settings(THD *thd, LEX *lex);
+
 
 #endif /* SQL_SERVERS_INCLUDED */

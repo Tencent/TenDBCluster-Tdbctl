@@ -13,6 +13,7 @@
 #include "handler.h"
 #include "log.h"
 #include "rpl_group_replication.h"
+#include <cstddef>
 #include <string.h>
 #include <iostream>
 #include <string>
@@ -4081,6 +4082,65 @@ uint tc_set_variable_value(MYSQL *conn, const string &variable, const string &va
     return exec_info.err_code;
   }
   return 0;
+}
+
+/**
+ * @brief Get values of multiple MySQL variables
+ * 
+ * @param conn MySQL connection handle
+ * @param variables Array of variable names to query
+ * @param values Output array to store variable values
+ * @param count Number of variables to query
+ * @param is_global Whether to query global variables (true) or session variables (false), default is true
+ * @return true if failed to get all variable values, false if succeeded
+ */
+bool tc_get_multi_variable_values(MYSQL *conn, const string variables[], string values[], 
+                                 size_t count, bool is_global)
+{
+  static const char *get_vars_fmt = "SELECT VARIABLE_VALUE FROM "
+                                    "INFORMATION_SCHEMA.%s "
+                                    "WHERE VARIABLE_NAME IN (%s)";
+  
+  // Early return if no variables to query
+  if (count == 0) {
+    return false;
+  }
+
+  // Special case: NULL connection with count > 0 is considered a failure
+  if ((count > 0) && (conn == NULL)) {
+    return true;
+  }
+  
+  // Build comma-separated list of quoted variable names for SQL IN clause
+  string var_str = "";
+  for (size_t i = 0; i < count; ++i) {
+    var_str += "'";
+    var_str += variables[i];
+    var_str += "'";
+    if (i != count - 1) {
+      var_str += ", ";
+    }
+  }
+
+  // Construct and execute the SQL query
+  char sql[512];
+  snprintf(sql, sizeof(sql), get_vars_fmt, 
+           is_global ? "GLOBAL_VARIABLES" : "SESSION_VARIABLES", var_str.c_str());
+  MYSQL_RES *res = tc_exec_sql_with_result(conn, sql);
+  MYSQL_RES_GUARD(res);  // RAII guard for MySQL result
+
+  // Process query results
+  MYSQL_ROW row = NULL;
+  size_t val_index = 0;
+  while (res && (row = mysql_fetch_row(res))) {
+    if (val_index < count) {
+      values[val_index] = row[0] ? row[0] : "";
+    }
+    ++val_index;
+  }
+
+  // Return true if didn't get all expected values (failure), false otherwise (success)
+  return val_index != count;
 }
 
 /*
