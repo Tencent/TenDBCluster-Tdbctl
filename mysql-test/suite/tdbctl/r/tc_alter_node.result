@@ -94,6 +94,10 @@ spider0_log
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SHOW GRANTS
 select user,host from mysql.user where user = 'mysql'and host = '172.18.0.9'
 drop user 'mysql'@'172.18.0.9'
@@ -114,6 +118,11 @@ begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","S
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SHOW GRANTS
 select user,host from mysql.user where user = 'mysql'and host = '172.18.0.9'
 drop user 'mysql'@'172.18.0.9'
@@ -128,7 +137,6 @@ drop user 'mysql'@'172.18.0.11'
 CREATE USER /*!50706 IF NOT EXISTS*/ 'mysql'@'172.18.0.11' IDENTIFIED BY 'mysql'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.11' WITH GRANT OPTION
 
-/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 set lock_wait_timeout = 60;set wait_timeout = 180
@@ -137,8 +145,10 @@ begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","S
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 --------------------

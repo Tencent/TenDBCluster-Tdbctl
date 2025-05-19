@@ -3018,6 +3018,10 @@ void fill_lex_to_alter_node(LEX* lex, FOREIGN_SERVER *server)
   {
     lex->server_options.set_password({server->password, strlen(server->password)});
   }
+  if (!lex->server_options.get_scheme())
+  {
+    lex->server_options.set_scheme({server->scheme, strlen(server->scheme)});
+  }
   DBUG_VOID_RETURN;
 }
 
@@ -4084,30 +4088,33 @@ uint tc_set_variable_value(MYSQL *conn, const string &variable, const string &va
   return 0;
 }
 
+
 /**
- * @brief Get values of multiple MySQL variables
+ * @brief Get values of multiple MySQL variables from INFORMATION_SCHEMA
  * 
  * @param conn MySQL connection handle
  * @param variables Array of variable names to query
- * @param values Output array to store variable values
- * @param count Number of variables to query
+ * @param count Number of variables in the array
+ * @param value_map Output map to store variable name-value pairs
  * @param is_global Whether to query global variables (true) or session variables (false), default is true
- * @return true if failed to get all variable values, false if succeeded
+ * @return bool Returns true if failed to get all expected values, false on success
  */
-bool tc_get_multi_variable_values(MYSQL *conn, const string variables[], string values[], 
-                                 size_t count, bool is_global)
+bool tc_get_multi_variable_values(MYSQL *conn, const string variables[], size_t count, 
+                                  map<string, string> &value_map, bool is_global)
 {
-  static const char *get_vars_fmt = "SELECT VARIABLE_VALUE FROM "
+  static const char *get_vars_fmt = "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM "
                                     "INFORMATION_SCHEMA.%s "
                                     "WHERE VARIABLE_NAME IN (%s)";
+  
+  value_map.clear();
   
   // Early return if no variables to query
   if (count == 0) {
     return false;
   }
 
-  // Special case: NULL connection with count > 0 is considered a failure
-  if ((count > 0) && (conn == NULL)) {
+  // Early return if conn is NULL
+  if (conn == NULL) {
     return true;
   }
   
@@ -4127,20 +4134,26 @@ bool tc_get_multi_variable_values(MYSQL *conn, const string variables[], string 
   snprintf(sql, sizeof(sql), get_vars_fmt, 
            is_global ? "GLOBAL_VARIABLES" : "SESSION_VARIABLES", var_str.c_str());
   MYSQL_RES *res = tc_exec_sql_with_result(conn, sql);
-  MYSQL_RES_GUARD(res);  // RAII guard for MySQL result
+  
+  // RAII guard for MySQL result (auto-free when out of scope)
+  MYSQL_RES_GUARD(res);
 
-  // Process query results
+  // Process query results row by row
   MYSQL_ROW row = NULL;
-  size_t val_index = 0;
   while (res && (row = mysql_fetch_row(res))) {
-    if (val_index < count) {
-      values[val_index] = row[0] ? row[0] : "";
-    }
-    ++val_index;
+    string res_var_name = row[0] ? row[0] : "";       // Column 0: variable name
+    string res_var_value = row[1] ? row[1] : "";      // Column 1: variable value
+    value_map[res_var_name] = res_var_value;          // Store in output map
   }
 
-  // Return true if didn't get all expected values (failure), false otherwise (success)
-  return val_index != count;
+  // Verify we got all requested variables
+  for (size_t i = 0; i < count; ++i) {
+    if (value_map.find(variables[i]) == value_map.end()) {
+      return true;  // Return true (error) if any variable is missing
+    }
+  }
+
+  return false;  // Return false (success) if all variables found
 }
 
 /*

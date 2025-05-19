@@ -31,8 +31,8 @@ do_test=0
 debug_flag=" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_CONFIG=mysql_release "
 bld_dir="bld"
 static_flag=" -DCMAKE_CXX_FLAGS=-static-libstdc++ -DCMAKE_C_FLAGS=-static-libgcc " 
-boost_dir=/data/home/hanzaixiao/downloads/boost_1_59_0
-install_dir=/data/home/hanzaixiao/install/tdbctl
+boost_dir=/home/mysql/boost/
+install_dir=/usr/local/tdbctl
 gccdir=/usr/local/gcc-5.5.0
 export LD_LIBRARY_PATH=$gccdir/lib64/:$LD_LIBRARY_PATH
 
@@ -84,11 +84,8 @@ cd $bld_dir
 
 rm -f CMakeCache.txt
 
-export C_INCLUDE_PATH=/usr/include/tirpc:$C_INCLUDE_PATH && export CPLUS_INCLUDE_PATH=/usr/include/tirpc:$CPLUS_INCLUDE_PATH
-
 #cmd="cmake .. -DDOWNLOAD_BOOST=1 -DWITH_BOOST=$boost_dir -DWITH_ZLIB=bundled -DWITHOUT_TOKUDB_STORAGE_ENGINE=1 -DMYSQL_SERVER_SUFFIX=$suffix $debug_flag -DFEATURE_SET=community  -DWITH_EMBEDDED_SERVER=OFF -DCMAKE_C_COMPILER=$gccdir/bin/gcc -DCMAKE_CXX_COMPILER=$gccdir/bin/g++ -DCMAKE_INSTALL_PREFIX=$install_dir -DWITH_QUERY_RESPONSE_TIME=on $static_flag"
 cmd="cmake .. -DDOWNLOAD_BOOST=1 -DWITH_BOOST=$boost_dir -DWITH_ZLIB=bundled -DMYSQL_SERVER_SUFFIX=$suffix $debug_flag -DFEATURE_SET=community  -DWITH_EMBEDDED_SERVER=OFF -DCMAKE_C_COMPILER=$gccdir/bin/gcc -DCMAKE_CXX_COMPILER=$gccdir/bin/g++ -DCMAKE_INSTALL_PREFIX=$install_dir -DWITH_QUERY_RESPONSE_TIME=on $static_flag"
-cmd+=" -DCMAKE_EXPORT_COMPILE_COMMANDS=1"
 echo "compile args:"
 echo "$cmd"
 $cmd

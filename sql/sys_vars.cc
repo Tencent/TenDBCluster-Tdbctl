@@ -6675,3 +6675,9 @@ static Sys_var_ulong Sys_tc_internal_write_timeout(
        VALID_RANGE(1, LONG_TIMEOUT), DEFAULT(TC_CONN_WRITE_TIMEOUT), BLOCK_SIZE(1),
        NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(fix_tc_internal_write_timeout));
+
+static Sys_var_mybool Sys_tc_enable_autoinc_check(
+       "tc_enable_autoinc_check",
+       "If true, check auto-increment conflicts when adding spider nodes; otherwise skip the check",
+       TDBCTL SESSION_VAR(tc_enable_autoinc_check), CMD_LINE(OPT_ARG),
+       DEFAULT(TRUE));

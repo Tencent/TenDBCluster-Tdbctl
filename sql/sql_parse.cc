@@ -5543,6 +5543,13 @@ mysql_execute_command(THD *thd, bool first_level)
           goto error;
         }
 
+        /* Check if auto-inc settings are compatible for spider nodes */
+        if(thd->variables.tc_enable_autoinc_check) {
+          if (check_autoinc_settings_for_new_spider_node(thd, lex)) {
+            goto error;
+          }
+        }
+
         // Flush routing for the node to be added
         if (tc_flush_routing_to_foreign_server(lex))
           goto error;
@@ -5593,6 +5600,13 @@ mysql_execute_command(THD *thd, bool first_level)
         if(prepare_server_creation(thd, lex, err_msg)) {
           my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), err_msg.c_str());
           goto error;
+        }
+
+        /* Check if auto-inc settings are compatible for spider nodes */
+        if(thd->variables.tc_enable_autoinc_check) {
+          if (check_autoinc_settings_for_new_spider_node(thd, lex)) {
+            goto error;
+          }
         }
 
         /* Add the new node to both the mysql.servers table and servers_cache */
@@ -5707,6 +5721,14 @@ mysql_execute_command(THD *thd, bool first_level)
         }*/
 
         old_server_options = foreign_server_to_server_options(server);
+
+        /* Check if auto-inc settings are compatible for spider nodes */
+        if(thd->variables.tc_enable_autoinc_check) {
+          if (check_autoinc_settings_for_new_spider_node(thd, lex)) {
+            goto error;
+          }
+        }
+        
         break;
       }
       case TC_SQLCOM_DROP_NODE:

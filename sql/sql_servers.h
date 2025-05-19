@@ -23,6 +23,7 @@
 #include "mysql.h"
 #include <list>
 #include <string>
+#include <vector>
 #include <set>
 #include <map>
 
@@ -399,13 +400,23 @@ enum SPIDER_AUTOINC_CONFLICT {
   SPIDER_AUTOINC_CONFLICT_MODE_VALUE,   // same mode value
   SPIDER_AUTOINC_CONFLICT_INC_STEP,     // different inc step
 };
-using SPIDER_AUTOINC_CONFLICT_ITEM = std::pair<SPIDER_AUTOINC_CONFLICT, std::string>;
+
+typedef std::pair<SPIDER_AUTOINC_CONFLICT, std::string> SPIDER_AUTOINC_CONFLICT_ITEM;
 
 bool get_spider_autoinc_info(const std::map<std::string, MYSQL *> &spider_conns,
                              std::map<std::string, SPIDER_AUTOINC_INFO> &autoinc_info, 
                              std::string &errmsg);
 
-bool check_spider_autoinc_settings(THD *thd, LEX *lex);
+bool validate_auto_increment_settings(const std::map<std::string, SPIDER_AUTOINC_INFO> &autoinc_info, 
+                                      std::vector<SPIDER_AUTOINC_CONFLICT_ITEM> &failure_details);
+
+bool find_auto_increment_conflict(const std::map<std::string, SPIDER_AUTOINC_INFO> &cluster_autoinc_map, 
+                                  const std::string &foreign_server_name, 
+                                  const SPIDER_AUTOINC_INFO &foreign_server_autoinc,
+                                  SPIDER_AUTOINC_CONFLICT &conflict_type,
+                                  std::string &conflict_str);
+
+bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex);
 
 
 #endif /* SQL_SERVERS_INCLUDED */

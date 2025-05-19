@@ -136,14 +136,19 @@ GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.8' WITH GRANT OPTION
 --------------------
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
 
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
 
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
+
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SHOW GRANTS
 select user,host from mysql.user where user = 'mysql'and host = '172.18.0.9'
@@ -323,6 +328,7 @@ SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172
 spider0_log
 
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SELECT @@character_set_server
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE table_schema = 'performance_schema' AND table_name = 'session_variables'
@@ -340,6 +346,7 @@ SHOW DATABASES
 SHOW VARIABLES LIKE 'ndbinfo\_version'
 
 
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
 
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 --------------------
@@ -347,11 +354,16 @@ SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172
 spider1_log
 
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
 
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
+
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
@@ -392,6 +404,9 @@ SET @dummy_rocksdb_bulk_load = 0
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */
 
 /*!50600 set global ddl_execute_by_ctl = @old_ddl_execute_by_ctl */
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+SELECT VARIABLE_NAME, VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME IN ('SPIDER_AUTO_INCREMENT_MODE_SWITCH', 'SPIDER_AUTO_INCREMENT_MODE_VALUE', 'SPIDER_AUTO_INCREMENT_STEP')
 
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SHOW GRANTS

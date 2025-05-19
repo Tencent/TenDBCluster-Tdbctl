@@ -640,6 +640,8 @@ typedef struct system_variables
   char *tc_forwarding_rules;
   char *tc_var_rules;
 
+  my_bool tc_enable_autoinc_check;
+
   uint  threadpool_high_prio_tickets;
   ulong threadpool_high_prio_mode;
   ulong   session_track_transaction_info;
