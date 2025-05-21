@@ -3454,8 +3454,8 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
     if (mysql_real_query(
             mysql, C_STRING_WITH_LEN("/*!50600 SET SESSION ddl_execute_by_ctl=0 */"))) {
       /*
-        ER_UNKNOWN_SYSTEM_VARIABLE can occur when dealing with lower versions
-        of Spider.
+        Ignore the error if it's due to an unknown system variable (ER_UNKNOWN_SYSTEM_VARIABLE),
+        which may occur for version compatibility. For other errors, treat as connection failure.
       */
       if (mysql_errno(mysql) != ER_UNKNOWN_SYSTEM_VARIABLE)
         goto init_cmd_fail;

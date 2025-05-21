@@ -198,16 +198,25 @@ int tc_restore_to_node(
   exec_info.err_msg = "";
   
   // for spider node, we need to disable ddl_execute_by_ctl feature of the spider
+  bool has_variable = true;
   if (strcasecmp(wrapper, SPIDER_WRAPPER) == 0)
   {
     sql = "/*!50600 set @old_ddl_execute_by_ctl = @@ddl_execute_by_ctl*/";
     if(tc_exec_sql_without_result(conn, sql, &exec_info))
     {
-      my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
-      return 1;
+      /*
+        Ignore the error if it's due to an unknown system variable (ER_UNKNOWN_SYSTEM_VARIABLE),
+        which may occur for version compatibility. For other errors, treat as execution failure.
+      */
+      if (exec_info.err_code == ER_UNKNOWN_SYSTEM_VARIABLE) {
+        has_variable = false;
+      } else {
+        my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
+        return 1;
+      }
     }
     sql = "/*!50600 set global ddl_execute_by_ctl=0*/";
-    if(tc_exec_sql_without_result(conn, sql, &exec_info))
+    if(has_variable && tc_exec_sql_without_result(conn, sql, &exec_info))
     {
       my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
       return 1;
@@ -245,7 +254,7 @@ int tc_restore_to_node(
   if (strcasecmp(wrapper, SPIDER_WRAPPER) == 0)
   {
     sql = "/*!50600 set global ddl_execute_by_ctl = @old_ddl_execute_by_ctl */";
-    if(tc_exec_sql_without_result(conn, sql, &exec_info))
+    if(has_variable && tc_exec_sql_without_result(conn, sql, &exec_info))
     {
       my_error(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
       return 1;
