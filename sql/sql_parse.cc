@@ -5923,8 +5923,9 @@ mysql_execute_command(THD *thd, bool first_level)
     tc_run_command(thd, thd->cluster_conn_manager, &query_exec_manager);
     query_exec_manager.get_results(&exec_result);
     res = tc_process_all_result(thd, &exec_result, &query_exec_manager, parse_result.result_set_flag);
-    goto finish;
   }
+  
+  goto finish;
 
 error:
   res= TRUE;

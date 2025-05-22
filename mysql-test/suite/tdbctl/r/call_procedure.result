@@ -1,0 +1,63 @@
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SET tc_admin=OFF;
+CREATE DATABASE test_call;
+USE test_call;
+
+# Create procedure
+SET tc_admin=OFF;
+DELIMITER //
+CREATE PROCEDURE test1()
+BEGIN
+SELECT "First SQL is executed.";
+SELECT "Second SQL is executed.";
+SELECT "Third SQL is executed.";
+END //
+CREATE PROCEDURE test2()
+BEGIN
+SELECT @@SESSION.sql_log_bin INTO @origin_sql_log_bin;
+SET SESSION sql_log_bin = 0;
+CREATE TABLE IF NOT EXISTS test_call.t1(
+id VARCHAR(64),
+grant_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+username VARCHAR(128),
+client_ip VARCHAR(32),
+dbname VARCHAR(64),
+long_psw VARCHAR(128),
+short_psw VARCHAR(32),
+priv VARCHAR(4096),
+global_priv VARCHAR(4096),
+msg VARCHAR(4096)
+) ENGINE = InnoDB;
+SET @@SESSION.sql_log_bin = @origin_sql_log_bin;
+END //
+DELIMITER ;
+
+# Call procedure when tc_admin is off.
+SET tc_admin=OFF;
+CALL test1();
+First SQL is executed.
+First SQL is executed.
+Second SQL is executed.
+Second SQL is executed.
+Third SQL is executed.
+Third SQL is executed.
+CALL test2();
+SHOW TABLES;
+Tables_in_test_call
+t1
+
+# Check the distribution and execution of CALL PROCEDURE when tc_admin is on.
+SET tc_admin=ON;
+SET tc_dry_run=ON;
+CALL test1();
+Server_name	db	table	Command	Info
+SPIDER	test_call	NULL	use `test_call`;CALL test1()	only one spider execute
+CALL test2();
+Server_name	db	table	Command	Info
+SPIDER	test_call	NULL	use `test_call`;CALL test2()	only one spider execute
+SET tc_dry_run=OFF;
+
+# Restore to the initial state.
+SET tc_admin = OFF;
+DROP DATABASE test_call;
+SET @@SESSION.tc_admin = @origin_tc_admin;
