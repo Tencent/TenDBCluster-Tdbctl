@@ -1,0 +1,68 @@
+# Testing the execution of stored procedures.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SET tc_admin=OFF;
+CREATE DATABASE test_call;
+USE test_call;
+
+--echo
+--echo # Create procedure
+--connection tdbctl0
+SET tc_admin=OFF;
+--echo DELIMITER //
+--delimiter //
+
+CREATE PROCEDURE test1()
+BEGIN
+	SELECT "First SQL is executed.";
+	SELECT "Second SQL is executed.";
+	SELECT "Third SQL is executed.";
+END //
+
+CREATE PROCEDURE test2()
+BEGIN
+    SET SESSION sql_log_bin = 0;
+
+    CREATE TABLE IF NOT EXISTS test_call.t1(
+        id VARCHAR(64),
+        grant_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        username VARCHAR(128),
+        client_ip VARCHAR(32),
+        dbname VARCHAR(64),
+        long_psw VARCHAR(128),
+        short_psw VARCHAR(32),
+        priv VARCHAR(4096),
+        global_priv VARCHAR(4096),
+        msg VARCHAR(4096)
+    ) ENGINE = InnoDB;
+END //
+
+--echo DELIMITER ;
+--delimiter ;
+
+--echo
+--echo # Call procedure when tc_admin is off.
+--connection tdbctl0
+SET tc_admin=OFF;
+CALL test1();
+CALL test2();
+SHOW TABLES;
+
+--echo
+--echo # Check the distribution and execution of CALL PROCEDURE when tc_admin is on.
+--connection tdbctl0
+SET tc_admin=ON;
+SET tc_dry_run=ON;
+CALL test1();
+CALL test2();
+SET tc_dry_run=OFF;
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+SET tc_admin = OFF;
+DROP DATABASE test_call;
+SET @@SESSION.tc_admin = @origin_tc_admin;
