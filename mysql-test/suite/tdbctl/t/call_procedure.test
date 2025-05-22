@@ -24,8 +24,8 @@ END //
 
 CREATE PROCEDURE test2()
 BEGIN
+    SELECT @@SESSION.sql_log_bin INTO @origin_sql_log_bin;
     SET SESSION sql_log_bin = 0;
-
     CREATE TABLE IF NOT EXISTS test_call.t1(
         id VARCHAR(64),
         grant_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -38,6 +38,7 @@ BEGIN
         global_priv VARCHAR(4096),
         msg VARCHAR(4096)
     ) ENGINE = InnoDB;
+    SET @@SESSION.sql_log_bin = @origin_sql_log_bin;
 END //
 
 --echo DELIMITER ;
