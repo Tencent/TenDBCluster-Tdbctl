@@ -149,7 +149,11 @@ services:
             "--innodb_flush_log_at_trx_commit=0",
             "--replicate-wild-ignore-table=mysql.%",
             "--skip-external-locking",
-            "--port=3306"]
+            "--port=3306", 
+            # Intentionally set conflicting auto-increment parameters for testing purposes
+            "--spider_auto_increment_mode_switch=1", 
+            "--spider_auto_increment_mode_value=1", 
+            "--spider_auto_increment_step=37"]
     ports:
       - "35000:3306"
     #restart: on-failure:3
@@ -180,7 +184,11 @@ services:
             "--innodb_flush_log_at_trx_commit=0",
             "--replicate-wild-ignore-table=mysql.%",
             "--skip-external-locking",
-            "--port=3306"]
+            "--port=3306", 
+            # Intentionally set conflicting auto-increment parameters for testing purposes
+            "--spider_auto_increment_mode_switch=1", 
+            "--spider_auto_increment_mode_value=1", 
+            "--spider_auto_increment_step=7"]
     ports:
       - "35001:3306"
     #restart: on-failure:3
@@ -211,7 +219,11 @@ services:
             "--innodb_flush_log_at_trx_commit=0",
             "--replicate-wild-ignore-table=mysql.%",
             "--skip-external-locking",
-            "--port=3306"]
+            "--port=3306", 
+            # Intentionally set conflicting auto-increment parameters for testing purposes
+            "--spider_auto_increment_mode_switch=0", 
+            "--spider_auto_increment_mode_value=3", 
+            "--spider_auto_increment_step=37"]
     ports:
       - "35002:3306"
     #restart: on-failure:3

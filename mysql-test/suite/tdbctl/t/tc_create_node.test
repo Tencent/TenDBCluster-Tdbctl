@@ -4,10 +4,16 @@
 
 --connection tdbctl0
 SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
 SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
 SET tc_admin=OFF;
 CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
 INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+--echo
+--echo # Disable tc_enable_autoinc_check
+--connection tdbctl0
+SET tc_enable_autoinc_check = OFF;
 
 --echo
 --echo # Original routing table.
@@ -116,13 +122,13 @@ SELECT * FROM mysql.servers;
 SELECT * FROM mysql.servers;
 --echo # spider0 routing table
 --connection spider0
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 --echo # spider1 routing table
 --connection spider1
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 --echo # spider2 routing table
 --connection spider2
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 
 --echo
 --echo # Set routing.
@@ -176,13 +182,13 @@ SELECT * FROM mysql.servers;
 SELECT * FROM mysql.servers;
 --echo # spider0 routing table
 --connection spider0
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 --echo # spider1 routing table
 --connection spider1
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 --echo # spider2 routing table
 --connection spider2
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 
 # --echo
 # --echo # Set routing.
@@ -239,13 +245,13 @@ SELECT * FROM mysql.servers;
 # SELECT * FROM mysql.servers;
 # --echo # spider0 routing table
 # --connection spider0
-# SELECT * FROM mysql.servers;
+# SELECT * FROM mysql.servers ORDER BY Host;
 # --echo # spider1 routing table
 # --connection spider1
-# SELECT * FROM mysql.servers;
+# SELECT * FROM mysql.servers ORDER BY Host;
 # --echo # spider2 routing table
 # --connection spider2
-# SELECT * FROM mysql.servers;
+# SELECT * FROM mysql.servers ORDER BY Host;
 
 --echo
 --echo # Set routing.
@@ -284,4 +290,5 @@ TDBCTL FLUSH ROUTING;
 SET tc_admin=OFF;
 DROP TEMPORARY TABLE origin_servers;
 SET @@GLOBAL.tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
 SET @@SESSION.tc_admin = @origin_tc_admin;

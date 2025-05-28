@@ -1,0 +1,137 @@
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+# Enable tc_enable_autoinc_check
+SET tc_enable_autoinc_check = ON;
+
+# Original routing table.
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Spider nodes' auto-increment configuration.
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+SERVER_NAME	SPIDER_AUTO_INCREMENT_MODE_SWITCH	SPIDER_AUTO_INCREMENT_MODE_VALUE	SPIDER_AUTO_INCREMENT_STEP
+SPIDER0	ON	1	37
+SPIDER1	ON	1	7
+SPIDER2	OFF	3	37
+
+# Set routing.
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER1;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+
+# Show existing spider nodes.
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+SERVER_NAME	SPIDER_AUTO_INCREMENT_MODE_SWITCH	SPIDER_AUTO_INCREMENT_MODE_VALUE	SPIDER_AUTO_INCREMENT_STEP
+SPIDER0	ON	1	37
+
+# Case 1: TDBCTL CREATE NODE execution failed due to auto-increment configuration conflicts.
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: Auto-increment settings conflict with cluster spider nodes: Spider node SPIDER0 and the foreign server SPIDER_foreign_172.18.0.7#3306 have the same auto-increment mode value 1
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: Auto-increment settings conflict with cluster spider nodes: Spider node SPIDER0 has auto-increment mode enabled while foreign server SPIDER_foreign_172.18.0.8#3306 has auto-increment mode disabled
+SET tc_enable_autoinc_check = OFF;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+SET tc_enable_autoinc_check = ON;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: Found auto-increment setting conflicts of existing spider nodes: 
+Spider nodes with same auto-increment mode value 1: SPIDER0, SPIDER1
+Spider nodes with auto-increment step value 7: SPIDER1; Spider nodes with auto-increment step value 37: SPIDER0
+SET tc_enable_autoinc_check = OFF;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+
+# Show existing spider nodes.
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+SERVER_NAME	SPIDER_AUTO_INCREMENT_MODE_SWITCH	SPIDER_AUTO_INCREMENT_MODE_VALUE	SPIDER_AUTO_INCREMENT_STEP
+SPIDER0	ON	1	37
+SPIDER1	ON	1	7
+SPIDER2	OFF	3	37
+
+# Restore mysql.servers;
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+# Enable tc_enable_autoinc_check
+SET tc_enable_autoinc_check = ON;
+
+# Original routing table.
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Spider nodes' auto-increment configuration.
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+SERVER_NAME	SPIDER_AUTO_INCREMENT_MODE_SWITCH	SPIDER_AUTO_INCREMENT_MODE_VALUE	SPIDER_AUTO_INCREMENT_STEP
+SPIDER0	ON	1	37
+SPIDER1	ON	1	7
+SPIDER2	OFF	3	37
+
+# Set routing.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+# Show existing spider nodes.
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+SERVER_NAME	SPIDER_AUTO_INCREMENT_MODE_SWITCH	SPIDER_AUTO_INCREMENT_MODE_VALUE	SPIDER_AUTO_INCREMENT_STEP
+SPIDER0	ON	1	37
+SPIDER1	ON	1	7
+SPIDER2	OFF	3	37
+
+# Case 2: TDBCTL ALTER NODE execution failed due to auto-increment configuration conflicts.
+TDBCTL ALTER NODE SPIDER1 OPTIONS (HOST '172.18.0.8');
+ERROR HY000: ALTER NODE FAILED: Found auto-increment setting conflicts of existing spider nodes: 
+Spider nodes with auto-increment enabled: SPIDER0; Spider nodes with auto-increment disabled: SPIDER2
+TDBCTL ALTER NODE SPIDER2 OPTIONS (HOST '172.18.0.7');
+ERROR HY000: ALTER NODE FAILED: Found auto-increment setting conflicts of existing spider nodes: 
+Spider nodes with same auto-increment mode value 1: SPIDER0, SPIDER1
+Spider nodes with auto-increment step value 7: SPIDER1; Spider nodes with auto-increment step value 37: SPIDER0
+TDBCTL DROP NODE SPIDER1;
+TDBCTL ALTER NODE SPIDER2 OPTIONS (HOST '172.18.0.7');
+ERROR HY000: ALTER NODE FAILED: Auto-increment settings conflict with cluster spider nodes: Spider node SPIDER0 and the foreign server SPIDER_foreign_172.18.0.7#3306 have the same auto-increment mode value 1
+SET tc_enable_autoinc_check = OFF;
+TDBCTL ALTER NODE SPIDER2 OPTIONS (HOST '172.18.0.7');
+
+# Show existing spider nodes.
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+SERVER_NAME	SPIDER_AUTO_INCREMENT_MODE_SWITCH	SPIDER_AUTO_INCREMENT_MODE_VALUE	SPIDER_AUTO_INCREMENT_STEP
+SPIDER0	ON	1	37
+SPIDER2	ON	1	7
+
+# Restore mysql.servers;
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+# Restore to the initial state.
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
+SET @@SESSION.tc_admin = @origin_tc_admin;

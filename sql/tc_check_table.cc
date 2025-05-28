@@ -997,7 +997,11 @@ static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
     snprintf(err_buff, sizeof(err_buff), 
              "failed to lock table %s.%s on current server", 
              db_name.c_str(), table_name.c_str());
-    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
+    if((thd != NULL) && (!thd->is_error())) {
+      my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
+    } else {
+      sql_print_error("TDBCTL CHECK TABLE: %s", err_buff);
+    }
     DBUG_RETURN(TRUE);
   }
 
@@ -1147,7 +1151,11 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
     snprintf(err_buff, sizeof(err_buff), 
              "failed to lock table %s.%s on current server", 
              db_name.c_str(), table_name.c_str());
-    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
+    if((thd != NULL) && (!thd->is_error())) {
+      my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
+    } else {
+      sql_print_error("TDBCTL CHECK TABLE: %s", err_buff);
+    }
     DBUG_RETURN(TRUE);
   }
   

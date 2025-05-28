@@ -245,6 +245,7 @@ static bool servers_load(THD *thd, TABLE *table)
 
   init_sql_alloc(key_memory_servers, &mem_bak, ACL_ALLOC_BLOCK_SIZE, 0);
   backup_server_cache();
+
   my_hash_reset(&servers_cache);
   free_root(&mem, MYF(0));
   init_sql_alloc(key_memory_servers, &mem, ACL_ALLOC_BLOCK_SIZE, 0);
@@ -882,6 +883,8 @@ bool Sql_cmd_alter_server::execute(THD *thd)
       // Update cache entry
       if ((error= m_server_options->update_cache(existing)))
         my_error(ER_OUT_OF_RESOURCES, MYF(0));
+      
+      ++global_modify_server_version;
     }
   }
 
@@ -2815,15 +2818,15 @@ bool update_server_version(bool* version_updated)
       {/* not equal: 1.update server_v; 2.version++ */
         server_bak->version++;
         *version_updated = TRUE;
-		/*
-		if modify tdbctl ,need to maintain modify_tdbctl_flag 
-		*/
-		if (!modify_tdbctl_flag &&
-			(!native_strncasecmp(server->server_name, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix)) ||
-			!native_strncasecmp(server_bak->server_name, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix))))
-		{
-			modify_tdbctl_flag = true;
-		}
+        /*
+          if modify tdbctl ,need to maintain modify_tdbctl_flag 
+        */
+        if (!modify_tdbctl_flag &&
+          (!native_strncasecmp(server->server_name, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix)) ||
+          !native_strncasecmp(server_bak->server_name, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix))))
+        {
+          modify_tdbctl_flag = true;
+        }
       }
       server->version = server_bak->version;
     }
