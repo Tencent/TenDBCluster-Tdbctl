@@ -1000,7 +1000,7 @@ static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
     if((thd != NULL) && (!thd->is_error())) {
       my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
     } else {
-      sql_print_error("TDBCTL CHECK TABLE: %s", err_buff);
+      sql_print_warning("TDBCTL CHECK TABLE: %s", err_buff);
     }
     DBUG_RETURN(TRUE);
   }
@@ -1154,7 +1154,7 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
     if((thd != NULL) && (!thd->is_error())) {
       my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
     } else {
-      sql_print_error("TDBCTL CHECK TABLE: %s", err_buff);
+      sql_print_warning("TDBCTL CHECK TABLE: %s", err_buff);
     }
     DBUG_RETURN(TRUE);
   }

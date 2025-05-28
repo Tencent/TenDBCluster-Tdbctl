@@ -41,16 +41,14 @@ SPIDER0	ON	1	37
 
 # Case 1: TDBCTL CREATE NODE execution failed due to auto-increment configuration conflicts.
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306);
-ERROR HY000: CREATE NODE FAILED: Auto-increment settings conflict with cluster spider nodes: Spider node SPIDER0 and the foreign server SPIDER_foreign_172.18.0.7#3306 have the same auto-increment mode value 1
+ERROR HY000: CREATE NODE FAILED: The new spider node's auto-increment settings conflict with cluster spider nodes: please modify the auto-increment configuration for the new spider node
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
-ERROR HY000: CREATE NODE FAILED: Auto-increment settings conflict with cluster spider nodes: Spider node SPIDER0 has auto-increment mode enabled while foreign server SPIDER_foreign_172.18.0.8#3306 has auto-increment mode disabled
+ERROR HY000: CREATE NODE FAILED: The new spider node's auto-increment settings conflict with cluster spider nodes: please modify the auto-increment configuration for the new spider node
 SET tc_enable_autoinc_check = OFF;
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306);
 SET tc_enable_autoinc_check = ON;
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
-ERROR HY000: CREATE NODE FAILED: Found auto-increment setting conflicts of existing spider nodes: 
-Spider nodes with same auto-increment mode value 1: SPIDER0, SPIDER1
-Spider nodes with auto-increment step value 7: SPIDER1; Spider nodes with auto-increment step value 37: SPIDER0
+ERROR HY000: CREATE NODE FAILED: Found auto-increment setting conflicts of current cluster spider nodes: check view information_schema.tdbctl_spider_auto_increment for details
 SET tc_enable_autoinc_check = OFF;
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
 
@@ -105,15 +103,12 @@ SPIDER2	OFF	3	37
 
 # Case 2: TDBCTL ALTER NODE execution failed due to auto-increment configuration conflicts.
 TDBCTL ALTER NODE SPIDER1 OPTIONS (HOST '172.18.0.8');
-ERROR HY000: ALTER NODE FAILED: Found auto-increment setting conflicts of existing spider nodes: 
-Spider nodes with auto-increment enabled: SPIDER0; Spider nodes with auto-increment disabled: SPIDER2
+ERROR HY000: ALTER NODE FAILED: Found auto-increment setting conflicts of current cluster spider nodes: check view information_schema.tdbctl_spider_auto_increment for details
 TDBCTL ALTER NODE SPIDER2 OPTIONS (HOST '172.18.0.7');
-ERROR HY000: ALTER NODE FAILED: Found auto-increment setting conflicts of existing spider nodes: 
-Spider nodes with same auto-increment mode value 1: SPIDER0, SPIDER1
-Spider nodes with auto-increment step value 7: SPIDER1; Spider nodes with auto-increment step value 37: SPIDER0
+ERROR HY000: ALTER NODE FAILED: Found auto-increment setting conflicts of current cluster spider nodes: check view information_schema.tdbctl_spider_auto_increment for details
 TDBCTL DROP NODE SPIDER1;
 TDBCTL ALTER NODE SPIDER2 OPTIONS (HOST '172.18.0.7');
-ERROR HY000: ALTER NODE FAILED: Auto-increment settings conflict with cluster spider nodes: Spider node SPIDER0 and the foreign server SPIDER_foreign_172.18.0.7#3306 have the same auto-increment mode value 1
+ERROR HY000: ALTER NODE FAILED: The new spider node's auto-increment settings conflict with cluster spider nodes: please modify the auto-increment configuration for the new spider node
 SET tc_enable_autoinc_check = OFF;
 TDBCTL ALTER NODE SPIDER2 OPTIONS (HOST '172.18.0.7');
 

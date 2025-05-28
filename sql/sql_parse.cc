@@ -2670,10 +2670,10 @@ public:
       my_error(nr, MYF(0), err_info);
     } else {
       if(thd != NULL) {
-        sql_print_error("%s Command: %s",get_stmt_type_str(thd->lex->sql_command), 
+        sql_print_warning("%s Command: %s",get_stmt_type_str(thd->lex->sql_command), 
                         err_info);
       } else {
-        sql_print_error(err_info);
+        sql_print_warning(err_info);
       }
     }
   }

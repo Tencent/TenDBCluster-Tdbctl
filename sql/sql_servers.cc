@@ -3299,6 +3299,7 @@ bool find_auto_increment_conflict(const std::map<std::string, SPIDER_AUTOINC_INF
 bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex)
 {
   std::string errmsg;
+  std::string err_detail;
   int error_number = ER_TCADMIN_INTERNAL_ERROR;
 
   // Only check auto-increment settings for SPIDER type nodes
@@ -3344,12 +3345,12 @@ bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex)
   
   // Generate unique server name using wrapper prefix and IP:port
   std::string foreign_server_name = get_wrapper_prefix_by_wrapper(foreign_server_wrapper.c_str());
-  foreign_server_name += "_foreign_" + foreign_server_info.ipport_str;
+  foreign_server_name += "_new_" + foreign_server_info.ipport_str;
 
   // Connect to the foreign server
   MYSQL *foreign_server_conn = tc_conn_connect(foreign_server_info);
   if(!foreign_server_conn) {
-    errmsg = "Failed to connect to foreign server " + foreign_server_name + 
+    errmsg = "Failed to connect to new server " + foreign_server_name + 
              " when checking auto-increment settings";
     my_error(error_number, MYF(0), errmsg.c_str());
     return true;
@@ -3395,10 +3396,13 @@ bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex)
   // Validate existing nodes' auto-inc settings
   std::vector<SPIDER_AUTOINC_CONFLICT_ITEM> failure_items;
   if(!validate_auto_increment_settings(spider_autoinc_map, failure_items)) {
-    errmsg = "Found auto-increment setting conflicts of existing spider nodes: ";
+    errmsg = "Found auto-increment setting conflicts of current cluster spider nodes: ";
+    err_detail = errmsg;
     for(SPIDER_AUTOINC_CONFLICT_ITEM conflict_item : failure_items) {
-      errmsg += "\n" + conflict_item.second;
+      err_detail += "\n" + conflict_item.second;
     }
+    sql_print_warning(err_detail.c_str());
+    errmsg += "check view information_schema.tdbctl_spider_auto_increment for details";
     my_error(error_number, MYF(0), errmsg.c_str());
     return true;
   }
@@ -3408,7 +3412,11 @@ bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex)
   std::string foreign_server_conflict_reason;
   if(find_auto_increment_conflict(spider_autoinc_map, foreign_server_name, foreign_server_autoinc, 
                                   foreign_server_conflict_type, foreign_server_conflict_reason)) {                              
-    errmsg = "Auto-increment settings conflict with cluster spider nodes: " + foreign_server_conflict_reason;
+    errmsg = "The new spider node's auto-increment settings conflict with cluster spider nodes: ";
+    err_detail = errmsg;
+    err_detail += foreign_server_conflict_reason;
+    sql_print_warning(err_detail.c_str());
+    errmsg += "please modify the auto-increment configuration for the new spider node";
     my_error(error_number, MYF(0), errmsg.c_str());
     return true;
   }
