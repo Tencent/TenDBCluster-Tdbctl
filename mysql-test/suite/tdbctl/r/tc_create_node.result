@@ -1,8 +1,12 @@
 SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
 SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
 SET tc_admin=OFF;
 CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
 INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+# Disable tc_enable_autoinc_check
+SET tc_enable_autoinc_check = OFF;
 
 # Original routing table.
 SELECT * FROM mysql.servers;
@@ -198,28 +202,28 @@ TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL
 TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
 TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
 # spider0 routing table
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
 SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
 SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
-SPT1	172.18.0.3		mysql	mysql	3306		mysql	
-SPT0	172.18.0.2		mysql	mysql	3306		mysql	
 TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
 # spider1 routing table
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
 SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
 SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
-SPT1	172.18.0.3		mysql	mysql	3306		mysql	
-SPT0	172.18.0.2		mysql	mysql	3306		mysql	
 TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
 # spider2 routing table
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
 SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
 SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
-SPT1	172.18.0.3		mysql	mysql	3306		mysql	
-SPT0	172.18.0.2		mysql	mysql	3306		mysql	
 SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
 TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
 
@@ -456,28 +460,28 @@ TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL
 TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
 TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
 # spider0 routing table
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
 SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
 SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
-SPT1	172.18.0.3		mysql	mysql	3306		mysql	
-SPT0	172.18.0.2		mysql	mysql	3306		mysql	
 TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
 # spider1 routing table
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
 SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
 SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
-SPT1	172.18.0.3		mysql	mysql	3306		mysql	
-SPT0	172.18.0.2		mysql	mysql	3306		mysql	
 TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
 # spider2 routing table
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
 SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
 SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
-SPT1	172.18.0.3		mysql	mysql	3306		mysql	
-SPT0	172.18.0.2		mysql	mysql	3306		mysql	
 SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
 TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
 
@@ -518,4 +522,5 @@ Set general log to original state for all cluster nodes.
 SET tc_admin=OFF;
 DROP TEMPORARY TABLE origin_servers;
 SET @@GLOBAL.tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
 SET @@SESSION.tc_admin = @origin_tc_admin;

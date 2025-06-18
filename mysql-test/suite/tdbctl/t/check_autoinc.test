@@ -1,0 +1,124 @@
+# When creating or modifying a SPIDER node using CREATE/ALTER NODE statements, verify its auto-increment configuration.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+--echo
+--echo # Enable tc_enable_autoinc_check
+--connection tdbctl0
+SET tc_enable_autoinc_check = ON;
+
+--echo
+--echo # Original routing table.
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Spider nodes' auto-increment configuration.
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+
+--echo
+--echo # Set routing.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER1;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Show existing spider nodes.
+--connection tdbctl0
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+
+--echo
+--echo # Case 1: TDBCTL CREATE NODE execution failed due to auto-increment configuration conflicts.
+--connection tdbctl0
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+SET tc_enable_autoinc_check = OFF;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+SET tc_enable_autoinc_check = ON;
+--error ER_TCADMIN_CREATE_NODE_ERROR
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+SET tc_enable_autoinc_check = OFF;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+
+--echo
+--echo # Show existing spider nodes.
+--connection tdbctl0
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+
+--echo
+--echo # Restore mysql.servers;
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Enable tc_enable_autoinc_check
+--connection tdbctl0
+SET tc_enable_autoinc_check = ON;
+
+--echo
+--echo # Original routing table.
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Spider nodes' auto-increment configuration.
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+
+--echo
+--echo # Set routing.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Show existing spider nodes.
+--connection tdbctl0
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+
+--echo
+--echo # Case 2: TDBCTL ALTER NODE execution failed due to auto-increment configuration conflicts.
+--connection tdbctl0
+--error ER_TCADMIN_ALTER_NODE_ERROR
+TDBCTL ALTER NODE SPIDER1 OPTIONS (HOST '172.18.0.8');
+--error ER_TCADMIN_ALTER_NODE_ERROR
+TDBCTL ALTER NODE SPIDER2 OPTIONS (HOST '172.18.0.7');
+TDBCTL DROP NODE SPIDER1;
+--error ER_TCADMIN_ALTER_NODE_ERROR
+TDBCTL ALTER NODE SPIDER2 OPTIONS (HOST '172.18.0.7');
+SET tc_enable_autoinc_check = OFF;
+TDBCTL ALTER NODE SPIDER2 OPTIONS (HOST '172.18.0.7');
+
+--echo
+--echo # Show existing spider nodes.
+--connection tdbctl0
+SELECT * FROM INFORMATION_SCHEMA.TDBCTL_SPIDER_AUTO_INCREMENT;
+
+--echo
+--echo # Restore mysql.servers;
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
+SET @@SESSION.tc_admin = @origin_tc_admin;

@@ -2640,7 +2640,7 @@ public:
     locked = !m_thd->mdl_context.acquire_lock(&mdl_request,
                                               m_thd->variables.lock_wait_timeout);
     if(!locked) {
-      lock_error = "lock wait timeout for routing management";
+      lock_error = "failed to acquire lock for routing management";
     }
   }
 
@@ -2664,6 +2664,19 @@ public:
    * @return Error message string
    */
   string get_lock_error() const { return lock_error; }
+
+  static void print_lock_error(THD *thd, int nr, const char *err_info) {
+    if((thd != NULL) && (!thd->is_error())) {
+      my_error(nr, MYF(0), err_info);
+    } else {
+      if(thd != NULL) {
+        sql_print_warning("%s Command: %s",get_stmt_type_str(thd->lex->sql_command), 
+                        err_info);
+      } else {
+        sql_print_warning(err_info);
+      }
+    }
+  }
 
 private:
   TC_routing_manager_lock_guard() {}  // Disable default constructor
@@ -5505,8 +5518,8 @@ mysql_execute_command(THD *thd, bool first_level)
        */      
       TC_routing_manager_lock_guard routing_mgr_lock_guard(thd, MDL_INTENTION_EXCLUSIVE);
       if(!routing_mgr_lock_guard.lock_successful()) {
-        my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), 
-                  routing_mgr_lock_guard.get_lock_error().c_str());
+        TC_routing_manager_lock_guard::print_lock_error(thd, ER_TCADMIN_CREATE_NODE_ERROR, 
+                                                        routing_mgr_lock_guard.get_lock_error().c_str());
         goto error;
       }
 
@@ -5541,6 +5554,13 @@ mysql_execute_command(THD *thd, bool first_level)
         if(prepare_server_creation(thd, lex, err_msg)) {
           my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), err_msg.c_str());
           goto error;
+        }
+
+        /* Check if auto-inc settings are compatible for spider nodes */
+        if(thd->variables.tc_enable_autoinc_check) {
+          if (check_autoinc_settings_for_new_spider_node(thd, lex)) {
+            goto error;
+          }
         }
 
         // Flush routing for the node to be added
@@ -5593,6 +5613,13 @@ mysql_execute_command(THD *thd, bool first_level)
         if(prepare_server_creation(thd, lex, err_msg)) {
           my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), err_msg.c_str());
           goto error;
+        }
+
+        /* Check if auto-inc settings are compatible for spider nodes */
+        if(thd->variables.tc_enable_autoinc_check) {
+          if (check_autoinc_settings_for_new_spider_node(thd, lex)) {
+            goto error;
+          }
         }
 
         /* Add the new node to both the mysql.servers table and servers_cache */
@@ -5659,16 +5686,16 @@ mysql_execute_command(THD *thd, bool first_level)
         switch(lex->sql_command) 
         {
         case TC_SQLCOM_ALTER_NODE:
-          my_error(ER_TCADMIN_ALTER_NODE_ERROR, MYF(0), 
-                    routing_mgr_lock_guard.get_lock_error().c_str());
+          TC_routing_manager_lock_guard::print_lock_error(thd, ER_TCADMIN_ALTER_NODE_ERROR, 
+                                                      routing_mgr_lock_guard.get_lock_error().c_str());
           break;
         case TC_SQLCOM_DROP_NODE:
-          my_error(ER_TCADMIN_DROP_NODE_ERROR, MYF(0), 
-                    routing_mgr_lock_guard.get_lock_error().c_str());
+          TC_routing_manager_lock_guard::print_lock_error(thd, ER_TCADMIN_DROP_NODE_ERROR, 
+                                                      routing_mgr_lock_guard.get_lock_error().c_str());
           break;
         default:
-          my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), 
-                    routing_mgr_lock_guard.get_lock_error().c_str());
+          TC_routing_manager_lock_guard::print_lock_error(thd, ER_TCADMIN_EXECUTE_ERROR, 
+                                                        routing_mgr_lock_guard.get_lock_error().c_str());
         }
         goto error;
       }
@@ -5707,6 +5734,14 @@ mysql_execute_command(THD *thd, bool first_level)
         }*/
 
         old_server_options = foreign_server_to_server_options(server);
+
+        /* Check if auto-inc settings are compatible for spider nodes */
+        if(thd->variables.tc_enable_autoinc_check) {
+          if (check_autoinc_settings_for_new_spider_node(thd, lex)) {
+            goto error;
+          }
+        }
+        
         break;
       }
       case TC_SQLCOM_DROP_NODE:
@@ -5790,8 +5825,8 @@ mysql_execute_command(THD *thd, bool first_level)
        */  
       TC_routing_manager_lock_guard routing_mgr_lock_guard(thd, MDL_EXCLUSIVE);
       if(!routing_mgr_lock_guard.lock_successful()) {
-        my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), 
-                  routing_mgr_lock_guard.get_lock_error().c_str());
+        TC_routing_manager_lock_guard::print_lock_error(thd, ER_TCADMIN_FLUSH_ROUTING_ERROR, 
+                                                        routing_mgr_lock_guard.get_lock_error().c_str());
         goto error;
       }
 
@@ -5854,8 +5889,8 @@ mysql_execute_command(THD *thd, bool first_level)
       */ 
     TC_routing_manager_lock_guard routing_mgr_lock_guard(thd, MDL_SHARED);
     if(!routing_mgr_lock_guard.lock_successful()) {
-      my_error(ER_TCADMIN_EXECUTE_ERROR, MYF(0), 
-                routing_mgr_lock_guard.get_lock_error().c_str());
+      TC_routing_manager_lock_guard::print_lock_error(thd, ER_TCADMIN_EXECUTE_ERROR, 
+                                                      routing_mgr_lock_guard.get_lock_error().c_str());
       goto error;
     }
 

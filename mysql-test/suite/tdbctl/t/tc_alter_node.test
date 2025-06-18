@@ -4,9 +4,15 @@
 
 --connection tdbctl0
 SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
 SET tc_admin=OFF;
 CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
 INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+--echo
+--echo # Disable tc_enable_autoinc_check
+--connection tdbctl0
+SET tc_enable_autoinc_check = OFF;
 
 --echo
 --echo # Original routing table.
@@ -28,7 +34,7 @@ TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306);
 SELECT * FROM mysql.servers;
 --echo # spider routing table
 --connection spider0
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 
 --echo
 --echo # Restore mysql.servers;
@@ -55,7 +61,7 @@ TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306) WITH SYNC;
 SELECT * FROM mysql.servers;
 --echo # spider routing table
 --connection spider0
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 
 --echo
 --echo # Restore mysql.servers;
@@ -88,7 +94,7 @@ UNLOCK TABLES;
 SELECT * FROM mysql.servers;
 --echo # spider routing table
 --connection spider0
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 
 --echo
 --echo # Restore mysql.servers;
@@ -132,7 +138,7 @@ UNLOCK TABLES;
 SELECT * FROM mysql.servers;
 --echo # spider routing table
 --connection spider0
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 
 --echo
 --echo # Restore mysql.servers;
@@ -150,4 +156,5 @@ TDBCTL FLUSH ROUTING;
 --connection tdbctl0
 SET tc_admin=OFF;
 DROP TEMPORARY TABLE origin_servers;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
 SET @@SESSION.tc_admin = @origin_tc_admin;

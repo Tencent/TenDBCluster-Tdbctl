@@ -1,7 +1,11 @@
 SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
 SET tc_admin=OFF;
 CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
 INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+# Disable tc_enable_autoinc_check
+SET tc_enable_autoinc_check = OFF;
 
 # Original routing table.
 SELECT * FROM mysql.servers;
@@ -39,12 +43,12 @@ TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL
 TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
 TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
 # spider routing table
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
 SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
 SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
-SPT1	172.18.0.3		mysql	mysql	3306		mysql	
-SPT0	172.18.0.2		mysql	mysql	3306		mysql	
 SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
 TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
 
@@ -79,6 +83,9 @@ GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.7' WITH GRANT OPTION
 show variables like  'server_uuid'
 
 TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306) WITH SYNC
+
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
 set tc_admin=0
 select user,host from mysql.user where user = 'mysql'and host = '172.18.0.6'
 set tc_admin = 0;
@@ -90,9 +97,6 @@ show variables like  'server_uuid'
 --------------------
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
-/*!50600 SET SESSION ddl_execute_by_ctl=0 */
-set lock_wait_timeout = 60;set wait_timeout = 180
-begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 SHOW GRANTS
 select user,host from mysql.user where user = 'mysql'and host = '172.18.0.9'
@@ -108,6 +112,7 @@ drop user 'mysql'@'172.18.0.11'
 CREATE USER /*!50706 IF NOT EXISTS*/ 'mysql'@'172.18.0.11' IDENTIFIED BY 'mysql'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.11' WITH GRANT OPTION
 
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 --------------------
@@ -129,8 +134,14 @@ CREATE USER /*!50706 IF NOT EXISTS*/ 'mysql'@'172.18.0.11' IDENTIFIED BY 'mysql'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.11' WITH GRANT OPTION
 
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
+set lock_wait_timeout = 60;set wait_timeout = 180
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 --------------------
@@ -139,6 +150,8 @@ spider2_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 --------------------
@@ -148,6 +161,7 @@ select user,host from mysql.user where user = 'mysql'and host = '172.18.0.7'
 drop user 'mysql'@'172.18.0.7'
 CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.7' IDENTIFIED WITH 'mysql_native_password' AS '<secret>'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.7' WITH GRANT OPTION
+
 select user,host from mysql.user where user = 'mysql'and host = '172.18.0.6'
 drop user 'mysql'@'172.18.0.6'
 CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.6' IDENTIFIED WITH 'mysql_native_password' AS '<secret>'
@@ -159,6 +173,7 @@ select user,host from mysql.user where user = 'mysql'and host = '172.18.0.7'
 drop user 'mysql'@'172.18.0.7'
 CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.7' IDENTIFIED WITH 'mysql_native_password' AS '<secret>'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.7' WITH GRANT OPTION
+
 select user,host from mysql.user where user = 'mysql'and host = '172.18.0.6'
 drop user 'mysql'@'172.18.0.6'
 CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.6' IDENTIFIED WITH 'mysql_native_password' AS '<secret>'
@@ -178,12 +193,12 @@ TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL
 TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
 TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
 # spider routing table
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
-SPIDER0	172.18.0.7		mysql	mysql	3306		SPIDER	
-SPIDER1	172.18.0.6		mysql	mysql	3306		SPIDER	
-SPT1	172.18.0.3		mysql	mysql	3306		mysql	
 SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPIDER1	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER0	172.18.0.7		mysql	mysql	3306		SPIDER	
 SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
 TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
 
@@ -224,6 +239,7 @@ set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
@@ -234,6 +250,7 @@ set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
@@ -244,6 +261,7 @@ set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+
 --------------------
 SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
@@ -265,12 +283,12 @@ TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL
 TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
 TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
 # spider routing table
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
 SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
 SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
-SPT1	172.18.0.3		mysql	mysql	3306		mysql	
-SPT0	172.18.0.2		mysql	mysql	3306		mysql	
 SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
 TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
 
@@ -302,11 +320,17 @@ SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%17
 tdbctl0_log
 SET tc_admin=ON
 TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC
+
 show variables like  'server_uuid'
 
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
 TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC
+
 show variables like  'server_uuid'
 
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
 SET tc_admin=ON
 TDBCTL FLUSH ROUTING CACHE
 show variables like  'server_uuid'
@@ -314,8 +338,12 @@ show variables like  'server_uuid'
 --------------------
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","127.0.0.5","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 set lock_wait_timeout = 60;set wait_timeout = 180
@@ -326,8 +354,12 @@ unlock tables
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","127.0.0.5","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 set lock_wait_timeout = 60;set wait_timeout = 180
@@ -338,8 +370,12 @@ unlock tables
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+
+/*!50600 SET SESSION ddl_execute_by_ctl=0 */
 set lock_wait_timeout = 60;set wait_timeout = 180
 begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","127.0.0.5","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
 set lock_wait_timeout = 60;set wait_timeout = 180
@@ -368,12 +404,12 @@ TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL
 TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
 TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
 # spider routing table
-SELECT * FROM mysql.servers;
+SELECT * FROM mysql.servers ORDER BY Host;
 Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	127.0.0.4		mysql	mysql	3306		mysql	
+SPT1	127.0.0.5		mysql	mysql	3306		mysql	
 SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
 SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
-SPT1	127.0.0.5		mysql	mysql	3306		mysql	
-SPT0	127.0.0.4		mysql	mysql	3306		mysql	
 SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
 TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
 
@@ -388,4 +424,5 @@ TDBCTL FLUSH ROUTING;
 Set general log to original state for all cluster nodes.
 SET tc_admin=OFF;
 DROP TEMPORARY TABLE origin_servers;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
 SET @@SESSION.tc_admin = @origin_tc_admin;

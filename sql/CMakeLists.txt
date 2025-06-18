@@ -354,6 +354,7 @@ IF (NOT WIN32)
     item_json_func.cc
     spatial.cc
     tc_forwarding_rule_mgr.cc
+    sql_servers.cc
     COMPILE_FLAGS -I${BOOST_PATCHES_DIR} -isystem ${BOOST_INCLUDE_DIR}
   )
 ELSE()
@@ -370,6 +371,7 @@ ELSE()
     item_json_func.cc
     spatial.cc
     tc_forwarding_rule_mgr.cc
+    sql_servers.cc
     COMPILE_FLAGS -I${BOOST_PATCHES_DIR} -I${BOOST_INCLUDE_DIR}
   )
 ENDIF()

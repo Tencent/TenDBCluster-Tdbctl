@@ -60,6 +60,7 @@ done
 
 
 mysql -uroot -hctl0 -p123 -P3306<<EOF
+set tc_enable_autoinc_check = off;
 tdbctl create node wrapper 'SPIDER' options(user 'mysql', password 'mysql', host "${SPIDER0}", port 3306);
 tdbctl create node wrapper 'SPIDER' options(user 'mysql', password 'mysql', host "${SPIDER1}", port 3306);
 tdbctl create node wrapper 'SPIDER' options(user 'mysql', password 'mysql', host "${SPIDER2}", port 3306);
@@ -70,6 +71,7 @@ tdbctl create node wrapper 'mysql_slave' options(user 'mysql', password 'mysql',
 tdbctl create node wrapper 'TDBCTL' options(user 'mysql', password 'mysql', host "${CTL0}", port 3306);
 tdbctl create node wrapper 'TDBCTL' options(user 'mysql', password 'mysql', host "${CTL1}", port 3306);
 tdbctl create node wrapper 'TDBCTL' options(user 'mysql', password 'mysql', host "${CTL2}", port 3306);
+set tc_enable_autoinc_check = on;
 TDBCTL ENABLE PRIMARY;
 tdbctl flush routing;
 EOF

@@ -883,6 +883,8 @@ map<string, tc_exec_info> result_map_like(const map<string, tc_exec_info> &resul
 
 bool tc_get_variable_value(MYSQL *conn, const string &variable, string &value);
 uint tc_set_variable_value(MYSQL *conn, const string &variable, const string &value, string &err_msg);
+bool tc_get_multi_variable_values(MYSQL *conn, const string variables[], size_t count, 
+                                  map<string, string> &value_map, bool is_global=true);
 
 enum enum_ident_wrapper_check
 {

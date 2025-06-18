@@ -13,6 +13,7 @@
 #include "handler.h"
 #include "log.h"
 #include "rpl_group_replication.h"
+#include <cstddef>
 #include <string.h>
 #include <iostream>
 #include <string>
@@ -3017,6 +3018,10 @@ void fill_lex_to_alter_node(LEX* lex, FOREIGN_SERVER *server)
   {
     lex->server_options.set_password({server->password, strlen(server->password)});
   }
+  if (!lex->server_options.get_scheme())
+  {
+    lex->server_options.set_scheme({server->scheme, strlen(server->scheme)});
+  }
   DBUG_VOID_RETURN;
 }
 
@@ -3449,8 +3454,8 @@ MYSQL *tc_conn_connect(const string &host, uint port, const string &user,
     if (mysql_real_query(
             mysql, C_STRING_WITH_LEN("/*!50600 SET SESSION ddl_execute_by_ctl=0 */"))) {
       /*
-        ER_UNKNOWN_SYSTEM_VARIABLE can occur when dealing with lower versions
-        of Spider.
+        Ignore the error if it's due to an unknown system variable (ER_UNKNOWN_SYSTEM_VARIABLE),
+        which may occur for version compatibility. For other errors, treat as connection failure.
       */
       if (mysql_errno(mysql) != ER_UNKNOWN_SYSTEM_VARIABLE)
         goto init_cmd_fail;
@@ -4081,6 +4086,74 @@ uint tc_set_variable_value(MYSQL *conn, const string &variable, const string &va
     return exec_info.err_code;
   }
   return 0;
+}
+
+
+/**
+ * @brief Get values of multiple MySQL variables from INFORMATION_SCHEMA
+ * 
+ * @param conn MySQL connection handle
+ * @param variables Array of variable names to query
+ * @param count Number of variables in the array
+ * @param value_map Output map to store variable name-value pairs
+ * @param is_global Whether to query global variables (true) or session variables (false), default is true
+ * @return bool Returns true if failed to get all expected values, false on success
+ */
+bool tc_get_multi_variable_values(MYSQL *conn, const string variables[], size_t count, 
+                                  map<string, string> &value_map, bool is_global)
+{
+  static const char *get_vars_fmt = "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM "
+                                    "INFORMATION_SCHEMA.%s "
+                                    "WHERE VARIABLE_NAME IN (%s)";
+  
+  value_map.clear();
+  
+  // Early return if no variables to query
+  if (count == 0) {
+    return false;
+  }
+
+  // Early return if conn is NULL
+  if (conn == NULL) {
+    return true;
+  }
+  
+  // Build comma-separated list of quoted variable names for SQL IN clause
+  string var_str = "";
+  for (size_t i = 0; i < count; ++i) {
+    var_str += "'";
+    var_str += variables[i];
+    var_str += "'";
+    if (i != count - 1) {
+      var_str += ", ";
+    }
+  }
+
+  // Construct and execute the SQL query
+  char sql[512];
+  snprintf(sql, sizeof(sql), get_vars_fmt, 
+           is_global ? "GLOBAL_VARIABLES" : "SESSION_VARIABLES", var_str.c_str());
+  MYSQL_RES *res = tc_exec_sql_with_result(conn, sql);
+  
+  // RAII guard for MySQL result (auto-free when out of scope)
+  MYSQL_RES_GUARD(res);
+
+  // Process query results row by row
+  MYSQL_ROW row = NULL;
+  while (res && (row = mysql_fetch_row(res))) {
+    string res_var_name = row[0] ? row[0] : "";       // Column 0: variable name
+    string res_var_value = row[1] ? row[1] : "";      // Column 1: variable value
+    value_map[res_var_name] = res_var_value;          // Store in output map
+  }
+
+  // Verify we got all requested variables
+  for (size_t i = 0; i < count; ++i) {
+    if (value_map.find(variables[i]) == value_map.end()) {
+      return true;  // Return true (error) if any variable is missing
+    }
+  }
+
+  return false;  // Return false (success) if all variables found
 }
 
 /*
