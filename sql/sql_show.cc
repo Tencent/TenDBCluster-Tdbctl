@@ -85,6 +85,9 @@ extern ST_FIELD_INFO cluster_processlist_fields_info[];
 extern int fill_schema_cluster_processlist(THD *thd, TABLE_LIST *tables,
                                            Item *cond);
 
+extern ST_FIELD_INFO server_cache_fields_info[];
+extern int fill_schema_server_cache(THD *thd, TABLE_LIST *tables, Item *cond);
+
 enum enum_i_s_events_fields
 {
   ISE_EVENT_CATALOG= 0,
@@ -9932,6 +9935,9 @@ ST_SCHEMA_TABLE schema_tables[]=
    -1, 0, 0},
   {"TDBCTL_CLUSTER_PROCESSLIST", cluster_processlist_fields_info,
    create_schema_table, fill_schema_cluster_processlist, make_old_format, 0,
+   -1, -1, 0, 0},
+  {"TDBCTL_SERVER_CACHE", server_cache_fields_info,
+   create_schema_table, fill_schema_server_cache, 0, 0,
    -1, -1, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };

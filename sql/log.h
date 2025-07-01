@@ -18,6 +18,7 @@
 
 #include "my_global.h"
 #include "auth/sql_security_ctx.h"  // Security_context
+#include <cstddef>
 
 struct TABLE_LIST;
 
@@ -83,7 +84,8 @@ enum enum_log_table_type
   QUERY_LOG_NONE = 0,
   QUERY_LOG_SLOW = 1,
   QUERY_LOG_GENERAL = 2,
-  QUERY_LOG_TDBCTL_DRY_RUN =3
+  QUERY_LOG_TDBCTL_DRY_RUN =3, 
+  QUERY_LOG_TDBCTL_ROUTING = 4
 };
 
 class File_query_log
@@ -183,6 +185,25 @@ class File_query_log
 
   bool write_dry_run(THD *thd, ulonglong current_utime,
                      const char *sql_text, size_t sql_text_len);
+
+  /**
+     Log routing changes to the tdbctl routing log file.
+
+     @param thd                  THD of the query
+     @param current_utime        Current timestamp in micro seconds
+     @param sql_text             The very text of the query
+     @param sql_text_len         The length of sql_text string
+     @param target_server        Target server for routing changes
+     @param target_server_len    The length of target_server string
+     @param info                 Detailed routing change information
+     @param info_len             The length of info string
+
+     @return true if error, false otherwise.
+  */
+  bool write_tc_routing(THD *thd, ulonglong current_utime, 
+                        const char *sql_text, size_t sql_text_len,
+                        const char *target_server, size_t target_server_len,
+                        const char *info, size_t info_len);
 
 private:
   /** Type of log file. */
@@ -294,6 +315,25 @@ public:
 
   virtual bool log_tdbctl_dry_run(THD *thd, ulonglong current_utime,
                                     const char *sql_text, size_t sql_text_len)= 0;
+
+  /**
+     Log routing changes to the tdbctl routing log.
+
+     @param thd                  THD of the query
+     @param current_utime        Current timestamp in micro seconds
+     @param sql_text             The very text of the query
+     @param sql_text_len         The length of sql_text string
+     @param target_server        Target server for routing changes
+     @param target_server_len    The length of target_server string
+     @param info                 Detailed routing change information
+     @param info_len             The length of info string
+
+     @return true if error, false otherwise.
+  */
+  virtual bool log_tc_routing(THD *thd, ulonglong current_utime, 
+                              const char *sql_text, size_t sql_text_len,
+                              const char *target_server, size_t target_server_len,
+                              const char *info, size_t info_len)= 0;
 };
 
 
@@ -317,6 +357,12 @@ public:
 
   virtual bool log_tdbctl_dry_run(THD *thd, ulonglong current_utime,
                                   const char *sql_text, size_t sql_text_len);
+
+  /** @see Log_event_handler::log_tc_routing(). */
+  virtual bool log_tc_routing(THD *thd, ulonglong current_utime, 
+                              const char *sql_text, size_t sql_text_len,
+                              const char *target_server, size_t target_server_len,
+                              const char *info, size_t info_len);
 
 private:
   /**
@@ -342,6 +388,7 @@ class Log_to_file_event_handler: public Log_event_handler
   File_query_log mysql_general_log;
   File_query_log mysql_slow_log;
   File_query_log tdbctl_dry_run_log;
+  File_query_log tdbctl_routing_log;
 
 public:
   /**
@@ -370,12 +417,22 @@ public:
    */
   virtual bool log_tdbctl_dry_run(THD *thd, ulonglong current_utime,
                                   const char *sql_text, size_t sql_text_len);
+  
+  /**
+    Wrapper around File_query_log::write_tc_routing() for tdbctl routing log.
+    @see Log_event_handler::log_tc_routing().
+  */
+  virtual bool log_tc_routing(THD *thd, ulonglong current_utime, 
+                              const char *sql_text, size_t sql_text_len,
+                              const char *target_server, size_t target_server_len,
+                              const char *info, size_t info_len);
 
 private:
   Log_to_file_event_handler()
     : mysql_general_log(QUERY_LOG_GENERAL),
     mysql_slow_log(QUERY_LOG_SLOW),
-    tdbctl_dry_run_log(QUERY_LOG_TDBCTL_DRY_RUN)
+    tdbctl_dry_run_log(QUERY_LOG_TDBCTL_DRY_RUN),
+    tdbctl_routing_log(QUERY_LOG_TDBCTL_ROUTING)
   { }
 
   /** Close slow and general log files. */
@@ -384,15 +441,21 @@ private:
     mysql_general_log.close();
     mysql_slow_log.close();
     tdbctl_dry_run_log.close();
+    tdbctl_routing_log.close();
   }
 
-  /** @return File_query_log instance responsible for writing to slow/general log.*/
+  /** 
+     @return File_query_log instance responsible for writing to slow/general log
+     or tc_dry_run/tc_routing log.
+   */
   File_query_log *get_query_log(enum_log_table_type log_type)
   {
     if (log_type == QUERY_LOG_SLOW)
       return &mysql_slow_log;
     else if (log_type == QUERY_LOG_TDBCTL_DRY_RUN)
       return &tdbctl_dry_run_log;
+    else if (log_type == QUERY_LOG_TDBCTL_ROUTING)
+      return &tdbctl_routing_log;
     DBUG_ASSERT(log_type == QUERY_LOG_GENERAL);
     return &mysql_general_log;
   }
@@ -431,6 +494,7 @@ class Query_logger
   Log_event_handler *slow_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
   Log_event_handler *general_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
   Log_event_handler *tdbctl_dry_run_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
+  Log_event_handler *tdbctl_routing_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
 
 private:
   /**
@@ -461,6 +525,8 @@ public:
       return (opt_general_log && (log_output_options & LOG_TABLE));
     else if (log_type == QUERY_LOG_TDBCTL_DRY_RUN)
       return (tc_dry_run_log && (log_output_options & LOG_TABLE));
+    else if (log_type == QUERY_LOG_TDBCTL_ROUTING)
+      return (tc_routing_log && (log_output_options & LOG_TABLE));
     DBUG_ASSERT(false);
     return false;                             /* make compiler happy */
   }
@@ -513,6 +579,21 @@ public:
        @return true if error, false otherwise.
     */
   bool tdbctl_dry_run_log_write(THD *thd, const char* query, size_t query_length);
+
+  /**
+    Log tdbctl routing changes with all enabled log event handlers.
+
+     @param thd                  THD of the query
+     @param target_server        Target server for routing changes
+     @param target_server_len    The length of target_server string
+     @param info                 Detailed routing change information
+     @param info_len             The length of info string
+
+    @return true if error, false otherwise.
+  */
+  bool tdbctl_routing_log_write(THD *thd, 
+                                const char *target_server, size_t target_server_len,
+                                const char *info, size_t info_len);
 
   /**
      Write printf style message to general query log.

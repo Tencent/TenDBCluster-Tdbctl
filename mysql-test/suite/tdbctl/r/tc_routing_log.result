@@ -1,0 +1,568 @@
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
+SELECT @@GLOBAL.tc_routing_log_file INTO @origin_tc_routing_log_file;
+SELECT @@GLOBAL.tc_routing_log INTO @origin_tc_routing_log;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+# Disable tc_enable_autoinc_check
+SET tc_enable_autoinc_check = OFF;
+
+# Original routing table.
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Get datadir
+datadir:/data1/mysqldata/data/
+
+# Case 1: Routing changes caused by FLUSH PRIVILEGES
+SET tc_admin=OFF;
+DELETE FROM mysql.servers WHERE Server_name = 'SPIDER2';
+
+# Check the initial routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Set routing log: /data1/mysqldata/data//routing_log_case1
+SET @@GLOBAL.tc_routing_log_file = '/data1/mysqldata/data//routing_log_case1';;
+SET @@GLOBAL.tc_routing_log = ON;
+
+FLUSH PRIVILEGES;
+
+# Show routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Show routing log
+/usr/local/mysql/bin/mysqld, Version: 5.7.20-tdbctl-test-log (MySQL Community Server (GPL)). started with:
+Tcp port: 3306  Unix socket: /data1/mysqldata/mysql.sock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: FLUSH PRIVILEGES
+Target_server: (self)
+Info: 
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	0x0719200ca43bc65814560d8ba96cac63	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	0xedaf0edfd096e27e14e7fdb28e0e60ea	3306		SPIDER	
+SPT0	172.18.0.2		mysql	0xb69204bd70080a70f9aa77ffb78806ec	3306		mysql	
+SPT1	172.18.0.3		mysql	0x3cde25fae496f2cfbed6fa7045257da1	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	0x48aceb7235e820c1cc67cfe66a4bdf30	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	0x9c4fd7330919e9c83a5583aeca26e0aa	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	0x8ff4de62e2e35010f03b040403213b8e	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	0x84618cf90e7073545767dd91aa905da1	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	0x432c4d7dbfa2b93c94d615d5a8f5c953	3306		TDBCTL	
+9 rows in set (version_num: <ignored>)
+
+
+# Case 2: Routing changes caused by TDBCTL CREATE NODE
+
+# Check the initial routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Set routing log: /data1/mysqldata/data//routing_log_case2
+SET @@GLOBAL.tc_routing_log_file = '/data1/mysqldata/data//routing_log_case2';;
+
+SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+SET tc_admin = ON;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+SET GLOBAL tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
+
+# Show routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Show routing log
+/usr/local/mysql/bin/mysqld, Version: 5.7.20-tdbctl-test-log (MySQL Community Server (GPL)). started with:
+Tcp port: 3306  Unix socket: /data1/mysqldata/mysql.sock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER_foreign_172.18.0.8#3306
+Info: set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER_foreign_172.18.0.8#3306
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER_foreign_172.18.0.8#3306
+Info: flush tables with no block;flush table with read lock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER_foreign_172.18.0.8#3306
+Info: flush privileges
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER_foreign_172.18.0.8#3306
+Info: unlock tables
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: (self)
+Info: 
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	0x0719200ca43bc65814560d8ba96cac63	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	0xedaf0edfd096e27e14e7fdb28e0e60ea	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	0x06ebf97b1e79ba9676526a2c005d57cc	3306		SPIDER	
+SPT0	172.18.0.2		mysql	0xb69204bd70080a70f9aa77ffb78806ec	3306		mysql	
+SPT1	172.18.0.3		mysql	0x3cde25fae496f2cfbed6fa7045257da1	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	0x48aceb7235e820c1cc67cfe66a4bdf30	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	0x9c4fd7330919e9c83a5583aeca26e0aa	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	0x8ff4de62e2e35010f03b040403213b8e	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	0x84618cf90e7073545767dd91aa905da1	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	0x432c4d7dbfa2b93c94d615d5a8f5c953	3306		TDBCTL	
+10 rows in set (version_num: <ignored>)
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER2
+Info: set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER2
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER2
+Info: flush tables with no block;flush table with read lock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER2
+Info: flush privileges
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER2
+Info: unlock tables
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: TDBCTL1,TDBCTL2
+Info: set tc_admin=0;set sql_log_bin = off;set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: TDBCTL1,TDBCTL2
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: TDBCTL1,TDBCTL2
+Info: flush privileges
+
+
+# Case 3: Routing changes caused by TDBCTL DROP NODE
+
+# Check the initial routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Set routing log: /data1/mysqldata/data//routing_log_case3
+SET @@GLOBAL.tc_routing_log_file = '/data1/mysqldata/data//routing_log_case3';;
+
+SET tc_admin = ON;
+TDBCTL DROP NODE SPIDER2;
+
+# Show routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Show routing log
+/usr/local/mysql/bin/mysqld, Version: 5.7.20-tdbctl-test-log (MySQL Community Server (GPL)). started with:
+Tcp port: 3306  Unix socket: /data1/mysqldata/mysql.sock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL DROP NODE SPIDER2
+Target_server: (self)
+Info: 
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	0x0719200ca43bc65814560d8ba96cac63	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	0xedaf0edfd096e27e14e7fdb28e0e60ea	3306		SPIDER	
+SPT0	172.18.0.2		mysql	0xb69204bd70080a70f9aa77ffb78806ec	3306		mysql	
+SPT1	172.18.0.3		mysql	0x3cde25fae496f2cfbed6fa7045257da1	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	0x48aceb7235e820c1cc67cfe66a4bdf30	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	0x9c4fd7330919e9c83a5583aeca26e0aa	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	0x8ff4de62e2e35010f03b040403213b8e	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	0x84618cf90e7073545767dd91aa905da1	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	0x432c4d7dbfa2b93c94d615d5a8f5c953	3306		TDBCTL	
+9 rows in set (version_num: <ignored>)
+
+
+# Case 4: Routing changes caused by TDBCTL ALTER NODE
+
+# Check the initial routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Set routing log: /data1/mysqldata/data//routing_log_case4
+SET @@GLOBAL.tc_routing_log_file = '/data1/mysqldata/data//routing_log_case4';;
+
+SET tc_admin = ON;
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC;
+TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC;
+
+# Show routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPT0	127.0.0.4		mysql	mysql	3306		mysql	
+SPT1	127.0.0.5		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Show routing log
+/usr/local/mysql/bin/mysqld, Version: 5.7.20-tdbctl-test-log (MySQL Community Server (GPL)). started with:
+Tcp port: 3306  Unix socket: /data1/mysqldata/mysql.sock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC
+Target_server: (self)
+Info: 
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	0x0719200ca43bc65814560d8ba96cac63	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	0xedaf0edfd096e27e14e7fdb28e0e60ea	3306		SPIDER	
+SPT0	127.0.0.4		mysql	0xb69204bd70080a70f9aa77ffb78806ec	3306		mysql	
+SPT1	172.18.0.3		mysql	0x3cde25fae496f2cfbed6fa7045257da1	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	0x48aceb7235e820c1cc67cfe66a4bdf30	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	0x9c4fd7330919e9c83a5583aeca26e0aa	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	0x8ff4de62e2e35010f03b040403213b8e	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	0x84618cf90e7073545767dd91aa905da1	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	0x432c4d7dbfa2b93c94d615d5a8f5c953	3306		TDBCTL	
+9 rows in set (version_num: <ignored>)
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC
+Target_server: SPIDER0,SPIDER1
+Info: set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC
+Target_server: SPIDER0,SPIDER1
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC
+Target_server: TDBCTL1,TDBCTL2
+Info: set tc_admin=0;set sql_log_bin = off;set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC
+Target_server: TDBCTL1,TDBCTL2
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC
+Target_server: (self)
+Info: 
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	0x0719200ca43bc65814560d8ba96cac63	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	0xedaf0edfd096e27e14e7fdb28e0e60ea	3306		SPIDER	
+SPT0	127.0.0.4		mysql	0xb69204bd70080a70f9aa77ffb78806ec	3306		mysql	
+SPT1	127.0.0.5		mysql	0x3cde25fae496f2cfbed6fa7045257da1	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	0x48aceb7235e820c1cc67cfe66a4bdf30	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	0x9c4fd7330919e9c83a5583aeca26e0aa	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	0x8ff4de62e2e35010f03b040403213b8e	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	0x84618cf90e7073545767dd91aa905da1	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	0x432c4d7dbfa2b93c94d615d5a8f5c953	3306		TDBCTL	
+9 rows in set (version_num: <ignored>)
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC
+Target_server: SPIDER0,SPIDER1
+Info: set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC
+Target_server: SPIDER0,SPIDER1
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC
+Target_server: TDBCTL1,TDBCTL2
+Info: set tc_admin=0;set sql_log_bin = off;set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC
+Target_server: TDBCTL1,TDBCTL2
+Info: The SQL for modifying mysql.servers is hidden
+
+
+# Case 5: Routing changes caused by TDBCTL FLUSH ROUING CACHE
+
+# Check the initial routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPT0	127.0.0.4		mysql	mysql	3306		mysql	
+SPT1	127.0.0.5		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Set routing log: /data1/mysqldata/data//routing_log_case5
+SET @@GLOBAL.tc_routing_log_file = '/data1/mysqldata/data//routing_log_case5';;
+
+SET tc_admin = ON;
+TDBCTL FLUSH ROUTING CACHE;
+
+# Show routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPT0	127.0.0.4		mysql	mysql	3306		mysql	
+SPT1	127.0.0.5		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Show routing log
+/usr/local/mysql/bin/mysqld, Version: 5.7.20-tdbctl-test-log (MySQL Community Server (GPL)). started with:
+Tcp port: 3306  Unix socket: /data1/mysqldata/mysql.sock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING CACHE
+Target_server: SPIDER0,SPIDER1
+Info: set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING CACHE
+Target_server: SPIDER0,SPIDER1
+Info: flush tables with no block;flush table with read lock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING CACHE
+Target_server: SPIDER0,SPIDER1
+Info: flush privileges
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING CACHE
+Target_server: SPIDER0,SPIDER1
+Info: unlock tables
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING CACHE
+Target_server: TDBCTL1,TDBCTL2
+Info: set tc_admin=0;set sql_log_bin = off;set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING CACHE
+Target_server: TDBCTL1,TDBCTL2
+Info: flush privileges
+
+
+# Restore mysql.servers;
+
+# Set routing log: /data1/mysqldata/data//routing_log_flush
+SET @@GLOBAL.tc_routing_log_file = '/data1/mysqldata/data//routing_log_flush';;
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+# Show routing log
+/usr/local/mysql/bin/mysqld, Version: 5.7.20-tdbctl-test-log (MySQL Community Server (GPL)). started with:
+Tcp port: 3306  Unix socket: /data1/mysqldata/mysql.sock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING
+Target_server: (self)
+Info: 
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	0x0719200ca43bc65814560d8ba96cac63	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	0xedaf0edfd096e27e14e7fdb28e0e60ea	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	0x06ebf97b1e79ba9676526a2c005d57cc	3306		SPIDER	
+SPT0	172.18.0.2		mysql	0xb69204bd70080a70f9aa77ffb78806ec	3306		mysql	
+SPT1	172.18.0.3		mysql	0x3cde25fae496f2cfbed6fa7045257da1	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	0x48aceb7235e820c1cc67cfe66a4bdf30	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	0x9c4fd7330919e9c83a5583aeca26e0aa	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	0x8ff4de62e2e35010f03b040403213b8e	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	0x84618cf90e7073545767dd91aa905da1	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	0x432c4d7dbfa2b93c94d615d5a8f5c953	3306		TDBCTL	
+10 rows in set (version_num: <ignored>)
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING
+Target_server: SPIDER0,SPIDER1,SPIDER2
+Info: set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING
+Target_server: SPIDER0,SPIDER1,SPIDER2
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING
+Target_server: SPIDER0,SPIDER1,SPIDER2
+Info: flush tables with no block;flush table with read lock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING
+Target_server: SPIDER0,SPIDER1,SPIDER2
+Info: flush privileges
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING
+Target_server: SPIDER0,SPIDER1,SPIDER2
+Info: unlock tables
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING
+Target_server: TDBCTL1,TDBCTL2
+Info: set tc_admin=0;set sql_log_bin = off;set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING
+Target_server: TDBCTL1,TDBCTL2
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL FLUSH ROUTING
+Target_server: TDBCTL1,TDBCTL2
+Info: flush privileges
+
+
+# Restore to the initial state.
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@GLOBAL.tc_routing_log = @origin_tc_routing_log;
+SET @@GLOBAL.tc_routing_log_file = @origin_tc_routing_log_file;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
+SET @@SESSION.tc_admin = @origin_tc_admin;

@@ -63,7 +63,7 @@ SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIK
 
 --echo
 --echo # Restore general_log.
---source suite/tdbctl/inc/set_cluster_general_log_to_table.inc
+--source suite/tdbctl/inc/reset_cluster_general_log.inc
 
 --echo
 --echo # Case 3: Inconsistent table collation or table engine.

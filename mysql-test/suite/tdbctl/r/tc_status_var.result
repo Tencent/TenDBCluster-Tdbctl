@@ -1,0 +1,14 @@
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SET tc_admin=OFF;
+
+# Test the impact of FLUSH STATUS command on status variable values.
+SHOW STATUS LIKE 'Tc_is_primary';
+Variable_name	Value
+Tc_is_primary	1
+FLUSH STATUS;
+SHOW STATUS LIKE 'Tc_is_primary';
+Variable_name	Value
+Tc_is_primary	1
+
+# Restore to the initial state.
+SET @@SESSION.tc_admin = @origin_tc_admin;

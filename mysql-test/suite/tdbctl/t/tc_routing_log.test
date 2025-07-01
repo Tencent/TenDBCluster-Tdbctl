@@ -1,0 +1,191 @@
+# Test cases for TDBCTL routing log.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
+SELECT @@GLOBAL.tc_routing_log_file INTO @origin_tc_routing_log_file;
+SELECT @@GLOBAL.tc_routing_log INTO @origin_tc_routing_log;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+--echo
+--echo # Disable tc_enable_autoinc_check
+--connection tdbctl0
+SET tc_enable_autoinc_check = OFF;
+
+--echo
+--echo # Original routing table.
+SELECT * FROM mysql.servers;
+
+--echo 
+--echo # Get datadir
+--connection tdbctl0
+--let $data_dir = `SELECT @@global.datadir`
+--echo datadir:$data_dir
+
+--echo 
+--echo # Case 1: Routing changes caused by FLUSH PRIVILEGES
+--connection tdbctl0
+SET tc_admin=OFF;
+DELETE FROM mysql.servers WHERE Server_name = 'SPIDER2';
+
+--echo
+--echo # Check the initial routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+# SHOW STATUS LIKE 'Tc_server_cache_version_num';
+
+--echo
+--let $log_path = $data_dir/routing_log_case1
+--echo # Set routing log: $log_path
+--eval SET @@GLOBAL.tc_routing_log_file = '$log_path';
+SET @@GLOBAL.tc_routing_log = ON;
+
+--echo
+FLUSH PRIVILEGES;
+
+--echo
+--echo # Show routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+# SHOW STATUS LIKE 'Tc_server_cache_version_num';
+
+--echo 
+--echo # Show routing log
+--exec docker exec ctl0 cat $log_path | sed -e 's/^Time:.*/Time: <ignored>/' -e 's/^Thread_id:.*/Thread_id: <ignored>/' -e 's/(version_num: [0-9]\+)/(version_num: <ignored>)/'
+
+--echo 
+--echo # Case 2: Routing changes caused by TDBCTL CREATE NODE
+
+--echo
+--echo # Check the initial routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+# SHOW STATUS LIKE 'Tc_server_cache_version_num';
+
+--echo
+--let $log_path = $data_dir/routing_log_case2
+--echo # Set routing log: $log_path
+--eval SET @@GLOBAL.tc_routing_log_file = '$log_path';
+
+--echo
+SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+SET tc_admin = ON;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+SET GLOBAL tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
+
+--echo
+--echo # Show routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+# SHOW STATUS LIKE 'Tc_server_cache_version_num';
+
+--echo 
+--echo # Show routing log
+--exec docker exec ctl0 cat $log_path | sed -e 's/^Time:.*/Time: <ignored>/' -e 's/^Thread_id:.*/Thread_id: <ignored>/' -e 's/(version_num: [0-9]\+)/(version_num: <ignored>)/'
+
+--echo 
+--echo # Case 3: Routing changes caused by TDBCTL DROP NODE
+
+--echo
+--echo # Check the initial routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+# SHOW STATUS LIKE 'Tc_server_cache_version_num';
+
+--echo
+--let $log_path = $data_dir/routing_log_case3
+--echo # Set routing log: $log_path
+--eval SET @@GLOBAL.tc_routing_log_file = '$log_path';
+
+--echo
+SET tc_admin = ON;
+TDBCTL DROP NODE SPIDER2;
+
+--echo
+--echo # Show routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+# SHOW STATUS LIKE 'Tc_server_cache_version_num';
+
+--echo 
+--echo # Show routing log
+--exec docker exec ctl0 cat $log_path | sed -e 's/^Time:.*/Time: <ignored>/' -e 's/^Thread_id:.*/Thread_id: <ignored>/' -e 's/(version_num: [0-9]\+)/(version_num: <ignored>)/'
+
+--echo 
+--echo # Case 4: Routing changes caused by TDBCTL ALTER NODE
+
+--echo
+--echo # Check the initial routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+# SHOW STATUS LIKE 'Tc_server_cache_version_num';
+
+--echo
+--let $log_path = $data_dir/routing_log_case4
+--echo # Set routing log: $log_path
+--eval SET @@GLOBAL.tc_routing_log_file = '$log_path';
+
+--echo
+SET tc_admin = ON;
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC;
+TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC;
+
+--echo
+--echo # Show routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+# SHOW STATUS LIKE 'Tc_server_cache_version_num';
+
+--echo 
+--echo # Show routing log
+--exec docker exec ctl0 cat $log_path | sed -e 's/^Time:.*/Time: <ignored>/' -e 's/^Thread_id:.*/Thread_id: <ignored>/' -e 's/(version_num: [0-9]\+)/(version_num: <ignored>)/'
+
+--echo 
+--echo # Case 5: Routing changes caused by TDBCTL FLUSH ROUING CACHE
+
+--echo
+--echo # Check the initial routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+# SHOW STATUS LIKE 'Tc_server_cache_version_num';
+
+--echo
+--let $log_path = $data_dir/routing_log_case5
+--echo # Set routing log: $log_path
+--eval SET @@GLOBAL.tc_routing_log_file = '$log_path';
+
+--echo
+SET tc_admin = ON;
+TDBCTL FLUSH ROUTING CACHE;
+
+--echo
+--echo # Show routing state
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+# SHOW STATUS LIKE 'Tc_server_cache_version_num';
+
+--echo 
+--echo # Show routing log
+--exec docker exec ctl0 cat $log_path | sed -e 's/^Time:.*/Time: <ignored>/' -e 's/^Thread_id:.*/Thread_id: <ignored>/' -e 's/(version_num: [0-9]\+)/(version_num: <ignored>)/'
+
+--echo
+--echo # Restore mysql.servers;
+--echo
+--let $log_path = $data_dir/routing_log_flush
+--echo # Set routing log: $log_path
+--eval SET @@GLOBAL.tc_routing_log_file = '$log_path';
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+--echo 
+--echo # Show routing log
+--exec docker exec ctl0 cat $log_path | sed -e 's/^Time:.*/Time: <ignored>/' -e 's/^Thread_id:.*/Thread_id: <ignored>/' -e 's/(version_num: [0-9]\+)/(version_num: <ignored>)/'
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@GLOBAL.tc_routing_log = @origin_tc_routing_log;
+SET @@GLOBAL.tc_routing_log_file = @origin_tc_routing_log_file;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
+SET @@SESSION.tc_admin = @origin_tc_admin;

@@ -5831,9 +5831,9 @@ mysql_execute_command(THD *thd, bool first_level)
       }
 
       /* always do reload first */
-      if (servers_reload(thd))
+      if (servers_reload(thd) || thd->cluster_conn_manager->refresh(FALSE, FALSE))
       {
-        my_error(ER_SERVERS_LOAD, MYF(0));
+        my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), "reload servers failed");
         goto error;
       }
 
@@ -6588,7 +6588,7 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
       */
       bool general= !(opt_general_log_raw || thd->slave_thread);
 
-      if (general || opt_slow_log || opt_bin_log)
+      if (general || opt_slow_log || opt_bin_log || tc_routing_log)
       {
         mysql_rewrite_query(thd);
 

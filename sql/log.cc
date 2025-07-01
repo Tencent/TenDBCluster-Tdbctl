@@ -221,6 +221,8 @@ ulong max_slowlog_size;
 ulong max_slowlog_files;
 ulong max_dryrun_log_size;
 ulong max_dryrun_log_files;
+ulong max_routing_log_size;
+ulong max_routing_log_files;
 
 /**
   Silence all errors and warnings reported when performing a write
@@ -639,6 +641,8 @@ bool File_query_log::open()
     log_name= opt_general_logname;
   else if (m_log_type == QUERY_LOG_TDBCTL_DRY_RUN)
     log_name= tc_dry_run_logname;
+  else if (m_log_type == QUERY_LOG_TDBCTL_ROUTING)
+    log_name= tc_routing_logname;
   else
     DBUG_ASSERT(false);
   DBUG_ASSERT(log_name && log_name[0]);
@@ -652,7 +656,8 @@ bool File_query_log::open()
   }
 
   if ((cur_log_ext == (ulong)-1) || (m_log_type == QUERY_LOG_SLOW && max_slowlog_size == 0)
-                                 || (m_log_type == QUERY_LOG_TDBCTL_DRY_RUN && max_dryrun_log_size == 0))
+                                 || (m_log_type == QUERY_LOG_TDBCTL_DRY_RUN && max_dryrun_log_size == 0)
+                                 || (m_log_type == QUERY_LOG_TDBCTL_ROUTING && max_routing_log_size == 0))
   {
     if (generate_new_log_name(log_file_name, &cur_log_ext, name, false))
       goto err;
@@ -725,8 +730,10 @@ bool File_query_log::open()
                         mysqld_port, mysqld_unix_port
 #endif
                         );
-    end= my_stpncpy(buff + len, "Time                 Id Command    Argument\n",
-                 sizeof(buff) - len);
+    const char *log_header = "Time                 Id Command    Argument\n";
+    if(m_log_type == QUERY_LOG_TDBCTL_DRY_RUN || m_log_type == QUERY_LOG_TDBCTL_ROUTING)
+      log_header = "\n";
+    end= my_stpncpy(buff + len, log_header, sizeof(buff) - len);
     if (my_b_write(&log_file, (uchar*) buff, (uint) (end-buff)) ||
         flush_io_cache(&log_file))
       goto err;
@@ -751,6 +758,11 @@ err:
   {
     strcpy(log_open_file_error_message, "either restart the query logging "
            "by using \"SET GLOBAL tc_dry_run_log=ON\" or");
+  }
+  else if (strcmp(tc_routing_logname, name) == 0)
+  {
+    strcpy(log_open_file_error_message, "either restart the query logging "
+           "by using \"SET GLOBAL tc_routing_log=ON\" or");
   }
 
   char errbuf[MYSYS_STRERROR_SIZE];
@@ -1127,6 +1139,60 @@ bool File_query_log::write_dry_run(THD *thd, ulonglong current_utime,
   return true;
 }
 
+bool File_query_log::write_tc_routing(THD *thd, ulonglong current_utime, 
+                                      const char *sql_text, size_t sql_text_len,
+                                      const char *target_server, size_t target_server_len,
+                                      const char *info, size_t info_len)
+{
+  bool need_purge = false;
+  ulong save_cur_ext = 0;
+
+  mysql_mutex_lock(&LOCK_log);
+  DBUG_ASSERT(is_open());
+
+  if ((max_routing_log_size > 0) && rotate(max_routing_log_size, &need_purge))
+    goto err;
+
+  char my_timestamp[iso8601_size];
+  make_iso8601_timestamp(my_timestamp, current_utime);
+
+  if (my_b_printf(&log_file,
+                  "Time: %s\n"
+                  "Thread_id: %5u\n"
+                  "Command: %s\n"
+                  "Target_server: %s\n"
+                  "Info: %s\n",
+                  my_timestamp,
+                  thd->thread_id(),
+                  sql_text ? sql_text : "",
+                  target_server ? target_server : "Unknown server",
+                  info ? info : "") == (uint) -1)
+    goto err;
+
+  if (my_b_write(&log_file, (uchar*) "\n", 1) ||
+      flush_io_cache(&log_file))
+    goto err;
+
+  save_cur_ext = cur_log_ext;
+
+  mysql_mutex_unlock(&LOCK_log);
+
+  if (max_routing_log_files && need_purge &&
+      purge_up_to(save_cur_ext > max_routing_log_files ?
+                  save_cur_ext - max_routing_log_files : 0, log_file_name))
+  {
+    check_and_print_write_error();
+    return true;
+  }
+
+  return false;
+
+err:
+  check_and_print_write_error();
+  mysql_mutex_unlock(&LOCK_log);
+  return true;
+}
+
 bool Log_to_csv_event_handler::log_general(THD *thd, ulonglong event_utime,
                                            const char *user_host,
                                            size_t user_host_len,
@@ -1450,6 +1516,14 @@ bool Log_to_csv_event_handler::log_tdbctl_dry_run(THD *thd, ulonglong current_ut
   return false;
 }
 
+bool Log_to_csv_event_handler::log_tc_routing(THD *thd, ulonglong current_utime, const char *sql_text,
+                                              size_t sql_text_len, const char *target_server,
+                                              size_t target_server_len, const char *info, size_t info_len)
+{
+  // To do
+  return false;
+}
+
 bool Log_to_csv_event_handler::activate_log(THD *thd,
                                             enum_log_table_type log_table_type)
 {
@@ -1470,6 +1544,9 @@ bool Log_to_csv_event_handler::activate_log(THD *thd,
                               SLOW_LOG_NAME.str, TL_WRITE_CONCURRENT_INSERT);
     break;
   case QUERY_LOG_TDBCTL_DRY_RUN:
+    // to do
+    return false;
+  case QUERY_LOG_TDBCTL_ROUTING:
     // to do
     return false;
   default:
@@ -1542,6 +1619,24 @@ bool Log_to_file_event_handler::log_tdbctl_dry_run(THD *thd, ulonglong current_u
   Silence_log_table_errors error_handler;
   thd->push_internal_handler(&error_handler);
   bool retval = tdbctl_dry_run_log.write_dry_run(thd, current_utime, sql_text, sql_text_len);
+  thd->pop_internal_handler();
+  return retval;
+}
+
+bool Log_to_file_event_handler::log_tc_routing(THD *thd, ulonglong current_utime,
+                                                const char *sql_text, size_t sql_text_len,
+                                                const char *target_server, size_t target_server_len,
+                                                const char *info, size_t info_len)
+{
+  if(!tdbctl_routing_log.is_open())
+    return false;
+
+  Silence_log_table_errors error_handler;
+  thd->push_internal_handler(&error_handler);
+  bool retval = tdbctl_routing_log.write_tc_routing(thd, current_utime, 
+                                                    sql_text, sql_text_len, 
+                                                    target_server, target_server_len, 
+                                                    info, info_len);
   thd->pop_internal_handler();
   return retval;
 }
@@ -1661,6 +1756,53 @@ bool Query_logger::tdbctl_dry_run_log_write(THD *thd, const char *query, size_t 
       *current_handler ;)
   {
     error|= (*current_handler++)->log_tdbctl_dry_run(thd, current_utime, query, query_length);
+  }
+
+  mysql_rwlock_unlock(&LOCK_logger);
+
+  return error;
+}
+
+bool Query_logger::tdbctl_routing_log_write(THD *thd, const char *target_server, size_t target_server_len,
+                                            const char *info, size_t info_len)
+{
+  DBUG_ASSERT(tc_routing_log);
+
+  if (!(*tdbctl_routing_log_handler_list))
+    return false;
+
+  /* do not log tdbctl routing changes from replication threads */
+  if (thd->slave_thread)
+    return false;
+
+  mysql_rwlock_rdlock(&LOCK_logger);
+
+  ulonglong current_utime= thd->current_utime();
+
+  const char *sql_text = NULL;
+  size_t sql_text_len = 0;
+  if (thd->rewritten_query.length()) {
+    sql_text = thd->rewritten_query.c_ptr_safe();
+    sql_text_len = thd->rewritten_query.length();
+  } else {
+    sql_text = thd->query().str;
+    sql_text_len = thd->query().length;
+  }
+
+  if (!sql_text)
+  {
+    sql_text= command_name[thd->get_command()].str;
+    sql_text_len= command_name[thd->get_command()].length;
+  }
+
+  bool error= false;
+  for(Log_event_handler **current_handler= tdbctl_routing_log_handler_list;
+      *current_handler ;)
+  {
+    error|= (*current_handler++)->log_tc_routing(thd, current_utime, 
+                                                 sql_text, sql_text_len, 
+                                                 target_server, target_server_len, 
+                                                 info, info_len);
   }
 
   mysql_rwlock_unlock(&LOCK_logger);
@@ -1852,6 +1994,30 @@ void Query_logger::init_query_log(enum_log_table_type log_type,
         break;
     }
   }
+  else if (log_type == QUERY_LOG_TDBCTL_ROUTING)
+  {
+    if (log_printer & LOG_NONE)
+    {
+      tdbctl_routing_log_handler_list[0]= NULL;
+      return;
+    }
+
+    switch (log_printer) {
+      case LOG_FILE:
+        tdbctl_routing_log_handler_list[0]= file_log_handler;
+        tdbctl_routing_log_handler_list[1]= NULL;
+        break;
+      case LOG_TABLE:
+        tdbctl_routing_log_handler_list[0]= &table_log_handler;
+        tdbctl_routing_log_handler_list[1]= NULL;
+        break;
+      case LOG_TABLE|LOG_FILE:
+        tdbctl_routing_log_handler_list[0]= file_log_handler;
+        tdbctl_routing_log_handler_list[1]= &table_log_handler;
+        tdbctl_routing_log_handler_list[2]= NULL;
+        break;
+    }
+  }
   else
     DBUG_ASSERT(false);
 }
@@ -1864,6 +2030,7 @@ void Query_logger::set_handlers(ulonglong log_printer)
   init_query_log(QUERY_LOG_SLOW, log_printer);
   init_query_log(QUERY_LOG_GENERAL, log_printer);
   init_query_log(QUERY_LOG_TDBCTL_DRY_RUN, log_printer);
+  init_query_log(QUERY_LOG_TDBCTL_ROUTING, log_printer);
 
   mysql_rwlock_unlock(&LOCK_logger);
 }
@@ -1964,6 +2131,8 @@ char *make_query_log_name(char *buff, enum_log_table_type log_type)
     log_ext= "-slow.log";
   else if (log_type == QUERY_LOG_TDBCTL_DRY_RUN)
     log_ext= "-dry-run.log";
+  else if (log_type == QUERY_LOG_TDBCTL_ROUTING)
+    log_ext= "-routing.log";
   else
     DBUG_ASSERT(false);
 
@@ -2342,7 +2511,8 @@ int File_query_log::new_file()
 
   mysql_mutex_assert_owner(&LOCK_log);
   if ((cur_log_ext == (ulong)-1) || (m_log_type == QUERY_LOG_SLOW && max_slowlog_size == 0)
-                                 || (m_log_type == QUERY_LOG_TDBCTL_DRY_RUN && max_dryrun_log_size == 0))
+                                 || (m_log_type == QUERY_LOG_TDBCTL_DRY_RUN && max_dryrun_log_size == 0)
+                                 || (m_log_type == QUERY_LOG_TDBCTL_ROUTING && max_routing_log_size == 0))
   {
     strcpy(new_name, name);
     if ((error= generate_new_log_name(new_name, &cur_log_ext, name, false)))

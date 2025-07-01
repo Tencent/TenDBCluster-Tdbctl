@@ -7935,6 +7935,9 @@ ER_TCADMIN_CHECK_TABLES_ERROR
 ER_TCADMIN_PARAL_CONNECT_ERROR
   eng "Failed to build connections in parallel: %s"
 
+ER_TCADMIN_ROUTING_LOG_ERROR
+  eng "Failed to log routing change event"
+
 #
 # End of MyRocks specific messages
 #

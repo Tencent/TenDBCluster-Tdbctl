@@ -103,7 +103,7 @@ TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASS
 SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%172.18.0.9%' OR thread_id = CONNECTION_ID()) AND argument NOT LIKE '%tdbctl0_log%' AND command_type NOT LIKE 'Connect';
 tdbctl0_log
 SET tc_admin=ON
-TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306)
+TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 )
 
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
@@ -258,7 +258,7 @@ SELECT argument AS tdbctl0_log FROM mysql.general_log WHERE (user_host LIKE '%17
 tdbctl0_log
 SET tc_admin=ON
 SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test"
-TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA
+TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
 
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0

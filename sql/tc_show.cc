@@ -52,6 +52,19 @@ ST_FIELD_INFO cluster_processlist_fields_info[] = {
     {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
 };
 
+ST_FIELD_INFO server_cache_fields_info[] = {
+    {"Server_name", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"Host", LIST_PROCESS_HOST_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"Db", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"Username", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"Password", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"Port", 21, MYSQL_TYPE_LONG, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"Socket", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"Wrapper", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"Owner", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
+};
+
 /**
  * @brief Get SHOW PROCESSLIST results from cluster nodes.
  *
@@ -472,6 +485,49 @@ int fill_schema_cluster_processlist(THD *thd, TABLE_LIST *tables, Item *cond) {
         schema_table_store_record(thd, table);
       }
       mysql_free_result(res);
+    }
+  }
+
+  DBUG_RETURN(0);
+}
+
+int fill_schema_server_cache(THD *thd, TABLE_LIST *tables, Item *cond) 
+{
+  DBUG_ENTER("fill_schema_server_cache");
+
+  TABLE *table = tables->table;
+  list<FOREIGN_SERVER *> server_list;
+  get_server_by_wrapper(server_list, thd->mem_root, NULL_WRAPPER, FALSE);
+
+  auto put_str_field = [&table](int idx, const char *value) {
+    if (value) {
+      table->field[idx]->store(value, strlen(value), system_charset_info);
+    }
+  };
+
+  for (const auto server : server_list) {
+    if(server) {
+      restore_record(table, s->default_values);
+      /* Server_name */
+      put_str_field(0, server->server_name);
+      /* Host */
+      put_str_field(1, server->host);
+      /* Db */
+      put_str_field(2, server->db);
+      /* Username */
+      put_str_field(3, server->username);
+      /* Password */
+      put_str_field(4, server->password);
+      /* Port */
+      table->field[5]->store(server->port);
+      /* Socket */
+      put_str_field(6, server->socket);
+      /* Wrapper */
+      put_str_field(7, server->scheme);
+      /* Owner */
+      put_str_field(8, server->owner);
+
+      schema_table_store_record(thd, table);
     }
   }
 
