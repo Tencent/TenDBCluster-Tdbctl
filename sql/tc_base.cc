@@ -5754,6 +5754,10 @@ bool tc_log_local_server_cache(THD *thd, string my_server_name)
 {
   DBUG_ENTER("tc_log_local_server_cache");
 
+  if(!tc_routing_log) {
+    DBUG_RETURN(FALSE);
+  }
+
   if(thd == NULL) {
     sql_print_error("Get NULL thread handler when log local server cache");
     DBUG_RETURN(TRUE);
@@ -5802,7 +5806,11 @@ bool tc_log_local_server_cache(THD *thd, string my_server_name)
 
 bool tc_log_cluster_routing_event(THD *thd, const string &target_server, const string &send_sql)
 {
-  DBUG_ENTER("tc_log_local_server_cache");
+  DBUG_ENTER("tc_log_cluster_routing_event");
+
+  if(!tc_routing_log) {
+    DBUG_RETURN(FALSE);
+  }
 
   if(thd == NULL) {
     sql_print_error("Get NULL thread handler when log cluster routing change event");

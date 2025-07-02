@@ -1915,7 +1915,7 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
   THD *thd = current_thd;
   
   auto log_flush_detail = [&target_server, &thd](const string &sql) {
-    if (tc_log_cluster_routing_event(thd, target_server, sql) && thd) {
+    if (tc_routing_log && tc_log_cluster_routing_event(thd, target_server, sql) && thd) {
       push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
     }
   };
@@ -2020,7 +2020,7 @@ enum FLUSH_ROUTING_RESULT tc_sync_servers_table_by_wrapper(map<string, tc_exec_i
   THD *thd = current_thd;
   
   auto log_flush_detail = [&target_server, &thd](const string &sql) {
-    if (tc_log_cluster_routing_event(thd, target_server, sql) && thd) {
+    if (tc_routing_log && tc_log_cluster_routing_event(thd, target_server, sql) && thd) {
       push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
     }
   };
@@ -2251,15 +2251,29 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
       std::string unlock_sql = "unlock tables";
       std::map<std::string, MYSQL*> failed_conn_map;
       map<std::string, tc_exec_info> failed_result_map;
+      string target_server;
+
       for (const auto &result_item: result_map) {  // get failed connection.
         if (result_item.second.err_code > 0) {
           failed_conn_map[result_item.first] = needed_conn_map[result_item.first];
           /* Try to repair a connection that was disconnected due to a timeout. 
             Prepare for setting read_only. */ 
           conn_mgr->connect(result_item.first, (enum_node_type)node_type, true);
+          target_server += result_item.first + ",";
         }
       }
+
+      if(target_server.length() > 0)
+        target_server.pop_back();
+      THD *thd = current_thd;
+      auto log_flush_detail = [&target_server, &thd](const string &sql) {
+        if (tc_routing_log && tc_log_cluster_routing_event(thd, target_server, sql) && thd) {
+          push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
+        }
+      };
+
       tc_exec_sql_paral(set_read_only_sql, failed_conn_map, failed_result_map);  // set read_only
+      log_flush_detail(set_read_only_sql);
       for (const auto &result_item: failed_result_map) {  // describe the execution result
         if (result_item.second.err_code > 0)
           nodes_failed += result_item.first + ": " + result_item.second.err_msg + "\n";
@@ -2272,6 +2286,7 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
       {
         map<string, tc_exec_info> new_result_map = result_map_like(result_map);
         tc_exec_sql_paral(unlock_sql, needed_conn_map, new_result_map);
+        log_flush_detail(unlock_sql);
         merge_error_info(result_map, new_result_map);
       }
     }
