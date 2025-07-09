@@ -34,6 +34,7 @@ For details, see [chapter Roadmap](https://tendbcluster.com/book-en/Documentatio
 
 ## License
 TenDBCluster is licensed under the GNU General Public License Version 2, except for the third-party components listed below. Copyright and license information can be found in the file TenDBCluster-License.
+The copyright notice pertaining to the Tencent code in this repo was previously in the name of “THL A29 Limited.”  That entity has now been de-registered.  You should treat all previously distributed copies of the code as if the copyright notice was in the name of “Tencent.”
 
 
 ## Acknowledgements
