@@ -272,8 +272,11 @@ set tc_admin = 0;
 drop user 'mysql'@'172.18.0.8'
 CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.8' IDENTIFIED WITH 'mysql_native_password' AS '<secret>'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.8' WITH GRANT OPTION
+
 show variables like  'server_uuid'
 
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
 --------------------
 SELECT argument AS tdbctl1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%tdbctl1_log%' AND command_type NOT LIKE 'Connect';
 tdbctl1_log
@@ -289,8 +292,11 @@ set tc_admin = 0;
 drop user 'mysql'@'172.18.0.8'
 CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.8' IDENTIFIED WITH 'mysql_native_password' AS '<secret>'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.8' WITH GRANT OPTION
+
 show variables like  'server_uuid'
 
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
 set tc_admin=0;
 set sql_log_bin = off;
 set lock_wait_timeout = 60;
@@ -313,8 +319,11 @@ set tc_admin = 0;
 drop user 'mysql'@'172.18.0.8'
 CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.8' IDENTIFIED WITH 'mysql_native_password' AS '<secret>'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.8' WITH GRANT OPTION
+
 show variables like  'server_uuid'
 
+SET SESSION tc_admin=0
+SET SESSION sql_log_bin=0
 set tc_admin=0;
 set sql_log_bin = off;
 set lock_wait_timeout = 60;

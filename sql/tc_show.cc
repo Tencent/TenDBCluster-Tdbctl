@@ -505,7 +505,7 @@ int fill_schema_server_cache(THD *thd, TABLE_LIST *tables, Item *cond)
     }
   };
 
-  for (const auto server : server_list) {
+  for (const auto &server : server_list) {
     if(server) {
       restore_record(table, s->default_values);
       /* Server_name */

@@ -5798,6 +5798,7 @@ bool tc_log_local_server_cache(THD *thd, string my_server_name)
   if(query_logger.tdbctl_routing_log_write(thd, my_server_name.c_str(), my_server_name.length(), 
                                            server_cache_str.c_str(), server_cache_str.length())) 
   {
+    push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
     DBUG_RETURN(TRUE);
   }
 
@@ -5820,6 +5821,7 @@ bool tc_log_cluster_routing_event(THD *thd, const string &target_server, const s
   if(query_logger.tdbctl_routing_log_write(thd, target_server.c_str(), target_server.length(), 
                                            send_sql.c_str(), send_sql.length())) 
   {
+    push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
     DBUG_RETURN(TRUE);
   }
 

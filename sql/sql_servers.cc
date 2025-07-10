@@ -359,9 +359,7 @@ end:
   modify_tdbctl_flag = false;
   // return_val = delete_redundant_routings();
   if(old_version_num != global_modify_server_version) {
-    if(tc_routing_log && tc_log_local_server_cache(thd) && thd) {
-      push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
-    }
+    tc_log_local_server_cache(thd);
   }
   DBUG_RETURN(return_val);
 }
@@ -837,9 +835,7 @@ bool Sql_cmd_create_server::execute(THD *thd)
   if (error == 0 && !thd->killed)
     my_ok(thd, 1);
 
-  if(tc_routing_log && tc_log_local_server_cache(thd) && thd) {
-    push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
-  }
+  tc_log_local_server_cache(thd);
 
   DBUG_RETURN(error != 0 || thd->killed);
 }
@@ -932,9 +928,7 @@ bool Sql_cmd_alter_server::execute(THD *thd)
   if (error == 0 && !thd->killed && !thd->no_send)
     my_ok(thd, 1);
 
-  if(tc_routing_log && tc_log_local_server_cache(thd) && thd) {
-    push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
-  }
+  tc_log_local_server_cache(thd);
 
   DBUG_RETURN(error != 0 || thd->killed);
 }
@@ -1045,9 +1039,7 @@ bool Sql_cmd_drop_server::execute(THD *thd)
   if (error == 0 && !thd->killed && !thd->no_send)
     my_ok(thd, 1);
 
-  if(tc_routing_log && tc_log_local_server_cache(thd) && thd) {
-    push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
-  }
+  tc_log_local_server_cache(thd);
 
   DBUG_RETURN(error != 0 || thd->killed);
 }
@@ -1913,16 +1905,10 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
 
   bool exec_ret = false;
   THD *thd = current_thd;
-  
-  auto log_flush_detail = [&target_server, &thd](const string &sql) {
-    if (tc_routing_log && tc_log_cluster_routing_event(thd, target_server, sql) && thd) {
-      push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
-    }
-  };
 
   /* SET OPTION */
   exec_ret = tc_exec_sql_paral(set_option_sql, conn_map, result_map);
-  log_flush_detail(set_option_sql);
+  tc_log_cluster_routing_event(thd, target_server, set_option_sql);
   if (exec_ret)
   {
     return FLUSH_ROUTING_RESULT::SET_OPTION_FAILURE;
@@ -1931,7 +1917,7 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
   /* Modify the mysql.servers table, but the routing information does not take effect. */
   if (!is_flush_only_cache) {  // If the CACHE option is specified, skip this step. 
     exec_ret = tc_exec_sql_paral(replace_sql, conn_map, result_map);
-    log_flush_detail("The SQL for modifying mysql.servers is hidden");
+    tc_log_cluster_routing_event(thd, target_server, "The SQL for modifying mysql.servers is hidden");
     if (exec_ret)
     {
       /* if failed to replace mysql.servers; set changed data node read only */
@@ -1945,12 +1931,12 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
   {
     exec_ret = tc_exec_sql_paral(flush_table_sql, conn_map, result_map) ||
                tc_exec_sql_paral(flush_rdlock_sql, conn_map, result_map);
-    log_flush_detail(flush_table_sql + ";" + flush_rdlock_sql);
+    tc_log_cluster_routing_event(thd, target_server, flush_table_sql + ";" + flush_rdlock_sql);
     if (exec_ret)
     {/* unlock tables;*/
       map<string, tc_exec_info> new_result_map = result_map_like(result_map);
       tc_exec_sql_paral(unlock_sql, conn_map, new_result_map);
-      log_flush_detail(unlock_sql);
+      tc_log_cluster_routing_event(thd, target_server, unlock_sql);
       merge_error_info(result_map, new_result_map);
       return FLUSH_ROUTING_RESULT::FLUSH_TABLE_FAILURE;
     }
@@ -1958,7 +1944,7 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
 
   /* FLUSH PRIVILEGES */
   exec_ret = tc_exec_sql_paral(flush_priv_sql, conn_map, result_map);
-  log_flush_detail(flush_priv_sql);
+  tc_log_cluster_routing_event(thd, target_server, flush_priv_sql);
   if (exec_ret)
   {
       return FLUSH_ROUTING_RESULT::FLUSH_PRIV_FAILURE;
@@ -1968,7 +1954,7 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
   if (!is_force)
   {
     tc_exec_sql_paral(unlock_sql, conn_map, result_map);
-    log_flush_detail(unlock_sql);
+    tc_log_cluster_routing_event(thd, target_server, unlock_sql);
   }
 
   return FLUSH_ROUTING_RESULT::SUCCESS;
@@ -2018,22 +2004,16 @@ enum FLUSH_ROUTING_RESULT tc_sync_servers_table_by_wrapper(map<string, tc_exec_i
 
   bool exec_ret = false;
   THD *thd = current_thd;
-  
-  auto log_flush_detail = [&target_server, &thd](const string &sql) {
-    if (tc_routing_log && tc_log_cluster_routing_event(thd, target_server, sql) && thd) {
-      push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
-    }
-  };
 
   exec_ret = tc_exec_sql_paral(set_option_sql, conn_map, result_map);
-  log_flush_detail(set_option_sql);
+  tc_log_cluster_routing_event(thd, target_server, set_option_sql);
   if (exec_ret)
   {
     return FLUSH_ROUTING_RESULT::SET_OPTION_FAILURE;
   }
 
   exec_ret = tc_exec_sql_paral(replace_sql, conn_map, result_map);
-  log_flush_detail("The SQL for modifying mysql.servers is hidden");
+  tc_log_cluster_routing_event(thd, target_server, "The SQL for modifying mysql.servers is hidden");
   if (exec_ret)
   {
     return FLUSH_ROUTING_RESULT::SYNC_SERVERS_FAILURE;
@@ -2266,14 +2246,9 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
       if(target_server.length() > 0)
         target_server.pop_back();
       THD *thd = current_thd;
-      auto log_flush_detail = [&target_server, &thd](const string &sql) {
-        if (tc_routing_log && tc_log_cluster_routing_event(thd, target_server, sql) && thd) {
-          push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
-        }
-      };
 
       tc_exec_sql_paral(set_read_only_sql, failed_conn_map, failed_result_map);  // set read_only
-      log_flush_detail(set_read_only_sql);
+      tc_log_cluster_routing_event(thd, target_server, set_read_only_sql);
       for (const auto &result_item: failed_result_map) {  // describe the execution result
         if (result_item.second.err_code > 0)
           nodes_failed += result_item.first + ": " + result_item.second.err_msg + "\n";
@@ -2286,7 +2261,7 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
       {
         map<string, tc_exec_info> new_result_map = result_map_like(result_map);
         tc_exec_sql_paral(unlock_sql, needed_conn_map, new_result_map);
-        log_flush_detail(unlock_sql);
+        tc_log_cluster_routing_event(thd, target_server, unlock_sql);
         merge_error_info(result_map, new_result_map);
       }
     }
@@ -3457,7 +3432,7 @@ bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex)
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
   // Connect to all spider nodes of the cluster
-  if (thd->cluster_conn_manager->refresh(FALSE, TRUE) ||
+  if (thd->cluster_conn_manager->refresh(TRUE, TRUE) ||
       thd->cluster_conn_manager->connect(NODE_TYPE_SPIDER, FALSE))
     return true;
   Cluster_conn_manager *conn_mgr = thd->cluster_conn_manager;
