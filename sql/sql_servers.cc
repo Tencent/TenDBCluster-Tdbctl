@@ -67,6 +67,13 @@ static MEM_ROOT mem_bak;
 ulong global_modify_server_version = 0;
 static bool modify_tdbctl_flag = false;
 
+ulong tc_server_cache_update_time = 0;
+
+ulong tc_get_server_cache_update_time()
+{
+  return tc_server_cache_update_time;
+}
+
 static HASH servers_cache;
 static MEM_ROOT mem;
 static mysql_rwlock_t THR_LOCK_servers;
@@ -266,6 +273,7 @@ static bool servers_load(THD *thd, TABLE *table)
   if (version_updated)
   {
     global_modify_server_version++; /* mean flush privileges modify mysql.servers */
+    tc_server_cache_update_time = (ulong)time(NULL);
     sql_print_information("modify mysql.servers and do flush privileges, "
                           "server_version is %lu", 
                           global_modify_server_version);
@@ -303,6 +311,7 @@ bool servers_reload(THD *thd)
 {
   TABLE_LIST tables[1];
   bool return_val= true;
+  ulong old_version_num = 0;
   DBUG_ENTER("servers_reload");
 
   DBUG_PRINT("info", ("locking servers_cache"));
@@ -321,6 +330,7 @@ bool servers_reload(THD *thd)
     goto end;
   }
 
+  old_version_num = global_modify_server_version;
   if ((return_val= servers_load(thd, tables[0].table)))
   {					// Error. Revert to old list
     /* blast, for now, we have no servers, discuss later way to preserve */
@@ -348,6 +358,9 @@ end:
   }
   modify_tdbctl_flag = false;
   // return_val = delete_redundant_routings();
+  if(old_version_num != global_modify_server_version) {
+    tc_log_local_server_cache(thd);
+  }
   DBUG_RETURN(return_val);
 }
 
@@ -573,6 +586,7 @@ bool Server_options::insert_into_cache() const
   maintain for create server
   */
   global_modify_server_version++;
+  tc_server_cache_update_time = (ulong)time(NULL);
   if (!native_strncasecmp(m_server_name.str, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix)))
   {
 	  modify_tdbctl_flag = true;
@@ -820,6 +834,9 @@ bool Sql_cmd_create_server::execute(THD *thd)
 
   if (error == 0 && !thd->killed)
     my_ok(thd, 1);
+
+  tc_log_local_server_cache(thd);
+
   DBUG_RETURN(error != 0 || thd->killed);
 }
 
@@ -885,6 +902,7 @@ bool Sql_cmd_alter_server::execute(THD *thd)
         my_error(ER_OUT_OF_RESOURCES, MYF(0));
       
       ++global_modify_server_version;
+      tc_server_cache_update_time = (ulong)time(NULL);
     }
   }
 
@@ -909,6 +927,9 @@ bool Sql_cmd_alter_server::execute(THD *thd)
 
   if (error == 0 && !thd->killed && !thd->no_send)
     my_ok(thd, 1);
+
+  tc_log_local_server_cache(thd);
+
   DBUG_RETURN(error != 0 || thd->killed);
 }
 
@@ -959,6 +980,7 @@ bool Sql_cmd_drop_server::execute(THD *thd)
         my_hash_delete(&servers_cache, (uchar*)server);
         /*maintain for drop server*/
         global_modify_server_version++;
+        tc_server_cache_update_time = (ulong)time(NULL);
         if (!native_strncasecmp(m_server_name.str, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix)))
         {
           modify_tdbctl_flag = true;
@@ -1016,6 +1038,9 @@ bool Sql_cmd_drop_server::execute(THD *thd)
 
   if (error == 0 && !thd->killed && !thd->no_send)
     my_ok(thd, 1);
+
+  tc_log_local_server_cache(thd);
+
   DBUG_RETURN(error != 0 || thd->killed);
 }
 
@@ -1871,15 +1896,29 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
     return FLUSH_ROUTING_RESULT::SUCCESS;
   }
 
+  string target_server;
+  for(const auto &conn_node: conn_map) {
+    target_server += conn_node.first + ",";
+  }
+  if(target_server.length() > 0)
+    target_server.pop_back();
+
+  bool exec_ret = false;
+  THD *thd = current_thd;
+
   /* SET OPTION */
-  if (tc_exec_sql_paral(set_option_sql, conn_map, result_map))
+  exec_ret = tc_exec_sql_paral(set_option_sql, conn_map, result_map);
+  tc_log_cluster_routing_event(thd, target_server, set_option_sql);
+  if (exec_ret)
   {
     return FLUSH_ROUTING_RESULT::SET_OPTION_FAILURE;
   }
 
   /* Modify the mysql.servers table, but the routing information does not take effect. */
   if (!is_flush_only_cache) {  // If the CACHE option is specified, skip this step. 
-    if (tc_exec_sql_paral(replace_sql, conn_map, result_map))
+    exec_ret = tc_exec_sql_paral(replace_sql, conn_map, result_map);
+    tc_log_cluster_routing_event(thd, target_server, "The SQL for modifying mysql.servers is hidden");
+    if (exec_ret)
     {
       /* if failed to replace mysql.servers; set changed data node read only */
       // tc_set_changed_remote_read_only();
@@ -1890,18 +1929,23 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
   /* FLUSH TABLE WITH READ LOCK */
   if (!is_force)  // If the FORCE option is specified, skip this step.
   {
-    if (tc_exec_sql_paral(flush_table_sql, conn_map, result_map) ||
-      tc_exec_sql_paral(flush_rdlock_sql, conn_map, result_map))
+    exec_ret = tc_exec_sql_paral(flush_table_sql, conn_map, result_map) ||
+               tc_exec_sql_paral(flush_rdlock_sql, conn_map, result_map);
+    tc_log_cluster_routing_event(thd, target_server, flush_table_sql + ";" + flush_rdlock_sql);
+    if (exec_ret)
     {/* unlock tables;*/
       map<string, tc_exec_info> new_result_map = result_map_like(result_map);
       tc_exec_sql_paral(unlock_sql, conn_map, new_result_map);
+      tc_log_cluster_routing_event(thd, target_server, unlock_sql);
       merge_error_info(result_map, new_result_map);
       return FLUSH_ROUTING_RESULT::FLUSH_TABLE_FAILURE;
     }
   }
 
   /* FLUSH PRIVILEGES */
-  if (tc_exec_sql_paral(flush_priv_sql, conn_map, result_map))
+  exec_ret = tc_exec_sql_paral(flush_priv_sql, conn_map, result_map);
+  tc_log_cluster_routing_event(thd, target_server, flush_priv_sql);
+  if (exec_ret)
   {
       return FLUSH_ROUTING_RESULT::FLUSH_PRIV_FAILURE;
   }
@@ -1910,6 +1954,7 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
   if (!is_force)
   {
     tc_exec_sql_paral(unlock_sql, conn_map, result_map);
+    tc_log_cluster_routing_event(thd, target_server, unlock_sql);
   }
 
   return FLUSH_ROUTING_RESULT::SUCCESS;
@@ -1950,12 +1995,26 @@ enum FLUSH_ROUTING_RESULT tc_sync_servers_table_by_wrapper(map<string, tc_exec_i
     return FLUSH_ROUTING_RESULT::SUCCESS;
   }
 
-  if (tc_exec_sql_paral(set_option_sql, conn_map, result_map))
+  string target_server;
+  for(const auto &conn_node: conn_map) {
+    target_server += conn_node.first + ",";
+  }
+  if(target_server.length() > 0)
+    target_server.pop_back();
+
+  bool exec_ret = false;
+  THD *thd = current_thd;
+
+  exec_ret = tc_exec_sql_paral(set_option_sql, conn_map, result_map);
+  tc_log_cluster_routing_event(thd, target_server, set_option_sql);
+  if (exec_ret)
   {
     return FLUSH_ROUTING_RESULT::SET_OPTION_FAILURE;
   }
 
-  if (tc_exec_sql_paral(replace_sql, conn_map, result_map))
+  exec_ret = tc_exec_sql_paral(replace_sql, conn_map, result_map);
+  tc_log_cluster_routing_event(thd, target_server, "The SQL for modifying mysql.servers is hidden");
+  if (exec_ret)
   {
     return FLUSH_ROUTING_RESULT::SYNC_SERVERS_FAILURE;
   }
@@ -2172,15 +2231,24 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
       std::string unlock_sql = "unlock tables";
       std::map<std::string, MYSQL*> failed_conn_map;
       map<std::string, tc_exec_info> failed_result_map;
+      string target_server;
+
       for (const auto &result_item: result_map) {  // get failed connection.
         if (result_item.second.err_code > 0) {
           failed_conn_map[result_item.first] = needed_conn_map[result_item.first];
           /* Try to repair a connection that was disconnected due to a timeout. 
             Prepare for setting read_only. */ 
           conn_mgr->connect(result_item.first, (enum_node_type)node_type, true);
+          target_server += result_item.first + ",";
         }
       }
+
+      if(target_server.length() > 0)
+        target_server.pop_back();
+      THD *thd = current_thd;
+
       tc_exec_sql_paral(set_read_only_sql, failed_conn_map, failed_result_map);  // set read_only
+      tc_log_cluster_routing_event(thd, target_server, set_read_only_sql);
       for (const auto &result_item: failed_result_map) {  // describe the execution result
         if (result_item.second.err_code > 0)
           nodes_failed += result_item.first + ": " + result_item.second.err_msg + "\n";
@@ -2193,6 +2261,7 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
       {
         map<string, tc_exec_info> new_result_map = result_map_like(result_map);
         tc_exec_sql_paral(unlock_sql, needed_conn_map, new_result_map);
+        tc_log_cluster_routing_event(thd, target_server, unlock_sql);
         merge_error_info(result_map, new_result_map);
       }
     }
@@ -3363,7 +3432,7 @@ bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex)
     thd->cluster_conn_manager = new Cluster_conn_manager();
   }
   // Connect to all spider nodes of the cluster
-  if (thd->cluster_conn_manager->refresh(FALSE, TRUE) ||
+  if (thd->cluster_conn_manager->refresh(TRUE, TRUE) ||
       thd->cluster_conn_manager->connect(NODE_TYPE_SPIDER, FALSE))
     return true;
   Cluster_conn_manager *conn_mgr = thd->cluster_conn_manager;

@@ -662,6 +662,9 @@ static void mysql_rewrite_server_options(THD *thd, String *rlb)
   append_int(rlb, true, STRING_WITH_LEN("PORT "),
              lex->server_options.get_port(),
              lex->server_options.get_port() != Server_options::PORT_NOT_SET);
+  append_int(rlb, true, STRING_WITH_LEN("NUMBER "),
+             lex->server_options.get_num(),
+             lex->server_options.get_num() != Server_options::NUM_NOT_SET);
 
   rlb->append(STRING_WITH_LEN(" )"));
 }
@@ -718,6 +721,58 @@ static void mysql_rewrite_alter_server(THD *thd, String *rlb)
 }
 
 
+/**
+  Rewrite a TDBCTL CREATE NODE statement.
+
+  @param thd      The THD to rewrite for.
+  @param rlb      An empty String object to put the rewritten query in.
+*/
+
+static void mysql_rewrite_tc_create_node(THD *thd, String *rlb)
+{
+  LEX *lex= thd->lex;
+
+  if (!lex->server_options.get_password())
+    return;
+
+  rlb->append(STRING_WITH_LEN("TDBCTL CREATE NODE WRAPPER '"));
+  rlb->append(lex->server_options.get_scheme() ?
+              lex->server_options.get_scheme() : "");
+  rlb->append(STRING_WITH_LEN("'"));
+
+  mysql_rewrite_server_options(thd, rlb);
+
+  if(lex->tc_with_schema) {
+    rlb->append(STRING_WITH_LEN(" WITH SCHEMA"));
+  }
+}
+
+
+/**
+  Rewrite a TDBCTL ALTER NODE statement.
+
+  @param thd      The THD to rewrite for.
+  @param rlb      An empty String object to put the rewritten query in.
+*/
+
+static void mysql_rewrite_tc_alter_node(THD *thd, String *rlb)
+{
+  LEX *lex= thd->lex;
+
+  if (!lex->server_options.get_password())
+    return;
+
+  rlb->append(STRING_WITH_LEN("TDBCTL ALTER NODE "));
+
+  rlb->append(lex->server_options.m_server_name.str ?
+              lex->server_options.m_server_name.str : "");
+
+  mysql_rewrite_server_options(thd, rlb);
+
+  if(lex->tc_with_sync) {
+    rlb->append(STRING_WITH_LEN(" WITH SYNC"));
+  }
+}
 
 
 /**
@@ -771,6 +826,8 @@ void mysql_rewrite_query(THD *thd)
     case SQLCOM_SLAVE_START:   mysql_rewrite_start_slave(thd, rlb);   break;
     case SQLCOM_CREATE_SERVER: mysql_rewrite_create_server(thd, rlb); break;
     case SQLCOM_ALTER_SERVER:  mysql_rewrite_alter_server(thd, rlb);  break;
+    case TC_SQLCOM_CREATE_NODE: mysql_rewrite_tc_create_node(thd, rlb); break;
+    case TC_SQLCOM_ALTER_NODE: mysql_rewrite_tc_alter_node(thd, rlb); break;
 
     /*
       PREPARE stmt FROM <string> is rewritten so that <string> is

@@ -445,6 +445,7 @@ ulong tc_partition_init_interval = 300;
 ulong tc_internal_connection_timeout = 2;
 ulong tc_internal_connection_retry_times = 3;
 my_bool tc_dry_run_log =  false;
+my_bool tc_routing_log = false;
 
 int tdbctl_simple_enable_primary(THD *thd);
 int tdbctl_simple_disable_primary(THD *thd);
@@ -653,6 +654,7 @@ key_map key_map_full(0);                        // Will be initialized later
 char logname_path[FN_REFLEN];
 char slow_logname_path[FN_REFLEN];
 char tc_dry_run_logname_path[FN_REFLEN];
+char tc_routing_logname_path[FN_REFLEN];
 char secure_file_real_path[FN_REFLEN];
 
 Date_time_format global_date_format, global_datetime_format, global_time_format;
@@ -795,7 +797,8 @@ ulong master_retry_count=0;
 char *master_info_file;
 char *relay_log_info_file, *report_user, *report_password, *report_host;
 char *opt_relay_logname = 0, *opt_relaylog_index_name=0;
-char *opt_general_logname, *opt_slow_logname, *opt_bin_logname, *tc_dry_run_logname;
+char *opt_general_logname, *opt_slow_logname, *opt_bin_logname;
+char *tc_dry_run_logname, *tc_routing_logname;
 
 /* Static variables */
 
@@ -3393,6 +3396,8 @@ int init_common_variables()
               make_query_log_name(slow_logname_path, QUERY_LOG_SLOW));
   FIX_LOG_VAR(tc_dry_run_logname,
               make_query_log_name(tc_dry_run_logname_path, QUERY_LOG_TDBCTL_DRY_RUN));
+  FIX_LOG_VAR(tc_routing_logname,
+              make_query_log_name(tc_routing_logname_path, QUERY_LOG_TDBCTL_ROUTING));
 
 #if defined(ENABLED_DEBUG_SYNC)
   /* Initialize the debug sync facility. See debug_sync.cc. */
@@ -4509,6 +4514,10 @@ a file name for --log-bin-index option", opt_binlog_index_name);
   // Open tc_dry_run log file if enabled
   if (tc_dry_run_log && query_logger.reopen_log_file(QUERY_LOG_TDBCTL_DRY_RUN))
     tc_dry_run_log= false;
+
+  // Open tdbctl routing log file if enabled
+  if (tc_routing_log && query_logger.reopen_log_file(QUERY_LOG_TDBCTL_ROUTING))
+    tc_routing_log= false;
 
   /*
     Set the default storage engines
@@ -7153,6 +7162,26 @@ static int show_slave_open_temp_tables(THD *thd, SHOW_VAR *var, char *buf)
   return 0;
 }
 
+static int tc_show_server_cache_update_time(THD *thd, SHOW_VAR *var, char *buff)
+{
+  MYSQL_TIME server_cache_update_time;
+  var->type= SHOW_CHAR;
+  var->value= buff;
+  thd->variables.time_zone->gmt_sec_to_TIME(&server_cache_update_time,
+    tc_get_server_cache_update_time());
+  my_datetime_to_str(&server_cache_update_time, buff, 0);
+  return 0;
+}
+
+static int tc_show_server_cache_version_num(THD *thd, SHOW_VAR *var, char *buff)
+{
+  var->type= SHOW_LONG;
+  var->value= buff;
+  *((long *)buff)= (long)get_modify_server_version();
+  return 0;
+}
+
+
 /*
   Variables shown by SHOW STATUS in alphabetical order
 */
@@ -7315,7 +7344,9 @@ SHOW_VAR status_vars[]= {
   {"Tc_log_max_pages_used",    (char*) &tc_log_max_pages_used,                         SHOW_LONG,              SHOW_SCOPE_GLOBAL},
   {"Tc_log_page_size",         (char*) &tc_log_page_size,                              SHOW_LONG_NOFLUSH,      SHOW_SCOPE_GLOBAL},
   {"Tc_log_page_waits",        (char*) &tc_log_page_waits,                             SHOW_LONG,              SHOW_SCOPE_GLOBAL},
-  {"Tc_is_primary", (char *)&tdbctl_is_primary, SHOW_LONG, SHOW_SCOPE_GLOBAL},
+  {"Tc_is_primary", (char *)&tdbctl_is_primary, SHOW_LONG_NOFLUSH, SHOW_SCOPE_GLOBAL},
+  {"Tc_server_cache_update_time", (char *)&tc_show_server_cache_update_time, SHOW_FUNC, SHOW_SCOPE_GLOBAL},
+  {"Tc_server_cache_version_num", (char *)&tc_show_server_cache_version_num, SHOW_FUNC, SHOW_SCOPE_GLOBAL},
 #ifdef HAVE_POOL_OF_THREADS
   {"Threadpool_idle_threads",  (char *) &show_threadpool_idle_threads,                 SHOW_FUNC,              SHOW_SCOPE_GLOBAL},
   {"Threadpool_threads",       (char *) &tp_stats.num_worker_threads,                  SHOW_INT,               SHOW_SCOPE_GLOBAL},
@@ -7477,6 +7508,7 @@ static int mysql_init_variables(void)
   opt_ignore_builtin_innodb= 0;
   opt_general_logname= opt_update_logname= opt_binlog_index_name= opt_slow_logname= NULL;
   tc_dry_run_logname= NULL;
+  tc_routing_logname= NULL;
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
   opt_secure_auth= 0;
   opt_myisam_log= 0;

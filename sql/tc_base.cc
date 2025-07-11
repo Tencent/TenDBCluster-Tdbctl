@@ -13,6 +13,7 @@
 #include "handler.h"
 #include "log.h"
 #include "rpl_group_replication.h"
+#include "my_aes.h"
 #include <cstddef>
 #include <string.h>
 #include <iostream>
@@ -23,6 +24,7 @@
 #include <tuple>
 #include <vector>
 #include <sstream>
+#include <iomanip>
 #include <regex>
 #include <thread>
 #include <mutex>
@@ -5746,4 +5748,133 @@ int tc_system(const char *cmd, const char *cmd_log) {
     }
   }
   return ret;
+}
+
+bool tc_log_local_server_cache(THD *thd, string my_server_name)
+{
+  DBUG_ENTER("tc_log_local_server_cache");
+
+  if(!tc_routing_log) {
+    DBUG_RETURN(FALSE);
+  }
+
+  if(thd == NULL) {
+    sql_print_error("Get NULL thread handler when log local server cache");
+    DBUG_RETURN(TRUE);
+  }
+
+  my_server_name.append("(self)");
+
+  list<FOREIGN_SERVER *> server_list;
+  get_server_by_wrapper(server_list, thd->mem_root, NULL_WRAPPER, FALSE);
+
+  std::stringstream cache_ss;
+  cache_ss << "Server_name\tHost\tDb\tUsername\tPassword\tPort\tSocket\tWrapper\tOwner\n";
+
+  size_t server_count = 0;
+  string encrypted_pwd;
+  for (const auto server : server_list) {
+    if(server) {
+      ++server_count;
+      cache_ss << (server->server_name ? server->server_name : "unknown") << "\t";
+      cache_ss << (server->host ? server->host : "") << "\t";
+      cache_ss << (server->db ? server->db : "") << "\t";
+      cache_ss << (server->username ? server->username : "") << "\t";
+
+      tc_server_passwd_encrypt(server->server_name ? server->server_name : "unknown",
+                               server->password ? server->password : "", 
+                               encrypted_pwd);
+      cache_ss << encrypted_pwd << "\t";
+
+      cache_ss << server->port << "\t";
+      cache_ss << (server->socket ? server->socket : "") << "\t";
+      cache_ss << (server->scheme ? server->scheme : "") << "\t";
+      cache_ss << (server->owner ? server->owner : "") << "\n";
+    }
+  }
+  cache_ss << server_count << " rows in set (version_num: " << get_modify_server_version() << ")";
+
+  string server_cache_str = "\n" + cache_ss.str();
+  if(query_logger.tdbctl_routing_log_write(thd, my_server_name.c_str(), my_server_name.length(), 
+                                           server_cache_str.c_str(), server_cache_str.length())) 
+  {
+    push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
+    DBUG_RETURN(TRUE);
+  }
+
+  DBUG_RETURN(FALSE);
+}
+
+bool tc_log_cluster_routing_event(THD *thd, const string &target_server, const string &send_sql)
+{
+  DBUG_ENTER("tc_log_cluster_routing_event");
+
+  if(!tc_routing_log) {
+    DBUG_RETURN(FALSE);
+  }
+
+  if(thd == NULL) {
+    sql_print_error("Get NULL thread handler when log cluster routing change event");
+    DBUG_RETURN(TRUE);
+  }
+
+  if(query_logger.tdbctl_routing_log_write(thd, target_server.c_str(), target_server.length(), 
+                                           send_sql.c_str(), send_sql.length())) 
+  {
+    push_warning(thd, Sql_condition::SL_WARNING, ER_TCADMIN_ROUTING_LOG_ERROR,"");
+    DBUG_RETURN(TRUE);
+  }
+
+  DBUG_RETURN(FALSE);
+}
+
+/**
+ * Encrypts a server password using AES-128-ECB algorithm
+ * Get the real password by SQL: SELECT CAST(AES_DECRYPT(hex_pwd, 'Server_name') AS CHAR);
+ * 
+ * @param server_name Server name used as encryption key
+ * @param passwd Plaintext password to be encrypted
+ * @param encrypted_pwd [out] Encrypted password in hex format (prefixed with 0x)
+ * @return bool TRUE if encryption failed, FALSE if succeeded
+ */
+bool tc_server_passwd_encrypt(const string &server_name, const string &passwd, string &encrypted_pwd)
+{
+  my_aes_opmode aes_mode = my_aes_128_ecb;
+  DBUG_ENTER("tc_server_passwd_encrypt");
+  
+  // Calculate required buffer size for encrypted output
+  int aes_length= my_aes_get_size(passwd.length(), aes_mode);
+
+  // Allocate memory for encrypted text
+  std::unique_ptr<unsigned char[]> cipher_text(new unsigned char[aes_length]);
+  if (cipher_text.get() == NULL)
+  {
+    encrypted_pwd.assign("<memory alloc error>");
+    DBUG_RETURN(TRUE);
+  }
+
+  // Perform AES encryption using server_name as key
+  if (my_aes_encrypt((const unsigned char *) passwd.c_str(), passwd.length(),
+                     (unsigned char *) cipher_text.get(), 
+                     (const unsigned char *) server_name.c_str(), server_name.length(),
+                     aes_mode, NULL) == aes_length)
+  {
+    // Convert encrypted binary data to hex string
+    if(aes_length > 0) {
+      std::stringstream ss;  // Start with 0x prefix
+      ss << "0x" << std::hex << std::setfill('0');
+      for(int i = 0; i < aes_length; ++i) {
+        ss << std::setw(2) << static_cast<unsigned int>(cipher_text[i]);  // Convert each byte to 2-digit hex
+      }
+      encrypted_pwd.assign(ss.str());
+    } else {
+      encrypted_pwd.assign("");
+    }
+    DBUG_RETURN(FALSE);
+  } else {
+    encrypted_pwd.assign("<encrypt error>");
+    DBUG_RETURN(TRUE);
+  }
+
+  DBUG_RETURN(FALSE);
 }

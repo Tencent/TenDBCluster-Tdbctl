@@ -1047,4 +1047,36 @@ bool tdbctl_check_routing(THD *thd);
  */
 int tc_system(const char *cmd, const char *cmd_log=NULL);
 
+/**
+ * @brief Log local server cache information
+ * 
+ * This function retrieves server information and logs it in a tabular format.
+ * 
+ * @param thd Thread handler
+ * @param my_server_name Name of the current server
+ * @return bool TRUE if logging failed, FALSE if successful
+ */
+bool tc_log_local_server_cache(THD *thd, string my_server_name="");
+
+/**
+ * Log cluster routing change event
+ * 
+ * @param thd            Thread handler
+ * @param target_server  Target server name
+ * @param send_sql       SQL statement to be sent
+ * 
+ * @return bool          TRUE if logging failed, FALSE if succeeded
+ */
+bool tc_log_cluster_routing_event(THD *thd, const string &target_server, const string &send_sql);
+
+/**
+ * Encrypt server password using AES-128-ECB algorithm
+ * 
+ * @param server_name      Server name used as encryption key
+ * @param passwd           Plaintext password to be encrypted
+ * @param encrypted_pwd    [out] Encrypted password result
+ * @return                 bool TRUE if encryption failed, FALSE if succeeded
+ */
+bool tc_server_passwd_encrypt(const string &server_name, const string &passwd, string &encrypt_passwd);
+
 #endif /* TC_BASE_INCLUDED */

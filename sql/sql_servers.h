@@ -84,6 +84,7 @@ void trim_wrapper_name_slave_suffix(std::string &wrapper_name);
 
 ulong get_servers_count();
 ulong get_modify_server_version();
+ulong tc_get_server_cache_update_time();
 ulong get_server_version_by_name(const char* server_name);
 int back_up_one_server(FOREIGN_SERVER* server);
 bool update_server_version(bool* version_updated);

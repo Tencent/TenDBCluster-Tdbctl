@@ -1,0 +1,18 @@
+# Test cases for Tc_is_primary status.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SET tc_admin=OFF;
+
+--echo
+--echo # Test the impact of FLUSH STATUS command on status variable values.
+SHOW STATUS LIKE 'Tc_is_primary';
+FLUSH STATUS;
+SHOW STATUS LIKE 'Tc_is_primary';
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+SET @@SESSION.tc_admin = @origin_tc_admin;

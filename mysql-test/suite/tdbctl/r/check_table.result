@@ -217,7 +217,7 @@ SET @@GLOBAL.table_definition_cache = 1400
 --------------------
 
 # Restore general_log.
-Set general log for all cluster nodes.
+Set general log to original state for all cluster nodes.
 
 # Case 3: Inconsistent table collation or table engine.
 # Make difference

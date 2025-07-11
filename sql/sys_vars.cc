@@ -6681,3 +6681,82 @@ static Sys_var_mybool Sys_tc_enable_autoinc_check(
        "If true, check auto-increment conflicts when adding spider nodes; otherwise skip the check",
        TDBCTL SESSION_VAR(tc_enable_autoinc_check), CMD_LINE(OPT_ARG),
        DEFAULT(TRUE));
+
+
+static bool tc_fix_routing_log_state(sys_var *self, THD *thd, enum_var_type type)
+{
+  if (query_logger.is_log_file_enabled(QUERY_LOG_TDBCTL_ROUTING) == tc_routing_log)
+    return false;
+
+  if (!tc_routing_log)
+  {
+    mysql_mutex_unlock(&LOCK_global_system_variables);
+    query_logger.deactivate_log_handler(QUERY_LOG_TDBCTL_ROUTING);
+    mysql_mutex_lock(&LOCK_global_system_variables);
+    return false;
+  }
+  else
+  {
+    mysql_mutex_unlock(&LOCK_global_system_variables);
+    bool res= query_logger.activate_log_handler(thd, QUERY_LOG_TDBCTL_ROUTING);
+    mysql_mutex_lock(&LOCK_global_system_variables);
+    if (res)
+      tc_routing_log= false;
+    return res;
+  }
+}
+
+static Sys_var_mybool Sys_tc_routing_log(
+        "tc_routing_log",
+        "If set to true, it records the changes of the TDBCTL's own server cache and "
+        "the routing changes to other nodes in the cluster.",
+        TDBCTL GLOBAL_VAR(tc_routing_log), CMD_LINE(OPT_ARG),
+        DEFAULT(TRUE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+        ON_UPDATE(tc_fix_routing_log_state));
+
+static bool tc_fix_routing_log_file(sys_var *self, THD *thd, enum_var_type type)
+{
+  if (!tc_routing_logname) // SET ... = DEFAULT
+  {
+    char buff[FN_REFLEN];
+    tc_routing_logname= my_strdup(key_memory_LOG_name,
+                                make_query_log_name(buff, QUERY_LOG_TDBCTL_ROUTING),
+                                MYF(MY_FAE+MY_WME));
+    if (!tc_routing_logname)
+      return true;
+  }
+  bool res= false;
+  if (tc_routing_log)
+  {
+    mysql_mutex_unlock(&LOCK_global_system_variables);
+    res= query_logger.reopen_log_file(QUERY_LOG_TDBCTL_ROUTING);
+    mysql_mutex_lock(&LOCK_global_system_variables);
+    if (res)
+      tc_routing_log= false;
+  }
+  return res;
+}
+
+static Sys_var_charptr Sys_tc_routing_log_path(
+        "tc_routing_log_file", "log the routing changes to given log file. "
+        "Defaults logging to hostname-routing.log.",
+        TDBCTL GLOBAL_VAR(tc_routing_logname), CMD_LINE(REQUIRED_ARG),
+        IN_FS_CHARSET, DEFAULT(0), NO_MUTEX_GUARD, NOT_IN_BINLOG,
+        ON_CHECK(check_log_path), ON_UPDATE(tc_fix_routing_log_file));
+
+static Sys_var_ulong Sys_max_routing_log_size(
+        "max_routing_log_size",
+        "Routing log will be rotated automatically when the size exceeds "
+        "this value. The default is 0, don't limit the size.",
+        TDBCTL GLOBAL_VAR(max_routing_log_size), CMD_LINE(REQUIRED_ARG),
+        VALID_RANGE(0, 1024*1024L*1024L), DEFAULT(0L),
+        BLOCK_SIZE(IO_SIZE));
+
+static Sys_var_ulong Sys_max_routing_log_files(
+        "max_routing_log_files",
+        "Maximum number of routing log files. Used with --max-routing-log-size "
+        "this can be used to limit the total amount of disk space used for the routing log. "
+        "Default is 0, don't limit.",
+        TDBCTL GLOBAL_VAR(max_routing_log_files),
+        CMD_LINE(REQUIRED_ARG), VALID_RANGE(0, 102400),
+        DEFAULT(0), BLOCK_SIZE(1));

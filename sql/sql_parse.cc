@@ -5655,7 +5655,7 @@ mysql_execute_command(THD *thd, bool first_level)
 
         /* If "WITH SCHEMA" option is specified, we need to flush routing after adding the new node. */
         if (lex->tc_with_schema) {
-          if (servers_reload(thd) || thd->cluster_conn_manager->refresh(FALSE, FALSE))
+          if (servers_reload(thd) || thd->cluster_conn_manager->refresh(TRUE, TRUE))
           {
             roll_back->execute(thd);
             my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "reload servers failed before flush routing");
@@ -5796,7 +5796,7 @@ mysql_execute_command(THD *thd, bool first_level)
       */
       if (lex->sql_command == TC_SQLCOM_ALTER_NODE && lex->tc_with_sync) {
         /* always do reload first */
-        if (servers_reload(thd) || thd->cluster_conn_manager->refresh(FALSE, FALSE))
+        if (servers_reload(thd) || thd->cluster_conn_manager->refresh(TRUE, TRUE))
         {
           Sql_cmd_alter_server *resume_node = new Sql_cmd_alter_server(&old_server_options);
           resume_node->execute(thd);
@@ -5831,9 +5831,9 @@ mysql_execute_command(THD *thd, bool first_level)
       }
 
       /* always do reload first */
-      if (servers_reload(thd))
+      if (servers_reload(thd) || thd->cluster_conn_manager->refresh(TRUE, TRUE))
       {
-        my_error(ER_SERVERS_LOAD, MYF(0));
+        my_error(ER_TCADMIN_FLUSH_ROUTING_ERROR, MYF(0), "reload servers failed");
         goto error;
       }
 
@@ -6588,7 +6588,7 @@ void mysql_parse(THD *thd, Parser_state *parser_state)
       */
       bool general= !(opt_general_log_raw || thd->slave_thread);
 
-      if (general || opt_slow_log || opt_bin_log)
+      if (general || opt_slow_log || opt_bin_log || tc_routing_log)
       {
         mysql_rewrite_query(thd);
 
