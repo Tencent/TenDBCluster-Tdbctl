@@ -136,7 +136,7 @@ bool compare_table_info(const Table_info &expected, const Table_info &actual,
 bool compare_columns_info(const Column_records &expected, const Column_records &actual, 
                           enum_node_type node_type, Message_writer &writer);
 
-static const int max_message_length = 512;
+static const int max_message_length = 1024;
 
 /*
   Only store some selected fields that are considered important.
@@ -689,7 +689,7 @@ static bool get_column_records_for_server(THD *thd,
   Query_exec_manager query_mgr(thd);
   DBUG_ENTER("get_column_records_for_server");
 
-  snprintf(query_buff, sizeof(query_buff), SQL_SELECT_IS_COLUMNS, db_name.c_str(), table_name.c_str());
+  snprintf(query_buff, sizeof(query_buff), SQL_SELECT_IS_COLUMNS_PARTIAL, db_name.c_str(), table_name.c_str());
 
   conn_mgr = thd->cluster_conn_manager;
   query_mgr.build_server_maps(conn_mgr);
@@ -704,13 +704,13 @@ static bool get_column_records_for_server(THD *thd,
   records.clear();
   while ((row = mysql_fetch_row(res))) {
     Column_record rec;
-    rec.table_schema = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_TABLE_SCHEMA);
-    rec.table_name = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_TABLE_NAME);
-    rec.column_name = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_COLUMN_NAME);
-    rec.ordinal_position = strtoul(row[IS_COLUMNS_ORDINAL_POSITION], NULL, 10);
-    rec.data_type = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_DATA_TYPE);
-    rec.collation_name = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_COLLATION_NAME);
-    rec.column_key = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_COLUMN_KEY);
+    rec.table_schema = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_PARTIAL_TABLE_SCHEMA);
+    rec.table_name = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_PARTIAL_TABLE_NAME);
+    rec.column_name = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_PARTIAL_COLUMN_NAME);
+    rec.ordinal_position = strtoul(row[IS_COLUMNS_PARTIAL_ORDINAL_POSITION], NULL, 10);
+    rec.data_type = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_PARTIAL_DATA_TYPE);
+    rec.collation_name = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_PARTIAL_COLLATION_NAME);
+    rec.column_key = DATA_STRING(row, mysql_fetch_lengths(res), IS_COLUMNS_PARTIAL_COLUMN_KEY);
     records[rec.column_name] = rec;
   }
   mysql_free_result(res);
@@ -731,7 +731,7 @@ static bool get_table_info_for_server(THD *thd, const string &db_name,
   Query_exec_manager query_mgr(thd);
   DBUG_ENTER("get_table_info_for_server");
 
-  snprintf(query_buff, sizeof(query_buff), SQL_SELECT_IS_TABLES,
+  snprintf(query_buff, sizeof(query_buff), SQL_SELECT_IS_TABLES_PARTIAL,
            db_name.c_str(), table_name.c_str());
 
   conn_mgr = thd->cluster_conn_manager;
@@ -747,10 +747,10 @@ static bool get_table_info_for_server(THD *thd, const string &db_name,
   info.exists = FALSE;
   if ((row = mysql_fetch_row(res))) {
     info.exists = TRUE;
-    info.table_schema = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_TABLE_SCHEMA);
-    info.table_name = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_TABLE_NAME);
-    info.table_engine = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_TABLE_ENGINE);
-    info.table_collation = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_TABLE_COLLATION);
+    info.table_schema = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_PARTIAL_TABLE_SCHEMA);
+    info.table_name = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_PARTIAL_TABLE_NAME);
+    info.table_engine = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_PARTIAL_ENGINE);
+    info.table_collation = DATA_STRING(row, mysql_fetch_lengths(res), IS_TABLES_PARTIAL_TABLE_COLLATION);
   }
   mysql_free_result(res);
 
@@ -943,8 +943,10 @@ int tdbctl_check_tables(THD *thd, const char *db, String *wild) {
   }
 
   /* Send metadata for check results */
-  if (do_send_metadata(thd))
+  if (do_send_metadata(thd)) {
+    check_tables_hdl.terminate_parallel_query_threads();
     DBUG_RETURN(TRUE);
+  }
 
   int res = 0;
   for (const string &table: tables) {
