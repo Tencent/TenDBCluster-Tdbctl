@@ -428,7 +428,7 @@ std::pair<FOREIGN_SERVER *, std::string> tc_find_dump_source_node(THD *thd, LEX 
  * - Uses mysql_tmpdir as the base directory for backup files
  * - For skipped backups (tc_enable_internal_dump=false), only a warning is raised
  */
-std::pair<bool, std::string> tc_backup_from_source_node(THD *thd, LEX *lex, FOREIGN_SERVER *dump_server) 
+std::pair<bool, std::string> tc_backup_from_source_node(THD *thd, LEX *lex, const FOREIGN_SERVER *dump_server) 
 {
   // Validate wrapper type (pre-filtered by sql_yacc.yy)
   DBUG_ASSERT((strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||

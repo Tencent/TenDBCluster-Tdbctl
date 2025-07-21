@@ -3909,7 +3909,7 @@ bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex)
   if(!validate_auto_increment_settings(spider_autoinc_map, failure_items)) {
     errmsg = "Found auto-increment setting conflicts of current cluster spider nodes: ";
     err_detail = errmsg;
-    for(SPIDER_AUTOINC_CONFLICT_ITEM conflict_item : failure_items) {
+    for(const SPIDER_AUTOINC_CONFLICT_ITEM &conflict_item : failure_items) {
       err_detail += "\n" + conflict_item.second;
     }
     sql_print_warning(err_detail.c_str());
@@ -4030,7 +4030,7 @@ bool check_autoinc_for_multiple_new_spider_nodes(THD *thd, LEX *lex)
   if(!validate_auto_increment_settings(spider_autoinc_map, failure_items)) {
     errmsg = "Found auto-increment setting conflicts: ";
     err_detail = errmsg;
-    for(SPIDER_AUTOINC_CONFLICT_ITEM conflict_item : failure_items) {
+    for(const SPIDER_AUTOINC_CONFLICT_ITEM &conflict_item : failure_items) {
       err_detail += "\n" + conflict_item.second;
     }
     sql_print_warning(err_detail.c_str());
