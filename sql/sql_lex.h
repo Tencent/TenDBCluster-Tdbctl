@@ -46,6 +46,7 @@
 #include "sql_admin.h"
 #include "event_parse_data.h"
 #include <map>
+#include <vector>
 
 #ifdef MYSQL_SERVER
 #include "item_func.h"                // Cast_target
@@ -3180,6 +3181,7 @@ public:
   LEX_MASTER_INFO mi;				// used by CHANGE MASTER
   LEX_SLAVE_CONNECTION slave_connection;
   Server_options server_options;
+  std::vector<Server_options> server_options_list;
   USER_RESOURCES mqh;
   LEX_RESET_SLAVE reset_slave_info;
   ulong type;

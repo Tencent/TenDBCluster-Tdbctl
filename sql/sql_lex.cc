@@ -468,6 +468,7 @@ void LEX::reset()
   allow_sum_func= 0;
   in_sum_func= NULL;
   server_options.reset();
+  server_options_list.clear();
   explain_format= NULL;
   is_lex_started= true;
   used_tables= 0;

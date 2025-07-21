@@ -247,7 +247,7 @@ int tc_restore_to_node(
   
   if (tc_system(restore_cmd.c_str(), restore_cmd_log.c_str()) != 0)
   {
-    my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), file, host, port, err_file.c_str());
+    my_error(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), host, port);
     return 1;
   }
 
@@ -410,4 +410,264 @@ std::pair<FOREIGN_SERVER *, std::string> tc_find_dump_source_node(THD *thd, LEX 
   }
 
   return {dump_server, msg};
+}
+
+/**
+ * Performs schema backup from a source node to a specified file.
+ * 
+ * @param thd          Thread handler containing session context
+ * @param lex          LEX structure with server connection options
+ * @param dump_server  Source server to backup from (must not be NULL)
+ * 
+ * @retval pair.first  bool: false if backup succeeded or was skipped (with warning)
+ *                     true if backup failed
+ * @retval pair.second string: Backup file path if succeeded, empty otherwise
+ * 
+ * @note
+ * - Backup file format: from_[server_name]_[host]_[port]_[timestamp]_[thread_id].sql
+ * - Uses mysql_tmpdir as the base directory for backup files
+ * - For skipped backups (tc_enable_internal_dump=false), only a warning is raised
+ */
+std::pair<bool, std::string> tc_backup_from_source_node(THD *thd, LEX *lex, FOREIGN_SERVER *dump_server) 
+{
+  // Validate wrapper type (pre-filtered by sql_yacc.yy)
+  DBUG_ASSERT((strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
+               (strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0) ||
+               (strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0));
+
+  // Skip backup if internal dump is disabled (only show warning)
+  if (!tc_enable_internal_dump)
+  {
+    push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
+                        "backup was skipped: %s", "tc_enable_internal_dump is disabled");
+    return {false, ""};
+  }
+
+  if (dump_server == NULL)
+  {
+    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), "Dump source server is not specified");
+    return {true, ""};
+  }
+
+  /* Construct backup filename with format:
+   * from_[server_name]_[host]_[port]_[YYYYmmdd_HHMMSS.ms]_[thread_id].sql
+   */
+  char schema_path[FN_REFLEN + 1];
+  char *p1 = my_stpnmov(schema_path, mysql_tmpdir, sizeof(schema_path));
+  struct timeval current_time;
+  my_micro_time_to_timeval(my_micro_time(), &current_time);
+  string cur_time_str = timeval_to_str(current_time, "%Y%m%d_%H%M%S", 6);
+  my_snprintf(p1, sizeof(schema_path) - (p1 - schema_path), "/from_%s_%s_%ld_%s_%u.sql",
+              dump_server->server_name, dump_server->host, (unsigned int)dump_server->port, 
+              cur_time_str.c_str(), thd ? thd->thread_id() : 0);
+
+  if (tc_dump_node_schema(
+          dump_server->host,
+          dump_server->port,
+          dump_server->username,
+          dump_server->password,
+          schema_path,
+          dump_server->scheme))
+  {
+    return {true, ""};  // Backup failed
+  }
+
+  return {false, schema_path};   // Backup succeeded
+}
+
+/**
+ * @brief Restores data from a backup file to a specified database node
+ * 
+ * This function is designed to be called as a worker thread in a multi-threaded
+ * data import system. It handles the complete restore process including:
+ * - Establishing connection to target node
+ * - Handling special configurations for Spider nodes
+ * - Executing the actual restore command
+ * - Error handling and status reporting
+ * 
+ * @param thd             Thread handle
+ * @param host            Target server hostname/IP
+ * @param port            Target server port
+ * @param user            Username for authentication
+ * @param password        Password for authentication
+ * @param file            Path to the backup file to restore
+ * @param wrapper         Server wrapper type (TDBCTL/SPIDER/SPIDER_SLAVE)
+ * @param restore_result  Output parameter for restore status:
+ *                       - first: bool (true if restore failed)
+ *                       - second: string (error message if failed)
+ */
+void tc_restore_to_node_worker(
+        THD *thd,
+        const char *host,
+        uint port,
+        const char *user,
+        const char *password,
+        const char *src_file,
+        const char *wrapper,
+        std::pair<bool, std::string> &restore_result)
+{
+  restore_result.first = false;
+  restore_result.second = "";
+
+  MYSQL *conn = tc_conn_connect(host, port, user, password, wrapper);
+  MYSQL_GUARD(conn);
+  if (!conn) 
+  {
+    std::string ipport = std::string(host) + "#" + std::to_string(port);
+    restore_result.first = true;
+    restore_result.second = tc_get_error_msg(ER_TCADMIN_CONNECT_ERROR, MYF(0), ipport.c_str());
+    return;
+  }
+  std::string sql;
+  tc_exec_info exec_info;
+  exec_info.err_code = 0;
+  exec_info.err_msg = "";
+  
+  // for spider/spider_slave node, we need to disable ddl_execute_by_ctl feature of the spider
+  bool has_variable = true;
+  if ((strcasecmp(wrapper, SPIDER_WRAPPER) == 0) || (strcasecmp(wrapper, SPIDER_SLAVE_WRAPPER) == 0))
+  {
+    sql = "/*!50600 set @old_ddl_execute_by_ctl = @@global.ddl_execute_by_ctl*/";
+    if(tc_exec_sql_without_result(conn, sql, &exec_info))
+    {
+      /*
+        Ignore the error if it's due to an unknown system variable (ER_UNKNOWN_SYSTEM_VARIABLE),
+        which may occur for version compatibility. For other errors, treat as execution failure.
+      */
+      if (exec_info.err_code == ER_UNKNOWN_SYSTEM_VARIABLE) {
+        has_variable = false;
+      } else {
+        restore_result.first = true;
+        restore_result.second = tc_get_error_msg(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
+        return;
+      }
+    }
+    sql = "/*!50600 set global ddl_execute_by_ctl=0*/";
+    if(has_variable && tc_exec_sql_without_result(conn, sql, &exec_info))
+    {
+      restore_result.first = true;
+      restore_result.second = tc_get_error_msg(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
+      return;
+    }
+  }
+
+  string space = " ";
+  string restore_cmd, restore_bin, restore_options;
+#if defined (_WIN32)
+  restore_bin = "mysql";
+#else
+  restore_bin = mysql_home_ptr;
+  restore_bin += "/bin/mysql";
+#endif
+  restore_options += space + "-u" + user + space + "-p" + password;
+  size_t pwd_len = strlen(password);
+  size_t pwd_pos = restore_options.size() - pwd_len;
+
+  restore_options += space + "-P" + to_string(port) + space + "-h" + host + "<" + src_file;
+  std::string restore_options_log = restore_options;
+  restore_options_log.replace(pwd_pos, pwd_len, "xxxxx");
+
+  /* Construct restore error filename with format:
+   * to_[wrapper]_[host]_[port]_[YYYYmmdd_HHMMSS.ms]_[thread_id].err
+   */
+  char schema_path[FN_REFLEN + 1];
+  char *p1 = my_stpnmov(schema_path, mysql_tmpdir, sizeof(schema_path));
+  struct timeval current_time;
+  my_micro_time_to_timeval(my_micro_time(), &current_time);
+  string cur_time_str = timeval_to_str(current_time, "%Y%m%d_%H%M%S", 6);
+  my_snprintf(p1, sizeof(schema_path) - (p1 - schema_path), "/to_%s_%s_%ld_%s_%u.err",
+              wrapper, host, port, cur_time_str.c_str(), thd ? thd->thread_id() : 0);
+  std::string err_file = schema_path;
+
+  restore_cmd = restore_bin + restore_options + space + ">&" + err_file;
+  std::string restore_cmd_log = restore_bin + restore_options_log + space + ">&" + err_file;
+  
+  if (tc_system(restore_cmd.c_str(), restore_cmd_log.c_str()) != 0)
+  {
+    restore_result.first = true;
+    restore_result.second = tc_get_error_msg(ER_TCADMIN_RESTORE_NODE_ERROR, MYF(0), host, port);
+    return;
+  }
+
+  if ((strcasecmp(wrapper, SPIDER_WRAPPER) == 0) || (strcasecmp(wrapper, SPIDER_SLAVE_WRAPPER) == 0))
+  {
+    sql = "/*!50600 set global ddl_execute_by_ctl = @old_ddl_execute_by_ctl */";
+    if(has_variable && tc_exec_sql_without_result(conn, sql, &exec_info))
+    {
+      restore_result.first = true;
+      restore_result.second = tc_get_error_msg(ER_TCADMIN_SEND_SQL_ERR, MYF(0), exec_info.err_msg.c_str());
+      return;
+    }
+  }
+
+  sql_print_information("success restore %s to node %s#%d", src_file, host, port);
+}
+
+/**
+ * @brief Loads schema from a backup file to multiple new database nodes in parallel
+ * 
+ * 
+ * @param thd           Thread handler containing session context
+ * @param lex           LEX structure with server connection options
+ * @param schema_path   Path to the schema backup file to restore
+ * 
+ * @retval false        All restores completed successfully or were skipped (with warning)
+ * @retval true         Any restore failed (error details aggregated in error message)
+ */
+bool tc_load_schema_to_multiple_new_nodes(THD *thd, LEX *lex, const std::string &schema_path)
+{
+  // Validate wrapper type (pre-filtered by sql_yacc.yy)
+  DBUG_ASSERT((strcasecmp(lex->server_options.get_scheme(), SPIDER_WRAPPER) == 0) ||
+               (strcasecmp(lex->server_options.get_scheme(), SPIDER_SLAVE_WRAPPER) == 0) ||
+               (strcasecmp(lex->server_options.get_scheme(), TDBCTL_WRAPPER) == 0));
+
+  // Skip restore if internal dump is disabled (only show warning)
+  if (!tc_enable_internal_dump)
+  {
+    push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
+                        "restore was skipped: %s", "tc_enable_internal_dump is disabled");
+    return false;
+  }
+
+  if(access(schema_path.c_str(), F_OK) != 0)
+  {
+    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), "schema file %s does not exist", schema_path.c_str());
+    return true;
+  }
+
+  size_t server_count = lex->server_options_list.size();
+  std::vector<std::thread> threads;
+  std::vector<std::pair<bool, std::string>> restore_results(server_count);
+
+  for (size_t i = 0; i < server_count; ++i) {
+    const Server_options &one_server = lex->server_options_list[i];
+    threads.emplace_back(tc_restore_to_node_worker, 
+                        thd,
+                        one_server.get_host(),
+                        static_cast<uint>(one_server.get_port()),
+                        one_server.get_username(),
+                        one_server.get_password(),
+                        schema_path.c_str(),
+                        one_server.get_scheme(),
+                        std::ref(restore_results[i]));
+  }
+
+  bool error_occur = false;
+  std::string error_msg = "when restore schema to new nodes, error occur:";
+  for (size_t i = 0; i < threads.size(); ++i) {
+    threads[i].join();
+    if (restore_results[i].first) {
+      error_occur = true;
+      std::string server_name = lex->server_options_list[i].m_server_name.str;
+      error_msg += "\n" + server_name + ": " + restore_results[i].second;
+    }
+  }
+
+  if(error_occur) {
+    error_msg += "\nNote: Prior to retry, remember to purge all partially imported data from the pending new nodes";
+    my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), error_msg.c_str());
+    return true;
+  }
+
+  return false;
 }

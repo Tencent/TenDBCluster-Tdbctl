@@ -669,6 +669,40 @@ static void mysql_rewrite_server_options(THD *thd, String *rlb)
   rlb->append(STRING_WITH_LEN(" )"));
 }
 
+/**
+  Rewrite the SERVER OPTIONS list clause (for TDBCTL CREATE NODE).
+
+  @param thd      The THD to rewrite for.
+  @param rlb      An empty String object to put the rewritten query in.
+*/
+
+static void mysql_rewrite_server_options_list(THD *thd, String *rlb)
+{
+  LEX *lex= thd->lex;
+
+  for(size_t i= 0; i < lex->server_options_list.size(); ++i)
+  {
+    const Server_options &one_server = lex->server_options_list[i];
+    if (i > 0)
+      rlb->append(STRING_WITH_LEN(", "));
+    else
+      rlb->append(STRING_WITH_LEN(" OPTIONS "));
+
+    rlb->append(STRING_WITH_LEN("( PASSWORD '<secret>'"));
+    append_str(rlb, true, "USER", one_server.get_username());
+    append_str(rlb, true, "HOST", one_server.get_host());
+    append_str(rlb, true, "DATABASE", one_server.get_db());
+    append_str(rlb, true, "OWNER", one_server.get_owner());
+    append_str(rlb, true, "SOCKET", one_server.get_socket());
+    append_int(rlb, true, STRING_WITH_LEN("PORT "),
+              one_server.get_port(),
+              one_server.get_port() != Server_options::PORT_NOT_SET);
+    append_int(rlb, true, STRING_WITH_LEN("NUMBER "),
+              one_server.get_num(),
+              one_server.get_num() != Server_options::NUM_NOT_SET);
+    rlb->append(STRING_WITH_LEN(" )"));
+  }
+}
 
 /**
   Rewrite a CREATE SERVER statement.
@@ -740,7 +774,7 @@ static void mysql_rewrite_tc_create_node(THD *thd, String *rlb)
               lex->server_options.get_scheme() : "");
   rlb->append(STRING_WITH_LEN("'"));
 
-  mysql_rewrite_server_options(thd, rlb);
+  mysql_rewrite_server_options_list(thd, rlb);
 
   if(lex->tc_with_schema) {
     rlb->append(STRING_WITH_LEN(" WITH SCHEMA"));

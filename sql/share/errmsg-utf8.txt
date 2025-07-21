@@ -7855,7 +7855,8 @@ ER_TCADMIN_DUMP_NODE_ERROR
   eng "DUMP FAILED: failed to dump %s from node %s#%d, and more error messages can be found in the %s"
 
 ER_TCADMIN_RESTORE_NODE_ERROR
-  eng "RESTORE FAILED: failed to restore %s to node %s#%d, and more error messages can be found in the %s"
+#  eng "RESTORE FAILED: failed to restore %s to node %s#%d, and more error messages can be found in the %s"
+  eng "failed to restore schema file to node %s#%d, check the details in the tmp dir"
 
 ER_TCADMIN_CREATE_NODE_ERROR
   eng "CREATE NODE FAILED: %s"

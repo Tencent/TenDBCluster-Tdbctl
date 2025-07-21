@@ -16,4 +16,14 @@ int tc_restore_to_node(const char *host, uint port, const char *user, const char
 
 bool tc_load_schema_to_new_node(THD *thd, LEX *lex, FOREIGN_SERVER *dump_server);
 std::pair<FOREIGN_SERVER *, std::string> tc_find_dump_source_node(THD *thd, LEX *lex);
+std::pair<bool, std::string> tc_backup_from_source_node(THD *thd, LEX *lex, FOREIGN_SERVER *dump_server);
+void tc_restore_to_node_worker(THD *thd,
+                        const char *host,
+                        uint port,
+                        const char *user,
+                        const char *password,
+                        const char *file,
+                        const char *wrapper,
+                        std::pair<bool, std::string> &restore_result);
+bool tc_load_schema_to_multiple_new_nodes(THD *thd, LEX *lex, const std::string &schema_path);
 #endif

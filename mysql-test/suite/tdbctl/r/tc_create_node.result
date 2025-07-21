@@ -374,7 +374,7 @@ flush privileges
 unlock tables
 
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-/*!50600 set @old_ddl_execute_by_ctl = @@ddl_execute_by_ctl*/
+/*!50600 set @old_ddl_execute_by_ctl = @@global.ddl_execute_by_ctl*/
 /*!50600 set global ddl_execute_by_ctl=0*/
 select @@version_comment limit 1
 /*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */

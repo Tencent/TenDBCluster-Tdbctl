@@ -1079,4 +1079,16 @@ bool tc_log_cluster_routing_event(THD *thd, const string &target_server, const s
  */
 bool tc_server_passwd_encrypt(const string &server_name, const string &passwd, string &encrypt_passwd);
 
+/**
+ * Retrieves the formatted error message for a given error number.
+ * 
+ * @param nr      The error number to retrieve the message for
+ * @param MyFlags Flags controlling message formatting (e.g., MYF()) 
+ * @param ...     Variable arguments for message formatting
+ * 
+ * @return std::string containing the formatted error message
+ *         Returns "Unknown error [nr]" if the error number is not recognized
+ */
+std::string tc_get_error_msg(int nr, myf MyFlags, ...);
+
 #endif /* TC_BASE_INCLUDED */

@@ -5890,3 +5890,22 @@ bool tc_server_passwd_encrypt(const string &server_name, const string &passwd, s
 
   DBUG_RETURN(FALSE);
 }
+
+std::string tc_get_error_msg(int nr, myf MyFlags, ...)
+{
+  const char *format;
+  va_list args;
+  char ebuff[512];
+
+  if (!(format = my_get_err_msg(nr)))
+    (void) my_snprintf(ebuff, sizeof(ebuff), "Unknown error %d", nr);
+  else
+  {
+    va_start(args,MyFlags);
+    (void) my_vsnprintf_ex(&my_charset_utf8_general_ci, ebuff,
+                           sizeof(ebuff), format, args);
+    va_end(args);
+  }
+
+  return std::string(ebuff);
+}

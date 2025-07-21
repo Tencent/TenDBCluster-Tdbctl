@@ -1389,6 +1389,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
         key_using_alg
         part_column_list
         server_options_list server_option
+        single_server_info mutil_server_info
         definer_opt no_definer definer get_diagnostics
         alter_user_command password_expire
         group_replication
@@ -2295,7 +2296,7 @@ tdbctl:
           Lex->sql_command = TC_SQLCOM_MONITOR_INIT;
         }
       | TDBCTL_SYM CREATE NODE_SYM WRAPPER_SYM
-        ident_or_text OPTIONS_SYM '(' server_options_list ')' opt_with_schema
+        ident_or_text OPTIONS_SYM mutil_server_info opt_with_schema
         {
           Lex->sql_command = TC_SQLCOM_CREATE_NODE;
           LEX_STRING wrapper_str = $5;
@@ -2312,9 +2313,18 @@ tdbctl:
             MYSQL_YYABORT;
           }
 
-          Lex->server_options.set_scheme($5);
-          Lex->m_sql_cmd=
-                new (YYTHD->mem_root) Sql_cmd_create_server(&Lex->server_options);
+          for(Server_options &one_server: Lex->server_options_list) {
+            one_server.set_scheme($5);
+          }
+          
+          Lex->server_options = Lex->server_options_list.front();  // make sure lex->server_options to be the first specified server
+
+          if(Lex->server_options_list.size() == 1) {
+            Lex->m_sql_cmd= new (YYTHD->mem_root) Sql_cmd_create_server(&(Lex->server_options_list.front()));
+          } else {
+            Lex->m_sql_cmd= new (YYTHD->mem_root) Sql_cmd_create_multi_server(Lex->server_options_list);
+          }
+          
           Lex->tc_do_grants = TRUE;
 			    Lex->tc_flush_type = Lex->tc_with_schema ? FLUSH_ROUTING_FOR_CREATE_NODE : FLUSH_NONE;
           Lex->tc_force = FALSE;
@@ -2376,6 +2386,23 @@ tdbctl:
         {
           Lex->sql_command = TC_SQLCOM_CHECK_ROUTING;
         }
+        ;
+
+mutil_server_info:
+          mutil_server_info ','  single_server_info
+          {
+            Lex->server_options_list.push_back(Lex->server_options);
+            Lex->server_options.reset();
+          }
+        | single_server_info
+          {
+            Lex->server_options_list.push_back(Lex->server_options);
+            Lex->server_options.reset();
+          }
+        ;
+
+single_server_info:
+          '(' server_options_list ')'
         ;
 
 opt_tdbctl_check_table:
