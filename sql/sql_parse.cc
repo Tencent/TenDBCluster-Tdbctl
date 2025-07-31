@@ -781,6 +781,7 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_SHOW_CREATE_USER]|=        CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[TC_SQLCOM_FLUSH_ROUTING]|=        CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[TC_SQLCOM_SHOW_VARIABLES]|=       CF_ALLOW_PROTOCOL_PLUGIN;
+  sql_command_flags[TC_SQLCOM_SHOW_CLUSTER_NODES]|=   CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[TC_SQLCOM_SHOW_PROCESSLIST]|=     CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[TC_SQLCOM_CREATE_NODE]|=          CF_ALLOW_PROTOCOL_PLUGIN;
   sql_command_flags[TC_SQLCOM_ALTER_NODE]|=           CF_ALLOW_PROTOCOL_PLUGIN;
@@ -4051,6 +4052,9 @@ mysql_execute_command(THD *thd, bool first_level)
       break;
     case TC_SQLCOM_SHOW_VARIABLES:
       res = tc_show_variables(thd, lex->option_type, lex->wild, lex->server_name);
+      break;
+    case TC_SQLCOM_SHOW_CLUSTER_NODES:
+      res = tc_show_cluster_nodes(thd, lex->verbose);
       break;
     case TC_SQLCOM_ENABLE_PRIMARY:
       /* Fall through */

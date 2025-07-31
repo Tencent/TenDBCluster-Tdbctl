@@ -545,6 +545,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 %token  CLIENT_SYM
 %token  CLIENT_STATS_SYM
 %token  CLOSE_SYM                     /* SQL-2003-R */
+%token  CLUSTER_SYM
 %token  CLUSTERING_SYM
 %token  COALESCE                      /* SQL-2003-N */
 %token  CODE_SYM
@@ -851,6 +852,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, YYLTYPE **c, ulong *yystacksize);
 %token  NEXT_SYM                      /* SQL-2003-N */
 %token  NODE_SYM
 %token  NODEGROUP_SYM
+%token  NODES_SYM
 %token  NONE_SYM                      /* SQL-2003-R */
 %token  NOT2_SYM
 %token  NOT_SYM                       /* SQL-2003-R */
@@ -2341,6 +2343,10 @@ tdbctl:
       | TDBCTL_SYM SHOW opt_var_type VARIABLES opt_show opt_server
         {
           Lex->sql_command = TC_SQLCOM_SHOW_VARIABLES;
+        }
+      | TDBCTL_SYM SHOW opt_full CLUSTER_SYM NODES_SYM
+        {
+          Lex->sql_command = TC_SQLCOM_SHOW_CLUSTER_NODES;
         }
       | TDBCTL_SYM CONNECT_SYM NODE_SYM ident_or_text EXECUTE_SYM TEXT_STRING_sys
         {

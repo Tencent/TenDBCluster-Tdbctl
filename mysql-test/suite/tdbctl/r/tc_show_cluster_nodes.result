@@ -1,0 +1,255 @@
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+# Disable tc_enable_autoinc_check
+SET tc_enable_autoinc_check = OFF;
+
+# Original routing table.
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Case 1: syntax error
+SET tc_admin = ON;
+SHOW CLUSTER NODES;
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'CLUSTER NODES' at line 1
+TDBCTL SHOW CLUSTER NODE;
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'NODE' at line 1
+TDBCTL SHOW NODES;
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'NODES' at line 1
+TDBCTL SHOW CLUSTER NODES;
+Server_name	Host	Port	Wrapper	Version	Status
+SPIDER0	172.18.0.6	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPIDER1	172.18.0.7	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPIDER2	172.18.0.8	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPT0	172.18.0.2	3306	mysql	5.7.20-tmysql-3.4.2-log	Online
+SPT1	172.18.0.3	3306	mysql	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE0	172.18.0.4	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE1	172.18.0.5	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+TDBCTL0	172.18.0.9	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+TDBCTL1	172.18.0.10	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+TDBCTL2	172.18.0.11	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+
+# Case 2: execute permission
+SET tc_admin = OFF;
+TDBCTL SHOW CLUSTER NODES;
+ERROR HY000: execute TCADMIN COMMAND without enabling tdbctl management mode (TC_ADMIN==1)
+SET tc_admin = ON;
+TDBCTL SHOW CLUSTER NODES;
+ERROR HY000: EXECUTE FAILED: command [TC_SQLCOM_SHOW_CLUSTER_NODES] is not allowed to execute on non-primary tdbctl node
+
+# Case 3: functional test
+
+# restart slave thread
+STOP SLAVE;
+START SLAVE;
+STOP SLAVE;
+START SLAVE;
+STOP SLAVE;
+START SLAVE;
+STOP SLAVE;
+START SLAVE;
+
+# Case 3.1: normal
+
+SET tc_admin = ON;
+# Basic info
+TDBCTL SHOW CLUSTER NODES;
+Server_name	Host	Port	Wrapper	Version	Status
+SPIDER0	172.18.0.6	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPIDER1	172.18.0.7	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPIDER2	172.18.0.8	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPT0	172.18.0.2	3306	mysql	5.7.20-tmysql-3.4.2-log	Online
+SPT1	172.18.0.3	3306	mysql	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE0	172.18.0.4	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE1	172.18.0.5	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+TDBCTL0	172.18.0.9	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+TDBCTL1	172.18.0.10	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+TDBCTL2	172.18.0.11	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+# Compare to INFORMATION_SCHEMA.TDBCTL_NODES
+SELECT SERVER_NAME, HOST, PORT, REPLICATION_MASTER, CLUSTER_ROLE, STATUS, MESSAGE FROM INFORMATION_SCHEMA.TDBCTL_NODES;
+SERVER_NAME	HOST	PORT	REPLICATION_MASTER	CLUSTER_ROLE	STATUS	MESSAGE
+TDBCTL0	172.18.0.9	3306		Primary	Online	
+TDBCTL1	172.18.0.10	3306	TDBCTL0	Secondary	Online	
+TDBCTL2	172.18.0.11	3306	TDBCTL0	Secondary	Online	
+SELECT SERVER_NAME, HOST, PORT, 
+FEATURE_INFO->>'$.MASTER_NAME' AS REPLICATION_MASTER, 
+FEATURE_INFO->>'$.TDBCTL_ROLE' AS CLUSTER_ROLE, 
+FEATURE_INFO->>'$.TDBCTL_STATUS' AS STATUS, 
+FEATURE_INFO->>'$.MASSAGE' AS MASSAGE 
+FROM INFORMATION_SCHEMA.CLUSTER_NODES WHERE WRAPPER = 'TDBCTL';
+SERVER_NAME	HOST	PORT	REPLICATION_MASTER	CLUSTER_ROLE	STATUS	MASSAGE
+TDBCTL0	172.18.0.9	3306	NULL	Primary	Online	NULL
+TDBCTL1	172.18.0.10	3306	TDBCTL0	Secondary	Online	NULL
+TDBCTL2	172.18.0.11	3306	TDBCTL0	Secondary	Online	NULL
+# slave status of cluster nodes
+SELECT SERVER_NAME, HOST, PORT, USERNAME, PASSWORD, WRAPPER, VERSION, STATUS, 
+FEATURE_INFO->>'$.MASTER_NAME' AS MASTER_NAME, 
+FEATURE_INFO->>'$.SLAVE_STATUS.Slave_IO_Running' AS Slave_IO_Running, 
+FEATURE_INFO->>'$.SLAVE_STATUS.Slave_SQL_Running' AS Slave_SQL_Running 
+FROM INFORMATION_SCHEMA.CLUSTER_NODES;
+SERVER_NAME	HOST	PORT	USERNAME	PASSWORD	WRAPPER	VERSION	STATUS	MASTER_NAME	Slave_IO_Running	Slave_SQL_Running
+SPIDER0	172.18.0.6	3306	mysql	mysql	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online	NULL	NULL	NULL
+SPIDER1	172.18.0.7	3306	mysql	mysql	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online	NULL	NULL	NULL
+SPIDER2	172.18.0.8	3306	mysql	mysql	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online	NULL	NULL	NULL
+SPT0	172.18.0.2	3306	mysql	mysql	mysql	5.7.20-tmysql-3.4.2-log	Online	NULL	NULL	NULL
+SPT1	172.18.0.3	3306	mysql	mysql	mysql	5.7.20-tmysql-3.4.2-log	Online	NULL	NULL	NULL
+SPT_SLAVE0	172.18.0.4	3306	mysql	mysql	mysql_slave	5.7.20-tmysql-3.4.2-log	Online	SPT0	Yes	Yes
+SPT_SLAVE1	172.18.0.5	3306	mysql	mysql	mysql_slave	5.7.20-tmysql-3.4.2-log	Online	SPT1	Yes	Yes
+TDBCTL0	172.18.0.9	3306	mysql	mysql	TDBCTL	5.7.20-tdbctl-test-log	Online	NULL	NULL	NULL
+TDBCTL1	172.18.0.10	3306	mysql	mysql	TDBCTL	5.7.20-tdbctl-test-log	Online	TDBCTL0	Yes	Yes
+TDBCTL2	172.18.0.11	3306	mysql	mysql	TDBCTL	5.7.20-tdbctl-test-log	Online	TDBCTL0	Yes	Yes
+
+# Case 3.2: Create some accidents
+
+SET tc_admin = OFF;
+UPDATE mysql.servers SET Password = 'errorpwd' WHERE Server_name IN ('SPIDER1', 'SPT1', 'TDBCTL1');
+FLUSH PRIVILEGES;
+SET tc_admin = ON;
+# Basic info
+TDBCTL SHOW CLUSTER NODES;
+Server_name	Host	Port	Wrapper	Version	Status
+SPIDER0	172.18.0.6	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPIDER1	172.18.0.7	3306	SPIDER	unknown	Unreachable
+SPIDER2	172.18.0.8	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPT0	172.18.0.2	3306	mysql	5.7.20-tmysql-3.4.2-log	Online
+SPT1	172.18.0.3	3306	mysql	unknown	Unreachable
+SPT_SLAVE0	172.18.0.4	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE1	172.18.0.5	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+TDBCTL0	172.18.0.9	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+TDBCTL1	172.18.0.10	3306	TDBCTL	unknown	Unreachable
+TDBCTL2	172.18.0.11	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+# Compare to INFORMATION_SCHEMA.TDBCTL_NODES
+SELECT SERVER_NAME, HOST, PORT, REPLICATION_MASTER, CLUSTER_ROLE, STATUS, MESSAGE FROM INFORMATION_SCHEMA.TDBCTL_NODES;
+SERVER_NAME	HOST	PORT	REPLICATION_MASTER	CLUSTER_ROLE	STATUS	MESSAGE
+TDBCTL0	172.18.0.9	3306		Primary	Online	
+TDBCTL1	172.18.0.10	3306			Unreachable	
+TDBCTL2	172.18.0.11	3306	TDBCTL0	Secondary	Online	
+SELECT SERVER_NAME, HOST, PORT, 
+FEATURE_INFO->>'$.MASTER_NAME' AS REPLICATION_MASTER, 
+FEATURE_INFO->>'$.TDBCTL_ROLE' AS CLUSTER_ROLE, 
+FEATURE_INFO->>'$.TDBCTL_STATUS' AS STATUS, 
+FEATURE_INFO->>'$.MASSAGE' AS MASSAGE 
+FROM INFORMATION_SCHEMA.CLUSTER_NODES WHERE WRAPPER = 'TDBCTL';
+SERVER_NAME	HOST	PORT	REPLICATION_MASTER	CLUSTER_ROLE	STATUS	MASSAGE
+TDBCTL0	172.18.0.9	3306	NULL	Primary	Online	NULL
+TDBCTL1	172.18.0.10	3306	NULL		Unreachable	NULL
+TDBCTL2	172.18.0.11	3306	TDBCTL0	Secondary	Online	NULL
+# slave status of cluster nodes
+SELECT SERVER_NAME, HOST, PORT, USERNAME, PASSWORD, WRAPPER, VERSION, STATUS, 
+FEATURE_INFO->>'$.MASTER_NAME' AS MASTER_NAME, 
+FEATURE_INFO->>'$.SLAVE_STATUS.Slave_IO_Running' AS Slave_IO_Running, 
+FEATURE_INFO->>'$.SLAVE_STATUS.Slave_SQL_Running' AS Slave_SQL_Running 
+FROM INFORMATION_SCHEMA.CLUSTER_NODES;
+SERVER_NAME	HOST	PORT	USERNAME	PASSWORD	WRAPPER	VERSION	STATUS	MASTER_NAME	Slave_IO_Running	Slave_SQL_Running
+SPIDER0	172.18.0.6	3306	mysql	mysql	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online	NULL	NULL	NULL
+SPIDER1	172.18.0.7	3306	mysql	errorpwd	SPIDER	unknown	Unreachable	NULL	NULL	NULL
+SPIDER2	172.18.0.8	3306	mysql	mysql	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online	NULL	NULL	NULL
+SPT0	172.18.0.2	3306	mysql	mysql	mysql	5.7.20-tmysql-3.4.2-log	Online	NULL	NULL	NULL
+SPT1	172.18.0.3	3306	mysql	errorpwd	mysql	unknown	Unreachable	NULL	NULL	NULL
+SPT_SLAVE0	172.18.0.4	3306	mysql	mysql	mysql_slave	5.7.20-tmysql-3.4.2-log	Online	SPT0	Yes	Yes
+SPT_SLAVE1	172.18.0.5	3306	mysql	mysql	mysql_slave	5.7.20-tmysql-3.4.2-log	Online	SPT1	Yes	Yes
+TDBCTL0	172.18.0.9	3306	mysql	mysql	TDBCTL	5.7.20-tdbctl-test-log	Online	NULL	NULL	NULL
+TDBCTL1	172.18.0.10	3306	mysql	errorpwd	TDBCTL	unknown	Unreachable	NULL	NULL	NULL
+TDBCTL2	172.18.0.11	3306	mysql	mysql	TDBCTL	5.7.20-tdbctl-test-log	Online	TDBCTL0	Yes	Yes
+
+# Case 3.3: Routing change
+
+SET tc_admin = ON;
+TDBCTL DROP NODE SPIDER1;
+TDBCTL DROP NODE SPT1;
+TDBCTL DROP NODE TDBCTL1;
+TDBCTL SHOW CLUSTER NODES;
+Server_name	Host	Port	Wrapper	Version	Status
+SPIDER0	172.18.0.6	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPIDER2	172.18.0.8	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPT0	172.18.0.2	3306	mysql	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE0	172.18.0.4	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE1	172.18.0.5	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+TDBCTL0	172.18.0.9	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+TDBCTL2	172.18.0.11	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+SELECT SERVER_NAME, HOST, PORT, WRAPPER, VERSION, STATUS, 
+FEATURE_INFO->>'$.MASTER_NAME' AS MASTER_NAME, 
+FEATURE_INFO->>'$.SLAVE_STATUS.Slave_IO_Running' AS Slave_IO_Running, 
+FEATURE_INFO->>'$.SLAVE_STATUS.Slave_SQL_Running' AS Slave_SQL_Running 
+FROM INFORMATION_SCHEMA.CLUSTER_NODES;
+SERVER_NAME	HOST	PORT	WRAPPER	VERSION	STATUS	MASTER_NAME	Slave_IO_Running	Slave_SQL_Running
+SPIDER0	172.18.0.6	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online	NULL	NULL	NULL
+SPIDER2	172.18.0.8	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online	NULL	NULL	NULL
+SPT0	172.18.0.2	3306	mysql	5.7.20-tmysql-3.4.2-log	Online	NULL	NULL	NULL
+SPT_SLAVE0	172.18.0.4	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online	SPT0	Yes	Yes
+SPT_SLAVE1	172.18.0.5	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online	<unknown_server>	Yes	Yes
+TDBCTL0	172.18.0.9	3306	TDBCTL	5.7.20-tdbctl-test-log	Online	NULL	NULL	NULL
+TDBCTL2	172.18.0.11	3306	TDBCTL	5.7.20-tdbctl-test-log	Online	TDBCTL0	Yes	Yes
+TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS(USER 'mysql', PASSWORD 'mysql', HOST '172.18.0.7', PORT 3306);
+TDBCTL CREATE NODE WRAPPER 'MYSQL' OPTIONS(USER 'mysql', PASSWORD 'mysql', HOST '172.18.0.3', PORT 3306);
+TDBCTL CREATE NODE WRAPPER 'TDBCTL' OPTIONS(USER 'mysql', PASSWORD 'mysql', HOST '172.18.0.10', PORT 3306);
+TDBCTL SHOW CLUSTER NODES;
+Server_name	Host	Port	Wrapper	Version	Status
+SPIDER0	172.18.0.6	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPIDER2	172.18.0.8	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPIDER3	172.18.0.7	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPT0	172.18.0.2	3306	mysql	5.7.20-tmysql-3.4.2-log	Online
+SPT1	172.18.0.3	3306	MYSQL	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE0	172.18.0.4	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE1	172.18.0.5	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+TDBCTL0	172.18.0.9	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+TDBCTL2	172.18.0.11	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+TDBCTL3	172.18.0.10	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+SELECT SERVER_NAME, HOST, PORT, WRAPPER, VERSION, STATUS, 
+FEATURE_INFO->>'$.MASTER_NAME' AS MASTER_NAME, 
+FEATURE_INFO->>'$.SLAVE_STATUS.Slave_IO_Running' AS Slave_IO_Running, 
+FEATURE_INFO->>'$.SLAVE_STATUS.Slave_SQL_Running' AS Slave_SQL_Running 
+FROM INFORMATION_SCHEMA.CLUSTER_NODES;
+SERVER_NAME	HOST	PORT	WRAPPER	VERSION	STATUS	MASTER_NAME	Slave_IO_Running	Slave_SQL_Running
+SPIDER0	172.18.0.6	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online	NULL	NULL	NULL
+SPIDER2	172.18.0.8	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online	NULL	NULL	NULL
+SPIDER3	172.18.0.7	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online	NULL	NULL	NULL
+SPT0	172.18.0.2	3306	mysql	5.7.20-tmysql-3.4.2-log	Online	NULL	NULL	NULL
+SPT1	172.18.0.3	3306	MYSQL	5.7.20-tmysql-3.4.2-log	Online	NULL	NULL	NULL
+SPT_SLAVE0	172.18.0.4	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online	SPT0	Yes	Yes
+SPT_SLAVE1	172.18.0.5	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online	SPT1	Yes	Yes
+TDBCTL0	172.18.0.9	3306	TDBCTL	5.7.20-tdbctl-test-log	Online	NULL	NULL	NULL
+TDBCTL2	172.18.0.11	3306	TDBCTL	5.7.20-tdbctl-test-log	Online	TDBCTL0	Yes	Yes
+TDBCTL3	172.18.0.10	3306	TDBCTL	5.7.20-tdbctl-test-log	Online	TDBCTL0	Yes	Yes
+
+# Case 4: forwarding rule test
+SET tc_forwarding_rules = '{"TC_SQLCOM_SHOW_CLUSTER_NODES": "TDBCTL"}';
+ERROR HY000: Failed to set sql-level forwarding rules: Setting forwarding rule for sql command 'TC_SQLCOM_SHOW_CLUSTER_NODES' is forbidden (tips: Cannot change forwarding rules for sql commands like 'TC_SQLCOM_XXX'.)
+
+# Restore mysql.servers;
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+TDBCTL SHOW CLUSTER NODES;
+Server_name	Host	Port	Wrapper	Version	Status
+SPIDER0	172.18.0.6	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPIDER1	172.18.0.7	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPIDER2	172.18.0.8	3306	SPIDER	10.3.7-MariaDB-tspider-3.7.8	Online
+SPT0	172.18.0.2	3306	mysql	5.7.20-tmysql-3.4.2-log	Online
+SPT1	172.18.0.3	3306	mysql	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE0	172.18.0.4	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+SPT_SLAVE1	172.18.0.5	3306	mysql_slave	5.7.20-tmysql-3.4.2-log	Online
+TDBCTL0	172.18.0.9	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+TDBCTL1	172.18.0.10	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+TDBCTL2	172.18.0.11	3306	TDBCTL	5.7.20-tdbctl-test-log	Online
+
+# Restore to the initial state.
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
+SET @@SESSION.tc_admin = @origin_tc_admin;
