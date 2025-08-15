@@ -2315,6 +2315,8 @@ tdbctl:
                 new (YYTHD->mem_root) Sql_cmd_create_server(&Lex->server_options);
           Lex->tc_do_grants = TRUE;
 			    Lex->tc_flush_type = Lex->tc_with_schema ? FLUSH_ROUTING_FOR_CREATE_NODE : FLUSH_NONE;
+          Lex->tc_force = FALSE;
+          Lex->tc_flush_only_cache = FALSE;
         }
       | TDBCTL_SYM ALTER NODE_SYM ident_or_text OPTIONS_SYM '(' server_options_list ')' opt_with_sync opt_force
         {

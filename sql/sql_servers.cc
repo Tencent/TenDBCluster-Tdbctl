@@ -1059,6 +1059,8 @@ void servers_free(bool end)
   mysql_rwlock_destroy(&THR_LOCK_servers);
   free_root(&mem,MYF(0));
   my_hash_free(&servers_cache);
+  free_root(&mem_bak, MYF(0));
+  my_hash_free(&servers_cache_bak);
   DBUG_VOID_RETURN;
 }
 

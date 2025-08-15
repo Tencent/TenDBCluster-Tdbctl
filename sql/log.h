@@ -101,6 +101,10 @@ class File_query_log
       m_log_file_key= key_file_general_log;
     else if (log_type == QUERY_LOG_SLOW)
       m_log_file_key= key_file_slow_log;
+    else if (log_type == QUERY_LOG_TDBCTL_DRY_RUN)
+      m_log_file_key= key_file_tdbctl_dry_run_log;
+    else if (log_type == QUERY_LOG_TDBCTL_ROUTING)
+      m_log_file_key= key_file_tdbctl_routing_log;
 #endif
   }
 
