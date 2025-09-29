@@ -6,6 +6,7 @@
 SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
 SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
 SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
+SELECT @@GLOBAL.tc_skip_check_db_list INTO @origin_tc_skip_check_db_list;
 SET tc_admin=OFF;
 CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
 INSERT INTO origin_servers SELECT * FROM mysql.servers;
@@ -36,6 +37,7 @@ SELECT * FROM mysql.servers;
 --connection tdbctl0
 SET tc_admin=ON;
 SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+SET GLOBAL tc_skip_check_db_list = "performance_schema,information_schema,mysql,test,sys,db_infobase,my-test";
 --echo # Missing required options
 --error ER_TCADMIN_CREATE_NODE_ERROR
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PORT 3306);
@@ -150,6 +152,7 @@ SELECT * FROM mysql.servers;
 --connection tdbctl0
 SET tc_admin=ON;
 SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+SET GLOBAL tc_skip_check_db_list = "performance_schema,information_schema,mysql,test,sys,db_infobase,my-test";
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
 --echo # show general_log.
 --echo --------------------
@@ -210,6 +213,7 @@ SELECT * FROM mysql.servers ORDER BY Host;
 # --connection tdbctl0
 # SET tc_admin=ON;
 # SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+# SET GLOBAL tc_skip_check_db_list = "performance_schema,information_schema,mysql,test,sys,db_infobase,my-test";
 # --disable_result_log
 # --error ER_TCADMIN_RESTORE_NODE_ERROR
 # TDBCTL CREATE NODE WRAPPER TDBCTL OPTIONS (HOST '172.18.0.11', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
@@ -271,6 +275,7 @@ SELECT * FROM mysql.servers;
 --connection tdbctl0
 SET tc_admin=ON;
 SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+SET GLOBAL tc_skip_check_db_list = "performance_schema,information_schema,mysql,test,sys,db_infobase,my-test";
 --error ER_TCADMIN_CREATE_NODE_ERROR
 TDBCTL CREATE NODE WRAPPER mysql OPTIONS (HOST '172.18.0.3', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
 
@@ -290,5 +295,6 @@ TDBCTL FLUSH ROUTING;
 SET tc_admin=OFF;
 DROP TEMPORARY TABLE origin_servers;
 SET @@GLOBAL.tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
+SET @@GLOBAL.tc_skip_check_db_list = @origin_tc_skip_check_db_list;
 SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
 SET @@SESSION.tc_admin = @origin_tc_admin;

@@ -1,0 +1,100 @@
+# Test the correctness of "TDBCTL CREATE NODE WITH SCHEMA" command for data backup and data import
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_schema_check INTO @origin_tc_enable_schema_check;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
+SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
+SELECT @@GLOBAL.tc_skip_check_db_list INTO @origin_tc_skip_check_db_list;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+--echo
+--echo # Disable tc_enable_autoinc_check
+--connection tdbctl0
+SET tc_enable_autoinc_check = OFF;
+
+--echo
+--echo # Original routing table.
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Set routing.
+--connection tdbctl0
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER1;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Show routing.
+--connection tdbctl0
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Set configuration
+--connection tdbctl0
+SET tc_admin=ON;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+SET GLOBAL tc_skip_check_db_list = "performance_schema,information_schema,mysql,test,sys,db_infobase,my-test";
+
+
+--echo
+--echo # Load data
+--echo SOURCE ./suite/tdbctl/data/from_t_mysqldump_test/create_data.sql
+--exec $MYSQL_TDBCTL0 < $MYSQL_TEST_DIR/suite/tdbctl/data/from_t_mysqldump_test/create_data.sql
+
+--echo
+--echo # Cluster Expansion
+--connection tdbctl0
+SET tc_enable_schema_check = off;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS
+    (HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+    (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306)
+    WITH SCHEMA;
+
+--echo
+--echo # Dump data
+--echo Execute mysqldump for SPIDER0, SPIDER1
+--let $ignore_db_options = --ignore-database=performance_schema --ignore-database=information_schema --ignore-database=mysql --ignore-database=test --ignore-database=db_infobase --ignore-database=my-test
+--let $dump_all_schema_options = --single-transaction --no-autocommit=FALSE  --skip-opt --create-options --routines --quick --no-data --all-databases --default-character-set=latin1
+--let $dump_from_spider0 = $MYSQL_TMP_DIR/dump_from_spider0.sql
+--let $dump_from_spider1 = $MYSQL_TMP_DIR/dump_from_spider1.sql
+--exec $MYSQL_DUMP_SPIDER0 $dump_all_schema_options $ignore_db_options -r$dump_from_spider0
+--exec $MYSQL_DUMP_SPIDER1 $dump_all_schema_options $ignore_db_options -r$dump_from_spider1
+
+--echo
+--echo # Compare data
+--let $timestamp_ignore = -I "Dump completed on.*"
+--let $extra_diff_ignore = -I "ENGINE=SPIDER.*DEFAULT CHARSET=utf8" -I "ENGINE=SPIDER.*DEFAULT CHARSET=latin1"
+--echo ignore diff: $extra_diff_ignore
+--echo diff:
+--exec diff $dump_from_spider0 $dump_from_spider1 $timestamp_ignore $extra_diff_ignore
+
+--echo
+--echo # Drop data
+--echo SOURCE ./suite/tdbctl/data/from_t_mysqldump_test/drop_data.sql
+--exec $MYSQL_TDBCTL0 < $MYSQL_TEST_DIR/suite/tdbctl/data/from_t_mysqldump_test/drop_data.sql
+
+--echo
+--echo # Restore mysql.servers;
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@GLOBAL.tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
+SET @@GLOBAL.tc_skip_check_db_list = @origin_tc_skip_check_db_list;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
+SET @@SESSION.tc_enable_schema_check = @origin_tc_enable_schema_check;
+SET @@SESSION.tc_admin = @origin_tc_admin;

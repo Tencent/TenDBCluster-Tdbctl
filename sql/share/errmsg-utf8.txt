@@ -7852,11 +7852,12 @@ ER_TCADMIN_NOT_SPIDER
   eng "EXECUTE FAILED: query must be from spider in mysql.servers when tc_admin=1"
 
 ER_TCADMIN_DUMP_NODE_ERROR
-  eng "DUMP FAILED: failed to dump %s from node %s#%d, and more error messages can be found in the %s"
+#  eng "DUMP FAILED: failed to dump %s from node %s#%d, and more error messages can be found in the %s"
+  eng "Failed to dump %s from node %s#%d. For details, see %s"
 
 ER_TCADMIN_RESTORE_NODE_ERROR
 #  eng "RESTORE FAILED: failed to restore %s to node %s#%d, and more error messages can be found in the %s"
-  eng "failed to restore schema file to node %s#%d, check the details in the tmp dir"
+  eng "failed to restore %s to node %s#%d. For details, see %s"
 
 ER_TCADMIN_CREATE_NODE_ERROR
   eng "CREATE NODE FAILED: %s"

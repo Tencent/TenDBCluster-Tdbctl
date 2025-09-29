@@ -641,6 +641,10 @@ typedef struct system_variables
   char *tc_var_rules;
 
   my_bool tc_enable_autoinc_check;
+  my_bool tc_enable_schema_check;
+
+  my_bool tc_use_internal_backup_tool;
+  my_bool tc_use_internal_restore_tool;
 
   uint  threadpool_high_prio_tickets;
   ulong threadpool_high_prio_mode;

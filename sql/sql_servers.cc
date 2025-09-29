@@ -2005,6 +2005,8 @@ int tc_do_grants_internal(THD *thd, LEX *lex) {
   MYSQL *mysql; /* connection to the target node */
   DBUG_ENTER("tc_do_grants_internal");
 
+  thd_proc_info(thd, "tdbctl: do grants");
+
   conn_mgr = thd->cluster_conn_manager;
   DBUG_ASSERT(conn_mgr);
   if (conn_mgr->refresh(FALSE, TRUE))

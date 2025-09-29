@@ -5524,6 +5524,8 @@ mysql_execute_command(THD *thd, bool first_level)
         goto error;
       }
 
+      thd_proc_info(thd, "Preparing for node creation");
+
       std::pair<FOREIGN_SERVER *, std::string> dump_source{NULL, ""};
       std::pair<bool, std::string> backup_result{true, ""};
     
@@ -5557,22 +5559,26 @@ mysql_execute_command(THD *thd, bool first_level)
 
         /* Check if auto-inc settings are compatible for spider nodes */
         if(thd->variables.tc_enable_autoinc_check) {
+          thd_proc_info(thd, "Checking auto-inc settings");
           if (check_autoinc_for_multiple_new_spider_nodes(thd, lex)) {
             goto error;
           }
         }
 
         // Flush routing for the nodes to be added
+        thd_proc_info(thd, "Flushing routing for the nodes to be added");
         if (tc_flush_routing_to_foreign_servers(lex))
           goto error;
 
         // Find a dump source node
+        thd_proc_info(thd, "Finding a dump source node");
         dump_source = tc_find_dump_source_node(thd, lex);
         if (dump_source.first == NULL) {
           push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
                         "WITH SCHEMA option was skipped: %s", dump_source.second.c_str());
         } else {
           // Backup from the source node
+          thd_proc_info(thd, "Backing up from the source node");
           backup_result = tc_backup_from_source_node(thd, lex, dump_source.first);
           if(backup_result.first) {
             goto error;
@@ -5586,8 +5592,22 @@ mysql_execute_command(THD *thd, bool first_level)
        * Only this step is actually allowed to execute in parallel
        */ 
       if (lex->tc_with_schema && !backup_result.first) {
+        thd_proc_info(thd, "Importing table schema to the pending new nodes");
         if(tc_load_schema_to_multiple_new_nodes(thd, lex, backup_result.second))
           goto error;
+        
+        /* 
+          check if the table structure of the newly added nodes and the backup source node 
+          are consistent with the primary tdbctl node 
+        */
+        if(thd->variables.tc_enable_schema_check) {
+          std::string record_file = backup_result.second + ".check";
+          TC_CHECK_SCHEMA_RESULT check_result = tc_check_schema_of_multiple_new_nodes(thd, 
+                                                      dump_source.first, record_file);
+          if(check_result != TC_CHECK_SCHEMA_SUCCESS) {
+            goto error;
+          }
+        }
       }
 
       /**
@@ -5614,6 +5634,7 @@ mysql_execute_command(THD *thd, bool first_level)
 
         /* Check if auto-inc settings are compatible for spider nodes */
         if(thd->variables.tc_enable_autoinc_check) {
+          thd_proc_info(thd, "Checking auto-inc settings");
           if (check_autoinc_for_multiple_new_spider_nodes(thd, lex)) {
             goto error;
           }
@@ -5666,6 +5687,7 @@ mysql_execute_command(THD *thd, bool first_level)
             my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "reload servers failed before flush routing");
             goto error;
           }
+          thd_proc_info(thd, "Flushing routing for the nodes to be added");
           if (tc_flush_routing(lex, thd->cluster_conn_manager))
           {
             if(lex->server_options_list.size() == 1) {

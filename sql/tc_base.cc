@@ -5000,23 +5000,32 @@ bool Cluster_conn_manager::refresh(bool force, bool no_connect) {
 
 bool Cluster_conn_manager::add_foreign_server(const AUTH_INFO &foreign_server_info, 
                                               const string &foreign_server_name,
-                                              bool no_connect) {
+                                              bool no_connect, bool no_error_report) {
   DBUG_ENTER("Cluster_conn_manager::add_foreign_server");
 
   char errmsg[256];
+  const char *err_fmt = "Cluster connection manager failed to add foreign server: %s";
   // Get node type from wrapper name
   int node_type = get_node_type_by_wrapper(foreign_server_info.wrapper.c_str());
   if (node_type < 0) {
     snprintf(errmsg, sizeof(errmsg), "invalid wrapper name %s", 
              foreign_server_info.wrapper.c_str());
-    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
+    if(no_error_report) {
+      sql_print_error(err_fmt, errmsg);
+    } else {
+      my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
+    }
     DBUG_RETURN(true);
   }
   
   // Check if server already exists
   if (server_auths[node_type].find(foreign_server_name) != server_auths[node_type].end()) {
     snprintf(errmsg, sizeof(errmsg), "server %s already exists", foreign_server_name.c_str());
-    my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
+    if(no_error_report) {
+      sql_print_error(err_fmt, errmsg);
+    } else {
+      my_error(ER_TCADMIN_INTERNAL_ERROR, MYF(0), errmsg);
+    }
     DBUG_RETURN(true);
   }
   
@@ -5034,7 +5043,12 @@ bool Cluster_conn_manager::add_foreign_server(const AUTH_INFO &foreign_server_in
   if (mysql == NULL) {
     // Clean up if connection failed
     server_auths[node_type].erase(foreign_server_name);
-    my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), foreign_server_info.ipport_str.c_str());
+    if(no_error_report) {
+      sql_print_error(err_fmt, 
+                      ("failed to connect to server " + foreign_server_info.ipport_str).c_str());
+    } else {
+      my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), foreign_server_info.ipport_str.c_str());
+    }
     DBUG_RETURN(true);
   }
 

@@ -12,3 +12,7 @@
 --connect (remote_master1,127.0.0.1,root,123,test,30001,)
 --connect (remote_slave0,127.0.0.1,root,123,test,40000,)
 --connect (remote_slave1,127.0.0.1,root,123,test,40001,)
+
+--let $MYSQL_TDBCTL0 = $MYSQL -h127.0.0.1 -uroot -p123 -P46000
+--let $MYSQL_DUMP_SPIDER0 = $MYSQL_DUMP -h127.0.0.1 -uroot -p123 -P35000
+--let $MYSQL_DUMP_SPIDER1 = $MYSQL_DUMP -h127.0.0.1 -uroot -p123 -P35001

@@ -1,0 +1,84 @@
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_schema_check INTO @origin_tc_enable_schema_check;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
+SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
+SELECT @@GLOBAL.tc_skip_check_db_list INTO @origin_tc_skip_check_db_list;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+# Disable tc_enable_autoinc_check
+SET tc_enable_autoinc_check = OFF;
+
+# Original routing table.
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Set routing.
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER1;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+
+# Show routing.
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Set configuration
+SET tc_admin=ON;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+SET GLOBAL tc_skip_check_db_list = "performance_schema,information_schema,mysql,test,sys,db_infobase,my-test";
+
+# Load data
+SOURCE ./suite/tdbctl/data/from_t_mysqldump_test/create_data.sql
+
+# Cluster Expansion
+SET tc_enable_schema_check = off;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306)
+WITH SCHEMA;
+
+# Dump data
+Execute mysqldump for SPIDER0, SPIDER1
+
+# Compare data
+ignore diff: -I "ENGINE=SPIDER.*DEFAULT CHARSET=utf8" -I "ENGINE=SPIDER.*DEFAULT CHARSET=latin1"
+diff:
+
+# Drop data
+SOURCE ./suite/tdbctl/data/from_t_mysqldump_test/drop_data.sql
+
+# Restore mysql.servers;
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+# Restore to the initial state.
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@GLOBAL.tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
+SET @@GLOBAL.tc_skip_check_db_list = @origin_tc_skip_check_db_list;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
+SET @@SESSION.tc_enable_schema_check = @origin_tc_enable_schema_check;
+SET @@SESSION.tc_admin = @origin_tc_admin;

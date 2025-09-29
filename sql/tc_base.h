@@ -398,11 +398,13 @@ public:
   * @param foreign_server_info Authentication information for the server
   * @param foreign_server_name Name of the foreign server
   * @param no_connect If true, skip connection attempt after adding server info
+  * @param no_error_report If true, do not report errors
   * @return bool Returns true on failure, false on success
   */
   bool add_foreign_server(const AUTH_INFO &foreign_server_info, 
                           const string &foreign_server_name,
-                          bool no_connect=true);
+                          bool no_connect=true,
+                          bool no_error_report=false);
 
   /**
    * @brief Connect to a server identified by server_name (w/ node_type)
@@ -1035,6 +1037,16 @@ bool tdbctl_check_table(THD *thd, TABLE_LIST *tables);
 
 int tdbctl_check_tables(THD *thd, const char *db, String *wild);
 
+enum TC_CHECK_SCHEMA_RESULT
+{
+  TC_CHECK_SCHEMA_SUCCESS = 0,       // schema is consistent
+  TC_CHECK_SCHEMA_FAILED = 1,        // schema check failed
+  TC_CHECK_SCHEMA_INCONSISTENT = 2,  // schema is inconsistent
+};
+TC_CHECK_SCHEMA_RESULT tc_check_schema_of_multiple_new_nodes(THD *thd, 
+                                                FOREIGN_SERVER *back_source,
+                                                const std::string &record_file);
+
 bool tdbctl_check_routing(THD *thd);
 
 /**
@@ -1090,5 +1102,24 @@ bool tc_server_passwd_encrypt(const string &server_name, const string &passwd, s
  *         Returns "Unknown error [nr]" if the error number is not recognized
  */
 std::string tc_get_error_msg(int nr, myf MyFlags, ...);
+
+class TC_File_Guard
+{
+public:
+  TC_File_Guard(FILE *fp) : m_fp(fp) {}
+  ~TC_File_Guard() { if (m_fp) my_fclose(m_fp, MYF(0)); }
+private:
+  FILE *m_fp;
+};
+
+template<class FUNC>
+class TC_SCOPE_EXIT
+{
+public:
+  TC_SCOPE_EXIT(const FUNC &func) : m_func(func) {}
+  ~TC_SCOPE_EXIT() { m_func(); }
+private:
+  const FUNC &m_func;
+};
 
 #endif /* TC_BASE_INCLUDED */

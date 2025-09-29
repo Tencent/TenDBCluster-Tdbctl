@@ -468,6 +468,7 @@ because tdbctl_is_primary it not maintained when network partition
 */
 volatile long tdbctl_is_primary = 0;
 char *tc_skip_dump_db_list;
+char *tc_skip_check_db_list;
 ulong tc_max_prepared_time = 60;
 ulong opt_binlog_rows_event_max_size;
 const char *binlog_checksum_default= "NONE";
