@@ -147,41 +147,41 @@ SET tc_admin = OFF, time_zone = default
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
-SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
-SET NAMES latin1;SET sql_mode='';SET time_zone = @origin_time_zone
-SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = @origin_net_read_timeout
-SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone='+00:00';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET time_zone = @origin_time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = @origin_net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = @origin_max_connections
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
-SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
-SET NAMES latin1;SET sql_mode='';SET time_zone = @origin_time_zone
-SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = @origin_net_read_timeout
-SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone='+00:00';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET time_zone = @origin_time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = @origin_net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = @origin_max_connections
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
-SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
-SET NAMES latin1;SET sql_mode='';SET time_zone = @origin_time_zone
-SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = @origin_net_read_timeout
-SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone='+00:00';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET time_zone = @origin_time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = @origin_net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = @origin_max_connections
 --------------------
 SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
@@ -236,29 +236,29 @@ SET tc_admin=OFF
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
-SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
-SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = @origin_max_connections
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
-SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
-SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = @origin_max_connections
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';SET @origin_time_zone = @@SESSION.time_zone
-SET NAMES latin1;SET sql_mode='';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
-SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_time_zone = @@SESSION.time_zone
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_net_read_timeout = @@SESSION.net_read_timeout
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = @origin_max_connections
 --------------------
 SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
@@ -312,33 +312,33 @@ SET GLOBAL max_connections = @origin_max_connections
 --------------------
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
-SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
-SET NAMES latin1;SET sql_mode='';SET time_zone = default
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600, net_write_timeout = 600
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = default, net_write_timeout = default
-SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='+00:00';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET time_zone = default
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = 600, net_write_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = default, net_write_timeout = default
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = @origin_max_connections
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
-SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
-SET NAMES latin1;SET sql_mode='';SET time_zone = default
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600, net_write_timeout = 600
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = default, net_write_timeout = default
-SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='+00:00';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET time_zone = default
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = 600, net_write_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = default, net_write_timeout = default
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = @origin_max_connections
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
-SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
-SET NAMES latin1;SET sql_mode='';SET time_zone = default
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = 600, net_write_timeout = 600
-SET NAMES latin1;SET sql_mode='';SET net_read_timeout = default, net_write_timeout = default
-SET NAMES latin1;SET sql_mode='';SET @origin_max_connections = @@GLOBAL.max_connections
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = 64
-SET NAMES latin1;SET sql_mode='';SET GLOBAL max_connections = @origin_max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='+00:00';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET time_zone = default
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = 600, net_write_timeout = 600
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET net_read_timeout = default, net_write_timeout = default
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET @origin_max_connections = @@GLOBAL.max_connections
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = 64
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET GLOBAL max_connections = @origin_max_connections
 --------------------
 SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
@@ -379,35 +379,39 @@ SET tc_admin=OFF
 --------------------
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
-SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
-SET NAMES latin1;SET sql_mode='';SET time_zone = default
+SET NAMES latin1;SET sql_mode='';SET time_zone='+00:00';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET time_zone = default
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
-SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
-SET NAMES latin1;SET sql_mode='';SET time_zone = default
+SET NAMES latin1;SET sql_mode='';SET time_zone='+00:00';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET time_zone = default
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
-SET NAMES latin1;SET sql_mode='';SET time_zone = '+00:00'
-SET NAMES latin1;SET sql_mode='';SET time_zone = default
+SET NAMES latin1;SET sql_mode='';SET time_zone='+00:00';SET time_zone = '+00:00'
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SET time_zone = default
 --------------------
 SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='+00:00';
 SET time_zone = '+00:00'
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 SET time_zone = default
 --------------------
 SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='+00:00';
 SET time_zone = '+00:00'
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 SET time_zone = default
 --------------------
 
@@ -422,7 +426,7 @@ CREATE DATABASE test_time_zone;
 USE test_time_zone;
 SET SESSION tc_forwarding_rules = default;
 SET SESSION tc_set_forwarding_rules = default;
-# Fail to create table
+# Although "set time_zone" is not forwarded to remote at this time, it still executes successfully because tdbctl synchronizes system variables like time_zone before distributing SQL
 SET time_zone = '+00:00';
 CREATE TABLE procmanage_cmd_template (
 id bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'ID',
@@ -431,9 +435,6 @@ create_at timestamp NOT NULL DEFAULT '1970-01-01 00:00:01' COMMENT '创建时间
 update_at timestamp NOT NULL DEFAULT '1970-01-01 00:00:01' ON UPDATE CURRENT_TIMESTAMP COMMENT '最后一次修改时间',
 PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-ERROR HY000: Execution failed: 
-Remote@SPT0: (Error 1067: Invalid default value for 'create_at')
-Remote@SPT1: (Error 1067: Invalid default value for 'create_at')
 DROP TABLE IF EXISTS procmanage_cmd_template;
 # Success to create table
 SET SESSION tc_set_forwarding_rules = '{"time_zone": "TDBCTL, SPIDER_ALL, REMOTE_ALL"}';

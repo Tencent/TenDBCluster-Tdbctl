@@ -115,65 +115,73 @@ DROP DATABASE test1
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
-SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
-SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
-SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 CREATE DATABASE test1_0
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_0`;
 CREATE TABLE t1( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_0`;
 CREATE TABLE t2( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 DROP DATABASE test1_0
 --------------------
 SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 CREATE DATABASE test1_1
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_1`;
 CREATE TABLE t1( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_1`;
 CREATE TABLE t2( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 DROP DATABASE test1_1
 --------------------
 
@@ -210,59 +218,67 @@ SET tc_admin=OFF
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
 /*!50600 SET SESSION ddl_execute_by_ctl=0 */
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 CREATE DATABASE test1_0
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_0`;
 CREATE TABLE t1( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_0`;
 CREATE TABLE t2( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 DROP DATABASE test1_0
 --------------------
 SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 CREATE DATABASE test1_1
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_1`;
 CREATE TABLE t1( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_1`;
 CREATE TABLE t2( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 DROP DATABASE test1_1
 --------------------
 
@@ -307,63 +323,71 @@ DROP DATABASE test1
 --------------------
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
-SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
-SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
-SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 CREATE DATABASE test1_0
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_0`;
 CREATE TABLE t1( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_0`;
 CREATE TABLE t2( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 DROP DATABASE test1_0
 --------------------
 SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 CREATE DATABASE test1_1
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_1`;
 CREATE TABLE t1( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_1`;
 CREATE TABLE t2( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 DROP DATABASE test1_1
 --------------------
 
@@ -398,59 +422,67 @@ DROP DATABASE test1
 --------------------
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';use `test1`;LOCK TABLES t1 READ, t2 WRITE
-SET NAMES latin1;SET sql_mode='';UNLOCK TABLES
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';use `test1`;LOCK TABLES t1 READ, t2 WRITE
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';UNLOCK TABLES
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS spider1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider1_log%' AND command_type NOT LIKE 'Connect';
 spider1_log
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS spider2_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider2_log%' AND command_type NOT LIKE 'Connect';
 spider2_log
-SET NAMES latin1;SET sql_mode='';CREATE DATABASE test1
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
-SET NAMES latin1;SET sql_mode='';DROP DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';CREATE DATABASE test1
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t1( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t1", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t1", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';USE `test1`;CREATE TABLE t2( id INT PRIMARY KEY ) PARTITION BY LIST(CRC32(`id`) % 2) (PARTITION pt0 VALUES IN (0) COMMENT = 'database "test1_0", table "t2", server "SPT0"' ENGINE = SPIDER, PARTITION pt1 VALUES IN (1) COMMENT = 'database "test1_1", table "t2", server "SPT1"' ENGINE = SPIDER)
+SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';DROP DATABASE test1
 --------------------
 SELECT argument AS remote_master0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master0_log%' AND command_type NOT LIKE 'Connect';
 remote_master0_log
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 CREATE DATABASE test1_0
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_0`;
 CREATE TABLE t1( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_0`;
 CREATE TABLE t2( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 DROP DATABASE test1_0
 --------------------
 SELECT argument AS remote_master1_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%remote_master1_log%' AND command_type NOT LIKE 'Connect';
 remote_master1_log
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 CREATE DATABASE test1_1
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_1`;
 CREATE TABLE t1( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 use `test1_1`;
 CREATE TABLE t2( id INT PRIMARY KEY )
 SET NAMES latin1;
 SET sql_mode='';
+SET time_zone='SYSTEM';
 DROP DATABASE test1_1
 --------------------
 

@@ -106,6 +106,51 @@ PRIMARY KEY(`id`) )ENGINE=TOKUDB;
 --echo # show general_log.
 --source suite/tdbctl/inc/get_cluster_general_log.inc
 
+--echo
+--echo # Test case for CREATE TABLE statements that require time_zone setting to execute successfully.
+--connection tdbctl0
+SET tc_admin = ON;
+
+--echo
+SET time_zone = default;
+--error ER_INVALID_DEFAULT
+CREATE TABLE `tb_users_ref` (
+`openid` varchar(64) NOT NULL DEFAULT '' COMMENT 'OPENID',
+`bopenid` varchar(64) NOT NULL DEFAULT '' COMMENT 'BОPENID',
+`relation` varchar(64) NOT NULL DEFAULT '' COMMENT 'RELATION',
+`iconURL` text NOT NULL,
+`ctime` timestamp NOT NULL DEFAULT '1970-01-01 00:00:01', 
+`utime` timestamp NOT NULL DEFAULT '1970-01-01 00:00:01' ON UPDATE CURRENT_TIMESTAMP, 
+`theMonth` int(11) NOT NULL DEFAULT '0',
+PRIMARY KEY (`openid`, `bopenid`),
+KEY `ind_openid` (`openid`),
+KEY `ind_bopenid` (`bopenid`),
+KEY `ind_ctime` (`ctime`),
+KEY `ind_utime` (`utime`)
+)ENGINE=InNODB DEFAULT CHARSET=utf8;
+
+--echo
+SET time_zone = "+00:00";
+CREATE TABLE `tb_users_ref` (
+`openid` varchar(64) NOT NULL DEFAULT '' COMMENT 'OPENID',
+`bopenid` varchar(64) NOT NULL DEFAULT '' COMMENT 'BОPENID',
+`relation` varchar(64) NOT NULL DEFAULT '' COMMENT 'RELATION',
+`iconURL` text NOT NULL,
+`ctime` timestamp NOT NULL DEFAULT '1970-01-01 00:00:01', 
+`utime` timestamp NOT NULL DEFAULT '1970-01-01 00:00:01' ON UPDATE CURRENT_TIMESTAMP, 
+`theMonth` int(11) NOT NULL DEFAULT '0',
+PRIMARY KEY (`openid`, `bopenid`),
+KEY `ind_openid` (`openid`),
+KEY `ind_bopenid` (`bopenid`),
+KEY `ind_ctime` (`ctime`),
+KEY `ind_utime` (`utime`)
+)ENGINE=InNODB DEFAULT CHARSET=utf8;
+
+--echo
+TDBCTL CHECK TABLE tb_users_ref;
+
+SET time_zone = default;
+
 
 --echo
 --echo # Restore to the initial state.

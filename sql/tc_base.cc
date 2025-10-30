@@ -29,6 +29,7 @@
 #include <thread>
 #include <mutex>
 #include "rpl_slave.h"
+#include "tztime.h"
 #ifndef WIN32
 #include <arpa/inet.h>
 #else
@@ -4747,6 +4748,13 @@ int Query_exec_manager::make_real_query(const std::string &exec_query,
     real_query += "SET sql_mode='";
     real_query += string(sql_mode_str.str, sql_mode_str.length);
     real_query += "';";
+
+    /* 3. time_zone */
+    const String * tz_str = m_thd->variables.time_zone->get_name();
+    real_query += "SET time_zone='";
+    real_query += string(tz_str->ptr(), tz_str->length());
+    real_query += "';";
+
     real_query += exec_query;
   } else {
     real_query = exec_query;
