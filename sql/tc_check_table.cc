@@ -821,6 +821,8 @@ static bool fill_tables_list(MYSQL *conn, const char *db, String *wild,
     tables.push_back(string(row[0], mysql_fetch_lengths(res)[0]));
   }
 
+  mysql_free_result(res);
+
   DBUG_RETURN(FALSE);
 }
 

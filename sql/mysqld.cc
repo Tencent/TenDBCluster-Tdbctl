@@ -9303,6 +9303,7 @@ PSI_file_key key_file_binlog, key_file_binlog_cache,
   key_file_pid, key_file_relay_log_info, key_file_send_file, key_file_tclog,
   key_file_trg, key_file_trn, key_file_init;
 PSI_file_key key_file_general_log, key_file_slow_log;
+PSI_file_key key_file_tdbctl_dry_run_log, key_file_tdbctl_routing_log;
 PSI_file_key key_file_relaylog, key_file_relaylog_cache, key_file_relaylog_index, key_file_relaylog_index_cache;
 
 static PSI_file_info all_server_files[]=
@@ -9334,6 +9335,8 @@ static PSI_file_info all_server_files[]=
   { &key_file_partition_ddl_log, "partition_ddl_log", 0},
   { &key_file_pid, "pid", 0},
   { &key_file_general_log, "query_log", 0},
+  { &key_file_tdbctl_dry_run_log, "tdbctl_dry_run_log", 0},
+  { &key_file_tdbctl_routing_log, "tdbctl_routing_log", 0},
   { &key_file_relay_log_info, "relay_log_info", 0},
   { &key_file_send_file, "send_file", 0},
   { &key_file_slow_log, "slow_log", 0},
