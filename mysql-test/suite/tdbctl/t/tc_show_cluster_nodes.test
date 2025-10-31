@@ -1,0 +1,154 @@
+# Test cases for TDBCTL routing log.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+--echo
+--echo # Disable tc_enable_autoinc_check
+--connection tdbctl0
+SET tc_enable_autoinc_check = OFF;
+
+--echo
+--echo # Original routing table.
+SELECT * FROM mysql.servers;
+
+--echo
+--echo # Case 1: syntax error
+SET tc_admin = ON;
+--error ER_PARSE_ERROR
+SHOW CLUSTER NODES;
+--error ER_PARSE_ERROR
+TDBCTL SHOW CLUSTER NODE;
+--error ER_PARSE_ERROR
+TDBCTL SHOW NODES;
+TDBCTL SHOW CLUSTER NODES;
+
+--echo
+--echo # Case 2: execute permission
+SET tc_admin = OFF;
+--error ER_TCADMIN_COMMAND_DISABLED
+TDBCTL SHOW CLUSTER NODES;
+--connection tdbctl1
+SET tc_admin = ON;
+--error ER_TCADMIN_NOT_PRIMARY
+TDBCTL SHOW CLUSTER NODES;
+
+--echo 
+--echo # Case 3: functional test
+
+--echo
+--echo # restart slave thread
+--connection remote_slave0
+STOP SLAVE; START SLAVE;
+--connection remote_slave1
+STOP SLAVE; START SLAVE;
+--connection tdbctl1
+STOP SLAVE; START SLAVE;
+--connection tdbctl2
+STOP SLAVE; START SLAVE;
+
+--echo
+--echo # Case 3.1: normal
+--echo 
+
+--connection tdbctl0
+SET tc_admin = ON;
+--echo # Basic info
+TDBCTL SHOW CLUSTER NODES;
+--echo # Compare to INFORMATION_SCHEMA.TDBCTL_NODES
+SELECT SERVER_NAME, HOST, PORT, REPLICATION_MASTER, CLUSTER_ROLE, STATUS, MESSAGE FROM INFORMATION_SCHEMA.TDBCTL_NODES;
+SELECT SERVER_NAME, HOST, PORT, 
+    FEATURE_INFO->>'$.MASTER_NAME' AS REPLICATION_MASTER, 
+    FEATURE_INFO->>'$.TDBCTL_ROLE' AS CLUSTER_ROLE, 
+    FEATURE_INFO->>'$.TDBCTL_STATUS' AS STATUS, 
+    FEATURE_INFO->>'$.MASSAGE' AS MASSAGE 
+    FROM INFORMATION_SCHEMA.CLUSTER_NODES WHERE WRAPPER = 'TDBCTL';
+--echo # slave status of cluster nodes
+SELECT SERVER_NAME, HOST, PORT, USERNAME, PASSWORD, WRAPPER, VERSION, STATUS, 
+    FEATURE_INFO->>'$.MASTER_NAME' AS MASTER_NAME, 
+    FEATURE_INFO->>'$.SLAVE_STATUS.Slave_IO_Running' AS Slave_IO_Running, 
+    FEATURE_INFO->>'$.SLAVE_STATUS.Slave_SQL_Running' AS Slave_SQL_Running 
+    FROM INFORMATION_SCHEMA.CLUSTER_NODES;
+
+--echo
+--echo # Case 3.2: Create some accidents
+--echo
+
+--connection tdbctl0
+SET tc_admin = OFF;
+UPDATE mysql.servers SET Password = 'errorpwd' WHERE Server_name IN ('SPIDER1', 'SPT1', 'TDBCTL1'); 
+FLUSH PRIVILEGES;
+
+--connection tdbctl0
+SET tc_admin = ON;
+--echo # Basic info
+TDBCTL SHOW CLUSTER NODES;
+--echo # Compare to INFORMATION_SCHEMA.TDBCTL_NODES
+SELECT SERVER_NAME, HOST, PORT, REPLICATION_MASTER, CLUSTER_ROLE, STATUS, MESSAGE FROM INFORMATION_SCHEMA.TDBCTL_NODES;
+SELECT SERVER_NAME, HOST, PORT, 
+    FEATURE_INFO->>'$.MASTER_NAME' AS REPLICATION_MASTER, 
+    FEATURE_INFO->>'$.TDBCTL_ROLE' AS CLUSTER_ROLE, 
+    FEATURE_INFO->>'$.TDBCTL_STATUS' AS STATUS, 
+    FEATURE_INFO->>'$.MASSAGE' AS MASSAGE 
+    FROM INFORMATION_SCHEMA.CLUSTER_NODES WHERE WRAPPER = 'TDBCTL';
+--echo # slave status of cluster nodes
+SELECT SERVER_NAME, HOST, PORT, USERNAME, PASSWORD, WRAPPER, VERSION, STATUS, 
+    FEATURE_INFO->>'$.MASTER_NAME' AS MASTER_NAME, 
+    FEATURE_INFO->>'$.SLAVE_STATUS.Slave_IO_Running' AS Slave_IO_Running, 
+    FEATURE_INFO->>'$.SLAVE_STATUS.Slave_SQL_Running' AS Slave_SQL_Running 
+    FROM INFORMATION_SCHEMA.CLUSTER_NODES;
+
+--echo
+--echo # Case 3.3: Routing change
+--echo
+
+--connection tdbctl0
+SET tc_admin = ON;
+TDBCTL DROP NODE SPIDER1;
+TDBCTL DROP NODE SPT1;
+TDBCTL DROP NODE TDBCTL1;
+TDBCTL SHOW CLUSTER NODES;
+SELECT SERVER_NAME, HOST, PORT, WRAPPER, VERSION, STATUS, 
+    FEATURE_INFO->>'$.MASTER_NAME' AS MASTER_NAME, 
+    FEATURE_INFO->>'$.SLAVE_STATUS.Slave_IO_Running' AS Slave_IO_Running, 
+    FEATURE_INFO->>'$.SLAVE_STATUS.Slave_SQL_Running' AS Slave_SQL_Running 
+    FROM INFORMATION_SCHEMA.CLUSTER_NODES;
+TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS(USER 'mysql', PASSWORD 'mysql', HOST '172.18.0.7', PORT 3306);
+TDBCTL CREATE NODE WRAPPER 'MYSQL' OPTIONS(USER 'mysql', PASSWORD 'mysql', HOST '172.18.0.3', PORT 3306);
+TDBCTL CREATE NODE WRAPPER 'TDBCTL' OPTIONS(USER 'mysql', PASSWORD 'mysql', HOST '172.18.0.10', PORT 3306);
+TDBCTL SHOW CLUSTER NODES;
+SELECT SERVER_NAME, HOST, PORT, WRAPPER, VERSION, STATUS, 
+    FEATURE_INFO->>'$.MASTER_NAME' AS MASTER_NAME, 
+    FEATURE_INFO->>'$.SLAVE_STATUS.Slave_IO_Running' AS Slave_IO_Running, 
+    FEATURE_INFO->>'$.SLAVE_STATUS.Slave_SQL_Running' AS Slave_SQL_Running 
+    FROM INFORMATION_SCHEMA.CLUSTER_NODES;
+
+--echo 
+--echo # Case 4: forwarding rule test
+--connection tdbctl0
+--error ER_FORWARDING_RULES_CHECK_UNPASS
+SET tc_forwarding_rules = '{"TC_SQLCOM_SHOW_CLUSTER_NODES": "TDBCTL"}';
+
+--echo
+--echo # Restore mysql.servers;
+--connection tdbctl0
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+TDBCTL SHOW CLUSTER NODES;
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
+SET @@SESSION.tc_admin = @origin_tc_admin;

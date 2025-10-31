@@ -11,6 +11,7 @@ Add for node's show
 #include "tc_base.h"
 #include "mysql.h"
 #include "protocol.h"                       // Protocol
+#include <thread>
 
 using namespace std;
 
@@ -62,6 +63,19 @@ ST_FIELD_INFO server_cache_fields_info[] = {
     {"Socket", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
     {"Wrapper", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
     {"Owner", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
+};
+
+ST_FIELD_INFO cluster_nodes_fields_info[] = {
+    {"SERVER_NAME", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"HOST", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"PORT", 21, MYSQL_TYPE_LONG, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"USERNAME", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"PASSWORD", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"WRAPPER", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"VERSION", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"STATUS", 64, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
+    {"FEATURE_INFO", 1024, MYSQL_TYPE_JSON, 0, 0, 0, SKIP_OPEN_TABLE},
     {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
 };
 
@@ -532,4 +546,368 @@ int fill_schema_server_cache(THD *thd, TABLE_LIST *tables, Item *cond)
   }
 
   DBUG_RETURN(0);
+}
+
+int i_s_cluster_nodes_fill(THD *thd, TABLE_LIST *tables, Item *cond)
+{
+  DBUG_ENTER("i_s_cluster_nodes_fill");
+
+  TABLE *table = tables->table;
+  std::vector<tc_node_info> node_infos;
+  tc_get_cluster_nodes_info(thd, true, node_infos);
+
+  auto put_str_field = [&table](int idx, const char *value) {
+    if (value) {
+      table->field[idx]->store(value, strlen(value), system_charset_info);
+    }
+  };
+
+  std::string feature_info_json;
+  for (const tc_node_info &one_node : node_infos) {
+    restore_record(table, s->default_values);
+    /* Server_name */
+    put_str_field(0, one_node.server_name.c_str());
+    /* Host */
+    put_str_field(1, one_node.host.c_str());
+    /* Port */
+    table->field[2]->store(one_node.port);
+    /* Username */
+    put_str_field(3, one_node.user.c_str());
+    /* Password */
+    put_str_field(4, one_node.passwd.c_str());
+    /* Wrapper */
+    put_str_field(5, one_node.wrapper.c_str());
+    /* Version */
+    put_str_field(6, one_node.version.c_str());
+    /* Status */
+    put_str_field(7, one_node.get_node_status().c_str());
+    /* Feature_info */
+    one_node.make_feature_info_json(feature_info_json);
+    put_str_field(8, feature_info_json.c_str());
+
+    schema_table_store_record(thd, table);
+  }
+
+  DBUG_RETURN(0);
+}
+
+const char *tc_node_info::NODE_INFO_UNKNOWN_STR = "unknown";
+const char *tc_node_info::NODE_INFO_QUERY_FAILED_STR = "query failed";
+const char *tc_node_info::NODE_INFO_WRONG_FILED_INDEX = "wrong field index";
+const char *tc_node_info::NODE_INFO_KEY_SLAVE_STATUS = "SLAVE_STATUS";
+const char *tc_node_info::NODE_INFO_KEY_MASTER_NAME = "MASTER_NAME";
+
+std::string tc_node_info::get_node_status() const
+{
+  switch(status) {
+  case NODE_STATUS_UNREACHABLE:
+    return "Unreachable";
+  case NODE_STATUS_ONLINE:
+    return "Online";
+  case NODE_STATUS_UNKNOWN:
+  default:
+    return "Unknown";
+  }
+}
+
+void tc_node_info::make_feature_info_json(std::string &feature_info_json) const
+{
+  feature_info_json = "{";
+  for (size_t i = 0; i < feature_info.size(); ++i) 
+  {
+    if(feature_info[i].first == NODE_INFO_KEY_SLAVE_STATUS) {  // json string no need to wrap with ""
+      feature_info_json += "\"" + feature_info[i].first + "\": " + feature_info[i].second;
+    }
+    else 
+    {
+      feature_info_json += "\"" + feature_info[i].first + "\": \"" + feature_info[i].second + "\"";      
+    }
+
+    if (i < feature_info.size() - 1) {
+      feature_info_json += ", ";
+    }
+  }
+  feature_info_json += "}";
+}
+
+/*
+   To ensure consistency with INFORMATION_SCHEMA.TDBCTL_NODES, 
+   the examine_tdbctl_node function defined in dbm.cc is reused here.
+*/
+extern void examine_tdbctl_node(THD *thd, Cluster_conn_manager *conn_mgr,
+                                const std::string &server_name, MYSQL *mysql,
+                                std::string &repl_master_name,
+                                std::string &cluster_role, std::string &status,
+                                std::string &message,
+                                std::string &repl_info);
+
+std::string get_repl_master_name(Cluster_conn_manager *conn_mgr, 
+                                const std::string &master_host,
+                                const std::string &master_port)
+{
+  for(int node_type = ENUM_NODE_TYPE_BEGIN; node_type < NODE_TYPE_END; ++node_type) {
+    const auto &auth_map = conn_mgr->get_auth_map((enum_node_type)node_type);
+    for (const auto &it : auth_map) {
+      if(it.second.ipport_str == master_host + "#" + master_port) {
+        return it.first;
+      }
+    }
+  }
+  return "<unknown_server>";
+}
+
+/* Indices of columns from SHOW SLAVE STATUS results */
+#define MASTER_HOST_IDX 1        /* Master_Host */
+#define MASTER_PORT_IDX 3        /* Master_Port */
+#define RELAY_MASTER_LOG_FILE_IDX 9 /* Relay_Master_Log_File */
+#define SLAVE_IO_RUNNING_IDX 10  /* Slave_IO_Running */
+#define SLAVE_SQL_RUNNING_IDX 11 /* Slave_SQL_Running */
+#define EXEC_MASTER_LOG_POS_IDX 21 /* Exec_Master_Log_Pos */
+
+void tc_fill_node_slave_status(MYSQL *mysql, 
+                              Cluster_conn_manager *conn_mgr, 
+                              tc_node_info &node_info)
+{
+  DBUG_ENTER("tc_fill_node_slave_status");
+
+  if(mysql != NULL) {
+    /* Get slave status */
+    MYSQL_RES * slave_status_res = tc_exec_sql_with_result(mysql, "SHOW SLAVE STATUS");
+    MYSQL_ROW row;
+    if(slave_status_res) 
+    {
+      if((row = mysql_fetch_row(slave_status_res))) {
+        uint n_fileds = mysql_num_fields(slave_status_res);
+        string master_host = MASTER_HOST_IDX < n_fileds ? 
+                            row[MASTER_HOST_IDX] : tc_node_info::NODE_INFO_WRONG_FILED_INDEX;
+        string master_port = MASTER_PORT_IDX < n_fileds ? 
+                            row[MASTER_PORT_IDX] : tc_node_info::NODE_INFO_WRONG_FILED_INDEX;
+        string slave_io_running = SLAVE_IO_RUNNING_IDX < n_fileds ? 
+                            row[SLAVE_IO_RUNNING_IDX] : tc_node_info::NODE_INFO_WRONG_FILED_INDEX;
+        string slave_sql_running = SLAVE_SQL_RUNNING_IDX < n_fileds ? 
+                            row[SLAVE_SQL_RUNNING_IDX] : tc_node_info::NODE_INFO_WRONG_FILED_INDEX;
+        string relay_master_log_file = RELAY_MASTER_LOG_FILE_IDX < n_fileds ? 
+                            row[RELAY_MASTER_LOG_FILE_IDX] : tc_node_info::NODE_INFO_WRONG_FILED_INDEX;
+        string exec_master_log_pos = EXEC_MASTER_LOG_POS_IDX < n_fileds ? 
+                            row[EXEC_MASTER_LOG_POS_IDX] : tc_node_info::NODE_INFO_WRONG_FILED_INDEX;
+        string master_name = get_repl_master_name(conn_mgr, master_host, master_port);
+
+        string slave_status_json_str;
+        tc_node_info::make_slave_status_json(master_host, 
+                                            master_port, 
+                                            slave_io_running, 
+                                            slave_sql_running, 
+                                            relay_master_log_file, 
+                                            exec_master_log_pos, 
+                                            slave_status_json_str);
+        
+        node_info.feature_info.emplace_back(tc_node_info::NODE_INFO_KEY_MASTER_NAME, master_name);
+        node_info.feature_info.emplace_back(tc_node_info::NODE_INFO_KEY_SLAVE_STATUS, slave_status_json_str);
+        
+        mysql_free_result(slave_status_res);
+      }
+    }
+    else 
+    {
+      node_info.feature_info.emplace_back(tc_node_info::NODE_INFO_KEY_MASTER_NAME, 
+                                          tc_node_info::NODE_INFO_UNKNOWN_STR);
+      node_info.feature_info.emplace_back(tc_node_info::NODE_INFO_KEY_SLAVE_STATUS, 
+                                          tc_node_info::NODE_INFO_QUERY_FAILED_STR);
+    }
+  }
+
+  DBUG_VOID_RETURN;
+}
+
+/**
+ * @brief Fills the node information for a single server.
+ * 
+ * This function is designed to be thread-safe and is typically used in a multi-threaded context.
+ * The `conn_mgr` parameter must only be used for read operations to ensure thread safety.
+ * 
+ * @param conn_mgr Pointer to the cluster connection manager (read-only operations only).
+ * @param server_name Name of the server.
+ * @param host Host address of the server.
+ * @param port Port number of the server.
+ * @param user Username for authentication.
+ * @param passwd Password for authentication.
+ * @param wrapper Wrapper type of the server.
+ * @param verbose Flag to enable detailed information collection.
+ * @param node_info Reference to the node_info object to be filled.
+ */
+void tc_fill_one_node_info(Cluster_conn_manager *conn_mgr,
+                          const string &server_name,
+                          const string &host, 
+                          uint port, 
+                          const string &user,
+                          const string &passwd, 
+                          const string &wrapper,
+                          bool verbose,
+                          tc_node_info &node_info) 
+{
+  DBUG_ENTER("tc_get_one_node_info");
+
+  node_info.set_basic_info(server_name, host, port, user, passwd, wrapper);
+
+  /* Connect to the node */
+  MYSQL *mysql = tc_conn_connect(host, port, user, passwd, wrapper);
+  if (mysql == NULL) {
+    node_info.status = tc_node_info::NODE_STATUS_UNREACHABLE;
+  } else {
+    node_info.status = tc_node_info::NODE_STATUS_ONLINE;
+  }
+
+  MYSQL_GUARD(mysql);
+  MYSQL_ROW row;
+
+  /* Get version info */
+  if(mysql != NULL) {
+    MYSQL_RES * version_res = tc_exec_sql_with_result(mysql, "SELECT version()");
+    if(version_res) {
+      row = mysql_fetch_row(version_res);
+      node_info.version = row ? row[0] : tc_node_info::NODE_INFO_QUERY_FAILED_STR;
+      mysql_free_result(version_res);
+    } else {
+      node_info.version = tc_node_info::NODE_INFO_QUERY_FAILED_STR;
+    }
+  }
+
+  if (verbose) {
+    if(strcasecmp(wrapper.c_str(), TDBCTL_WRAPPER) == 0)  /* tdbctl feature info */
+    {
+      /*
+        For the status information of Tdbctl nodes, to maintain consistency
+        with the older version of INFORMATION_SCHEMA.TDBCTL_NODES,
+        we call the DBM plugin's examine_tdbctl_node function to retrieve 
+        the status information and reformat it.
+      */
+      string master_name, tdbctl_role, tdbctl_status, message, repl_info;
+      examine_tdbctl_node(NULL, conn_mgr, server_name, mysql, master_name,
+                        tdbctl_role, tdbctl_status, message, repl_info);
+      node_info.feature_info.emplace_back("TDBCTL_ROLE", tdbctl_role);
+      node_info.feature_info.emplace_back("TDBCTL_STATUS", tdbctl_status);
+      if(!master_name.empty()) {
+        node_info.feature_info.emplace_back(tc_node_info::NODE_INFO_KEY_MASTER_NAME, master_name);
+      }
+      if(!repl_info.empty()) {
+        node_info.feature_info.emplace_back(tc_node_info::NODE_INFO_KEY_SLAVE_STATUS, repl_info);
+      }
+      if(!message.empty()) {
+        node_info.feature_info.emplace_back("MESSAGE", message);
+      }
+    }
+    else
+    {
+      tc_fill_node_slave_status(mysql, conn_mgr, node_info);
+    }
+  }
+  
+  DBUG_VOID_RETURN;
+}
+
+/**
+ * @brief Retrieves and fills information for all nodes in the cluster.
+ * 
+ * @param thd Pointer to the thread handler.
+ * @param verbose Flag to enable detailed information collection.
+ * @param node_infos Vector to store the node information for all servers.
+ */
+void tc_get_cluster_nodes_info(THD *thd, bool verbose, std::vector<tc_node_info> &node_infos)
+{
+  DBUG_ENTER("tc_get_cluster_nodes_info");
+
+  /* Get server list */
+  list<FOREIGN_SERVER *> server_list;
+  get_server_by_wrapper(server_list, thd->mem_root, NULL_WRAPPER, FALSE);
+  size_t server_count = server_list.size();
+
+  std::unique_ptr<Cluster_conn_manager> conn_mgr(new Cluster_conn_manager());
+  conn_mgr->refresh(true, true);
+
+  const size_t MAX_THREADS = 128;
+  std::vector<std::thread> threads(MAX_THREADS);
+  node_infos.clear();
+  node_infos.resize(server_count);
+  size_t n_epoches = server_count > 0 ? (server_count - 1) / MAX_THREADS + 1 : 0;
+  auto server_iter = server_list.begin();
+
+  /* Fill node info */
+  for(size_t epoch = 0; epoch < n_epoches; ++epoch) {
+    size_t start = epoch * MAX_THREADS;
+    size_t end = std::min(start + MAX_THREADS, server_count);
+    for (size_t i = start; i < end; ++i) {
+      threads[i - start] = std::thread(tc_fill_one_node_info, 
+                                      conn_mgr.get(),
+                                      (*server_iter)->server_name,
+                                      (*server_iter)->host,
+                                      static_cast<uint>((*server_iter)->port),
+                                      (*server_iter)->username,
+                                      (*server_iter)->password,
+                                      (*server_iter)->scheme,
+                                      verbose,
+                                      std::ref(node_infos[i]));
+      ++server_iter;
+    }
+    for (size_t i = start; i < end; ++i) {
+      threads[i - start].join();
+    }
+  }
+
+  DBUG_VOID_RETURN;
+}
+
+bool tc_show_cluster_nodes(THD *thd, bool verbose)
+{
+  DBUG_ENTER("tc_show_cluster_nodes");
+
+  Item *field;
+  List<Item> field_list;
+  Protocol *protocol = thd->get_protocol();
+
+  /* Send field metadata */
+  field_list.push_back(new Item_empty_string("Server_name", 64));
+  field_list.push_back(new Item_empty_string("Host", 64));
+  field_list.push_back(field = new Item_return_int("Port", 7, MYSQL_TYPE_LONG));
+  field->unsigned_flag = 1;
+  if(verbose) {
+    field_list.push_back(new Item_empty_string("Username", 64));
+    field_list.push_back(new Item_empty_string("Password", 64));
+  }
+  field_list.push_back(new Item_empty_string("Wrapper", 64));
+  field_list.push_back(new Item_empty_string("Version", 64));
+  field_list.push_back(new Item_empty_string("Status", 64));
+  if(verbose) {
+    field_list.push_back(new Item_empty_string("Feature_info", 1024));
+  }
+  if (thd->send_result_metadata(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+    DBUG_RETURN(TRUE);
+
+  /* Get cluster nodes info */
+  std::vector<tc_node_info> node_infos;
+  tc_get_cluster_nodes_info(thd, verbose, node_infos);
+
+  /* Send result */
+  for(const tc_node_info &one_node : node_infos) {
+    protocol->start_row();
+    protocol->store(one_node.server_name.c_str(), system_charset_info);
+    protocol->store(one_node.host.c_str(), system_charset_info);
+    protocol->store(one_node.port);
+    if(verbose) {
+      protocol->store(one_node.user.c_str(), system_charset_info);
+      protocol->store(one_node.passwd.c_str(), system_charset_info);
+    }
+    protocol->store(one_node.wrapper.c_str(), system_charset_info);
+    protocol->store(one_node.version.c_str(), system_charset_info);
+    protocol->store(one_node.get_node_status().c_str(), system_charset_info);
+    if(verbose) {
+      std::string feature_info_json;
+      one_node.make_feature_info_json(feature_info_json);
+      protocol->store(feature_info_json.c_str(), system_charset_info);
+    }
+    if (protocol->end_row())
+      DBUG_RETURN(TRUE);
+  }
+
+  my_eof(thd);
+  DBUG_RETURN(FALSE);
 }

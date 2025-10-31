@@ -425,6 +425,8 @@ const char* get_stmt_type_str(int type)
       return "TC_SQLCOM_SHOW_PROCESSLIST";
     case TC_SQLCOM_SHOW_VARIABLES:
       return "TC_SQLCOM_SHOW_VARIABLES";
+    case TC_SQLCOM_SHOW_CLUSTER_NODES:
+      return "TC_SQLCOM_SHOW_CLUSTER_NODES";
     case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
       return "TC_SQLCOM_CONN_NODE_EXECUTE_SQL";
     case TC_SQLCOM_ENABLE_PRIMARY:
@@ -2449,6 +2451,7 @@ bool tc_command_convert(THD *thd, LEX *lex, TC_PARSE_RESULT *tc_parse_result_t)
     case TC_SQLCOM_MONITOR_INIT:
     case TC_SQLCOM_SHOW_PROCESSLIST:
     case TC_SQLCOM_SHOW_VARIABLES:
+    case TC_SQLCOM_SHOW_CLUSTER_NODES:
     case TC_SQLCOM_CHECK_TABLE:
     case TC_SQLCOM_CHECK_TABLES:
     case TC_SQLCOM_CHECK_ROUTING:
@@ -5430,6 +5433,7 @@ bool check_tc_command(bool tc_admin, LEX *lex)
     case TC_SQLCOM_MONITOR_INIT:
     case TC_SQLCOM_SHOW_PROCESSLIST:
     case TC_SQLCOM_SHOW_VARIABLES:
+    case TC_SQLCOM_SHOW_CLUSTER_NODES:
     case TC_SQLCOM_CONN_NODE_EXECUTE_SQL:
     case TC_SQLCOM_ENABLE_PRIMARY:
     case TC_SQLCOM_DISABLE_PRIMARY:

@@ -151,7 +151,7 @@ static std::string get_secondary_status(const std::string &slave_io_status,
  *                                                       this normally should not happen)
  * 6)                                      Unreachable (an unreachable node, cannot identify)
 */
-static void examine_tdbctl_node(THD *thd, Cluster_conn_manager *conn_mgr,
+void examine_tdbctl_node(THD *thd, Cluster_conn_manager *conn_mgr,
                                 const std::string &server_name, MYSQL *mysql,
                                 std::string &repl_master_name,
                                 std::string &cluster_role, std::string &status,

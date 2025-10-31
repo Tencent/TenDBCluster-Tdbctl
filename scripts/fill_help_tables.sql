@@ -727,6 +727,7 @@ INSERT INTO help_topic (help_topic_id,help_category_id,name,description,example,
 INSERT INTO help_topic (help_topic_id,help_category_id,name,description,example,url) VALUES (646,27,'TDBCTL DISABLE PRIMARY','Syntax:\nTDBCTL DISABLE PRIMARY\n\nThis statement disables Primary Mode for this Tdbctl server.','','');
 INSERT INTO help_topic (help_topic_id,help_category_id,name,description,example,url) VALUES (647,27,'TDBCTL GET PRIMARY','Syntax:\nTDBCTL GET PRIMARY\n\nThis statement finds the Primary node within the cluster, and if succuessful, returns its connect info, including Server_name, Host, Port, and additionally a flag that indicates whether the current server is the Primary node. Please note that, for now, this statement only takes effect when the DBM plugin is installed.','','');
 INSERT INTO help_topic (help_topic_id,help_category_id,name,description,example,url) VALUES (648,21,'TDBCTL CHECK TABLE', "Syntax:\n  TDBCTL CHECK TABLE table_name\n  TDBCTL CHECK TABLES [{FROM | IN} db_name] [LIKE \'pattern\']\n  TDBCTL CHECK DATABASE db_name\n\nVerify table schema consistency across all SPIDER and REMOTE nodes \nagainst the primary TDBCTL node\'s metadata.\n\nSingle Table Check:\n  TDBCTL CHECK TABLE table_name  \n\nMulti-Table Check in Database:\n  TDBCTL CHECK TABLES [{FROM | IN} db_name] [LIKE \'pattern\']\n  Supports wildcard filtering (e.g., LIKE \'user%\' for tables starting with \'user\')\n\nFull Database Check:\n  TDBCTL CHECK DATABASE db_name\n", '', '');
+INSERT INTO help_topic (help_topic_id,help_category_id,name,description,example,url) VALUES (649,27,'TDBCTL SHOW CLUSTER NODES', "Syntax:\n  TDBCTL SHOW [FULL] CLUSTER NODES\n\nThe TDBCTL SHOW [FULL] CLUSTER NODES command queries cluster node information based on the effective routing. \nThe displayed fields include Server_name, Host, Port, Wrapper, Version, and Status.\n\nWhen the [FULL] option is specified, additional fields are displayed: \nUsername, Password, and Feature_info.\n\nFor query filtering requirements, you can also access the above information by querying the view \nINFORMATION_SCHEMA.CLUSTER_NODES.\n\n", '', '');
 
 INSERT INTO help_keyword (help_keyword_id,name) VALUES (0,'JOIN');
 INSERT INTO help_keyword (help_keyword_id,name) VALUES (1,'HOST');
@@ -2826,6 +2827,7 @@ INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (645,692);
 INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (646,692);
 INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (647,692);
 INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (648,692);
+INSERT INTO help_relation (help_topic_id,help_keyword_id) VALUES (649,692);
 
 
 COMMIT;

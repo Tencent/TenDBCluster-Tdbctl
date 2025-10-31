@@ -5,6 +5,9 @@ SELECT * FROM mysql.servers;
 
 SELECT @@session.tc_admin INTO @origin_tc_admin;
 SELECT @@global.tc_ignore_partitioning_for_create_table INTO @origin_tc_ignore_partition;
+SET tc_admin = OFF;
+SELECT @@session.sql_log_bin INTO @origin_sql_log_bin;
+SET sql_log_bin = OFF;
 
 --echo
 --echo # case 1: when tc_admin=0, tc_ignore_partitioning_for_create_table also takes effect.
@@ -363,5 +366,7 @@ DROP DATABASE if exists test3;
 DROP DATABASE if exists test2;
 DROP DATABASE if exists test1;
 
+SET tc_admin = OFF;
+SET sql_log_bin = @origin_sql_log_bin;
 SET @@global.tc_ignore_partitioning_for_create_table = @origin_tc_ignore_partition;
 SET @@session.tc_admin = @origin_tc_admin;
