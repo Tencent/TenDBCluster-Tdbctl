@@ -3123,3 +3123,4 @@ client/mysql_ssl_rsa_setup
 
 # Allow
 !include/*/boost/geometry/*
+!mysql-test/suite/tdbctl/data/*

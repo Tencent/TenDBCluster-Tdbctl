@@ -1,0 +1,34 @@
+drop database if exists mysqldump_tables;
+drop database if exists mysqldump_views;
+drop database if exists mysqldump_dba;
+drop database if exists mysqldump_dbb;
+drop database if exists mysqldump_bug23491_original;
+drop database if exists mysqldump_db42635;
+drop database if exists mysqldump_first;
+drop database if exists mysqldump_test_db10;
+drop database if exists mysqldump_test_db11;
+drop database if exists `mysqldump-test-database1`;
+drop database if exists `mysqldump-test-database2`;
+drop database if exists mysqldump_BUG52792_1;
+drop database if exists mysqldump_BUG52792_2;
+drop database if exists mysqldump_b12809202_db;
+drop database if exists `mysqldump_a\\k`;
+drop database if exists mysqldump_dump_gis;
+drop database if exists mysqldump_db_20772273;
+drop database if exists mysqldump_dump_json;
+drop database if exists mysqldump_dump_generated;
+drop database if exists mysqldump_bug25717383;
+drop database if exists mysqldump_test_db1;
+drop database if exists mysqldump_test_db2;
+drop database if exists mysqldump_test_db3;
+drop database if exists mysqldump_test_db4;
+drop database if exists mysqldump_test_db5;
+drop database if exists mysqldump_test_db6;
+drop database if exists mysqldump_test_db7;
+drop database if exists mysqldump_test_db8;
+drop database if exists mysqldump_test_db9;
+drop database if exists mysqldump_test_db10;
+drop database if exists mysqldump_test_db11;
+drop database if exists mysqldump_test_db12;
+
+
