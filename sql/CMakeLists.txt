@@ -206,6 +206,8 @@ SET(SQL_SHARED_SOURCES
   tc_show.cc
   tc_check_table.cc
   tc_check_routing.cc
+  tc_dump.cc
+  tc_restore.cc
   tc_forwarding_rule_mgr.cc
   sql_partition.cc
   sql_partition_admin.cc
@@ -328,6 +330,8 @@ ADD_COMPILE_FLAGS(
    tc_show.cc
    tc_check_table.cc
    tc_check_routing.cc
+   tc_dump.cc
+   tc_restore.cc
    tc_forwarding_rule_mgr.cc
    sys_vars_resource_mgr.cc
    sql_parse.cc
@@ -353,6 +357,8 @@ IF (NOT WIN32)
     item_geofunc_setops.cc
     item_json_func.cc
     spatial.cc
+    tc_dump.cc
+    tc_restore.cc
     tc_forwarding_rule_mgr.cc
     sql_servers.cc
     COMPILE_FLAGS -I${BOOST_PATCHES_DIR} -isystem ${BOOST_INCLUDE_DIR}
@@ -370,6 +376,8 @@ ELSE()
     item_geofunc_setops.cc
     item_json_func.cc
     spatial.cc
+    tc_dump.cc
+    tc_restore.cc
     tc_forwarding_rule_mgr.cc
     sql_servers.cc
     COMPILE_FLAGS -I${BOOST_PATCHES_DIR} -I${BOOST_INCLUDE_DIR}

@@ -159,8 +159,32 @@ TDBCTL CHECK TABLES IN test_check_table LIKE 't%';
 TDBCTL CHECK DATABASE test_check_table;
 
 --echo
+--echo # Reset tables.
+--connection tdbctl0
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_check_table;
+CREATE DATABASE test_check_table1;
+TDBCTL CONNECT NODE SPT1 EXECUTE "DROP DATABASE test_check_table1_1";
+CREATE DATABASE test_check_table2;
+SET tc_admin = OFF;
+DROP DATABASE test_check_table2;
+
+--echo
+--echo # Case 7: Missing databases
+--echo # Execute TDBCTL CHECK TABLES.
+--connection tdbctl0
+SET tc_admin = ON;
+--error ER_BAD_TABLE_ERROR
+TDBCTL CHECK TABLE test_check_table1.t1;
+TDBCTL CHECK TABLES IN test_check_table1;
+--error ER_BAD_DB_ERROR
+TDBCTL CHECK TABLES IN test_check_table2 LIKE 't%';
+
+--echo
 --echo # Restore to the initial state.
 --connection tdbctl0
 SET tc_admin = ON;
 DROP DATABASE IF EXISTS test_check_table;
+DROP DATABASE IF EXISTS test_check_table1;
+DROP DATABASE IF EXISTS test_check_table2;
 SET @@SESSION.tc_admin = @origin_tc_admin;

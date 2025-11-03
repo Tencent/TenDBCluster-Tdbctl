@@ -202,6 +202,7 @@ extern ulong tc_partition_admin_time;
 extern ulong tc_internal_connection_timeout;
 extern ulong tc_internal_connection_retry_times;
 extern char *tc_skip_dump_db_list;
+extern char *tc_skip_check_db_list;
 extern ulong tc_max_prepared_time;
 extern my_bool opt_old_style_user_limits, trust_function_creators;
 extern my_bool check_proxy_users, mysql_native_password_proxy_users, sha256_password_proxy_users;

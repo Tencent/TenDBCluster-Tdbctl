@@ -5513,21 +5513,21 @@ mysql_execute_command(THD *thd, bool first_level)
     {
       /**
        * Block the following types of commands:
-       * - Commands that modify routing: TC_SQLCOM_ALTER_NODE, TC_SQLCOM_DROP_NODE
+       * - Commands that modify routing: TC_SQLCOM_CREATE_NODE, TC_SQLCOM_ALTER_NODE, TC_SQLCOM_DROP_NODE
        * - Commands that flush routing: TC_SQLCOM_FLUSH_ROUTING
        * - Commands that perform forwarding based on routing: DDL etc
-       *
-       * Allow concurrent execution of commands:
-       * - TC_SQLCOM_CREATE_NODE (Support parallel backup/import data with "WITH SCHEMA" option)
-       */      
-      TC_routing_manager_lock_guard routing_mgr_lock_guard(thd, MDL_INTENTION_EXCLUSIVE);
+       */ 
+      TC_routing_manager_lock_guard routing_mgr_lock_guard(thd, MDL_EXCLUSIVE);
       if(!routing_mgr_lock_guard.lock_successful()) {
         TC_routing_manager_lock_guard::print_lock_error(thd, ER_TCADMIN_CREATE_NODE_ERROR, 
                                                         routing_mgr_lock_guard.get_lock_error().c_str());
         goto error;
       }
 
+      thd_proc_info(thd, "Preparing for node creation");
+
       std::pair<FOREIGN_SERVER *, std::string> dump_source{NULL, ""};
+      std::pair<bool, std::string> backup_result{true, ""};
     
       /**
        * !!! NOTICE !!!
@@ -5535,9 +5535,6 @@ mysql_execute_command(THD *thd, bool first_level)
        */
       if (lex->tc_with_schema)
       {  
-        /* Lock to ensure thread-safe */
-        std::lock_guard<std::mutex> prepare_dump_schema_lock(tc_create_node_mutex);
-
         /* always do reload first */
         if (servers_reload(thd))
         {
@@ -5552,7 +5549,7 @@ mysql_execute_command(THD *thd, bool first_level)
 
         /**
         * Complete node information and perform validation checks
-        * to determine if the node is eligible to join the cluster
+        * to determine if the nodes are eligible to join the cluster
         */ 
         string err_msg;
         if(prepare_server_creation(thd, lex, err_msg)) {
@@ -5562,46 +5559,62 @@ mysql_execute_command(THD *thd, bool first_level)
 
         /* Check if auto-inc settings are compatible for spider nodes */
         if(thd->variables.tc_enable_autoinc_check) {
-          if (check_autoinc_settings_for_new_spider_node(thd, lex)) {
+          thd_proc_info(thd, "Checking auto-inc settings");
+          if (check_autoinc_for_multiple_new_spider_nodes(thd, lex)) {
             goto error;
           }
         }
 
-        // Flush routing for the node to be added
-        if (tc_flush_routing_to_foreign_server(lex))
+        // Flush routing for the nodes to be added
+        thd_proc_info(thd, "Flushing routing for the nodes to be added");
+        if (tc_flush_routing_to_foreign_servers(lex))
           goto error;
 
         // Find a dump source node
+        thd_proc_info(thd, "Finding a dump source node");
         dump_source = tc_find_dump_source_node(thd, lex);
         if (dump_source.first == NULL) {
           push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TCADMIN_CREATE_NODE_ERROR,
-                        "WITH SCHEMA option skipped: %s", dump_source.second.c_str());
+                        "WITH SCHEMA option was skipped: %s", dump_source.second.c_str());
+        } else {
+          // Backup from the source node
+          thd_proc_info(thd, "Backing up from the source node");
+          backup_result = tc_backup_from_source_node(thd, lex, dump_source.first);
+          if(backup_result.first) {
+            goto error;
+          }
         }
       }
 
       /**
        * !!! NOTICE !!!
-       * Import table schema to the pending new node (this operation may take significant time)
+       * Import table schema to the pending new nodes (this operation may take significant time)
        * Only this step is actually allowed to execute in parallel
        */ 
-      if (lex->tc_with_schema && dump_source.first) {
-        /*
-          If "WITH SCHEMA" option is specified, we need to dump schema from another 
-          same type node in the cluster to the newly added node.
-          Currently, only operations of creating spider/spider_slave/tdbctl types' nodes 
-          support and require this.
-        */
-        if(tc_load_schema_to_new_node(thd, lex, dump_source.first))
+      if (lex->tc_with_schema && !backup_result.first) {
+        thd_proc_info(thd, "Importing table schema to the pending new nodes");
+        if(tc_load_schema_to_multiple_new_nodes(thd, lex, backup_result.second))
           goto error;
+        
+        /* 
+          check if the table structure of the newly added nodes and the backup source node 
+          are consistent with the primary tdbctl node 
+        */
+        if(thd->variables.tc_enable_schema_check) {
+          std::string record_file = backup_result.second + ".check";
+          TC_CHECK_SCHEMA_RESULT check_result = tc_check_schema_of_multiple_new_nodes(thd, 
+                                                      dump_source.first, record_file);
+          if(check_result != TC_CHECK_SCHEMA_SUCCESS) {
+            goto error;
+          }
+        }
       }
 
       /**
        * !!! NOTICE !!!
-       * The actual operation of adding a new node, which is executed serially. 
+       * The actual operation of adding new nodes, which is executed serially. 
        */
       {
-        std::lock_guard<std::mutex> add_node_lock(tc_create_node_mutex);
-
         /* always do reload first */
         if (servers_reload(thd))
         {
@@ -5611,7 +5624,7 @@ mysql_execute_command(THD *thd, bool first_level)
 
         /**
         * Complete node information and perform validation checks
-        * to determine if the node is eligible to join the cluster
+        * to determine if the nodes are eligible to join the cluster
         */ 
         string err_msg;
         if(prepare_server_creation(thd, lex, err_msg)) {
@@ -5621,19 +5634,20 @@ mysql_execute_command(THD *thd, bool first_level)
 
         /* Check if auto-inc settings are compatible for spider nodes */
         if(thd->variables.tc_enable_autoinc_check) {
-          if (check_autoinc_settings_for_new_spider_node(thd, lex)) {
+          thd_proc_info(thd, "Checking auto-inc settings");
+          if (check_autoinc_for_multiple_new_spider_nodes(thd, lex)) {
             goto error;
           }
         }
 
-        /* Add the new node to both the mysql.servers table and servers_cache */
+        /* Add the new nodes to both the mysql.servers table and servers_cache */
         DBUG_ASSERT(lex->m_sql_cmd != NULL);
         if ((res = lex->m_sql_cmd->execute(thd)))
           goto error;
 
-        /* Create a rollback command */
-        std::unique_ptr<Sql_cmd_drop_server> roll_back(
-          new Sql_cmd_drop_server(lex->server_options.m_server_name, true));
+        /* Create rollback objects */
+        std::unique_ptr<Sql_cmd_drop_server> one_roll_back(new Sql_cmd_drop_server(lex->server_options.m_server_name, true));
+        std::unique_ptr<Sql_cmd_drop_multi_server> multi_roll_back(new Sql_cmd_drop_multi_server(lex->server_options_list));
 
         /*
           Reset the thread OK status before changing the outcome.
@@ -5652,7 +5666,11 @@ mysql_execute_command(THD *thd, bool first_level)
             Otherwise, the raised error would be suppressed.
           */
           thd->no_send = TRUE;
-          roll_back->execute(thd);
+          if(lex->server_options_list.size() == 1) {
+            one_roll_back->execute(thd);
+          } else {
+            multi_roll_back->execute(thd);
+          }
           thd->no_send = FALSE;
           goto error;
         }
@@ -5661,19 +5679,28 @@ mysql_execute_command(THD *thd, bool first_level)
         if (lex->tc_with_schema) {
           if (servers_reload(thd) || thd->cluster_conn_manager->refresh(TRUE, TRUE))
           {
-            roll_back->execute(thd);
+            if(lex->server_options_list.size() == 1) {
+              one_roll_back->execute(thd);
+            } else {
+              multi_roll_back->execute(thd);
+            }
             my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "reload servers failed before flush routing");
             goto error;
           }
+          thd_proc_info(thd, "Flushing routing for the nodes to be added");
           if (tc_flush_routing(lex, thd->cluster_conn_manager))
           {
-            roll_back->execute(thd);
+            if(lex->server_options_list.size() == 1) {
+              one_roll_back->execute(thd);
+            } else {
+              multi_roll_back->execute(thd);
+            }
             goto error;
           }
         }
       }
 
-      my_ok(thd, 1);
+      my_ok(thd, lex->server_options_list.size());
       break;
     }
     case TC_SQLCOM_ALTER_NODE:

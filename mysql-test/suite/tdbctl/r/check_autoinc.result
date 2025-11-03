@@ -41,14 +41,14 @@ SPIDER0	ON	1	37
 
 # Case 1: TDBCTL CREATE NODE execution failed due to auto-increment configuration conflicts.
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306);
-ERROR HY000: CREATE NODE FAILED: The new spider node's auto-increment settings conflict with cluster spider nodes: please modify the auto-increment configuration for the new spider node
+ERROR HY000: CREATE NODE FAILED: Found auto-increment setting conflicts: please check the auto-increment configurations for the new spider nodes and the existing spider nodes in the cluster
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
-ERROR HY000: CREATE NODE FAILED: The new spider node's auto-increment settings conflict with cluster spider nodes: please modify the auto-increment configuration for the new spider node
+ERROR HY000: CREATE NODE FAILED: Found auto-increment setting conflicts: please check the auto-increment configurations for the new spider nodes and the existing spider nodes in the cluster
 SET tc_enable_autoinc_check = OFF;
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306);
 SET tc_enable_autoinc_check = ON;
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
-ERROR HY000: CREATE NODE FAILED: Found auto-increment setting conflicts of current cluster spider nodes: check view information_schema.tdbctl_spider_auto_increment for details
+ERROR HY000: CREATE NODE FAILED: Found auto-increment setting conflicts: please check the auto-increment configurations for the new spider nodes and the existing spider nodes in the cluster
 SET tc_enable_autoinc_check = OFF;
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
 

@@ -53,6 +53,8 @@
 #include <mutex>
 #include <boost/algorithm/string/join.hpp>
 #include <unordered_set>
+#include <vector>
+#include <memory>
 
 /*
   We only use 1 mutex to guard the data structures - THR_LOCK_servers.
@@ -250,6 +252,8 @@ static bool servers_load(THD *thd, TABLE *table)
   bool version_updated = FALSE;
   DBUG_ENTER("servers_load");
 
+  my_hash_reset(&servers_cache_bak);
+  free_root(&mem_bak, MYF(0));
   init_sql_alloc(key_memory_servers, &mem_bak, ACL_ALLOC_BLOCK_SIZE, 0);
   backup_server_cache();
 
@@ -282,8 +286,6 @@ static bool servers_load(THD *thd, TABLE *table)
 
 end:
   end_read_record(&read_record_info);
-  my_hash_reset(&servers_cache_bak);
-  free_root(&mem_bak, MYF(0));
   DBUG_RETURN(return_val);
 }
 
@@ -333,10 +335,14 @@ bool servers_reload(THD *thd)
   old_version_num = global_modify_server_version;
   if ((return_val= servers_load(thd, tables[0].table)))
   {					// Error. Revert to old list
-    /* blast, for now, we have no servers, discuss later way to preserve */
-
     DBUG_PRINT("error",("Reverting to old privileges"));
-    servers_free();
+    // servers_free();
+    my_hash_reset(&servers_cache);
+    free_root(&mem, MYF(0));
+    init_sql_alloc(key_memory_servers, &mem, ACL_ALLOC_BLOCK_SIZE, 0);
+    restore_server_cache();
+    ++global_modify_server_version;
+    tc_server_cache_update_time = (ulong)time(NULL);
   }
 
   close_trans_system_tables(thd);
@@ -582,11 +588,7 @@ bool Server_options::insert_into_cache() const
   /* set to 0 if not specified */
   server->port= m_port != PORT_NOT_SET ? m_port : 0;
   server->version = 0;
-  /*
-  maintain for create server
-  */
-  global_modify_server_version++;
-  tc_server_cache_update_time = (ulong)time(NULL);
+
   if (!native_strncasecmp(m_server_name.str, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix)))
   {
 	  modify_tdbctl_flag = true;
@@ -810,6 +812,10 @@ bool Sql_cmd_create_server::execute(THD *thd)
       /* insert the server into the cache */
       if ((error= m_server_options->insert_into_cache()))
         my_error(ER_OUT_OF_RESOURCES, MYF(0));
+
+      /* maintain for create server */
+      ++global_modify_server_version;
+      tc_server_cache_update_time = (ulong)time(NULL);
     }
   }
 
@@ -840,6 +846,127 @@ bool Sql_cmd_create_server::execute(THD *thd)
   DBUG_RETURN(error != 0 || thd->killed);
 }
 
+bool Sql_cmd_create_multi_server::execute(THD *thd)
+{
+  DBUG_ENTER("Sql_cmd_create_multi_server::execute");
+
+  if (Sql_cmd_common_server::check_and_open_table(thd))
+    DBUG_RETURN(true);
+
+  int error;
+  mysql_rwlock_wrlock(&THR_LOCK_servers);
+
+  bool is_server_cache_modified = false;
+  my_hash_reset(&servers_cache_bak);
+  free_root(&mem_bak, MYF(0));
+  init_sql_alloc(key_memory_servers, &mem_bak, ACL_ALLOC_BLOCK_SIZE, 0);
+  backup_server_cache();
+
+  for(const Server_options &one_server : m_server_options_list)
+  {
+    // Check for existing cache entries with same name
+    if (my_hash_search(&servers_cache,
+                      (uchar*) one_server.m_server_name.str,
+                      one_server.m_server_name.length))
+    {
+      mysql_rwlock_unlock(&THR_LOCK_servers);
+      my_error(ER_FOREIGN_SERVER_EXISTS, MYF(0),
+              one_server.m_server_name.str);
+      trans_rollback_stmt(thd);
+      close_mysql_tables(thd);
+      DBUG_RETURN(true);
+    }
+
+    table->use_all_columns();
+    empty_record(table);
+
+    /* set the field that's the PK to the value we're looking for */
+    table->field[SERVERS_FIELD_NAME]->store(
+      one_server.m_server_name.str,
+      one_server.m_server_name.length,
+      system_charset_info);
+
+    /* read index until record is that specified in server_name */
+    error= table->file->ha_index_read_idx_map(
+      table->record[0], 0,
+      table->field[SERVERS_FIELD_NAME]->ptr,
+      HA_WHOLE_KEY,
+      HA_READ_KEY_EXACT);
+
+    if (!error)
+    {
+      my_error(ER_FOREIGN_SERVER_EXISTS, MYF(0),
+              one_server.m_server_name.str);
+      error= 1;
+    }
+    else if (error != HA_ERR_KEY_NOT_FOUND && error != HA_ERR_END_OF_FILE)
+    {
+      /* if not found, err */
+      table->file->print_error(error, MYF(0));
+    }
+    else
+    {
+      /* store each field to be inserted */
+      one_server.store_new_server(table);
+
+      /* write/insert the new server */
+      if ((error= table->file->ha_write_row(table->record[0])))
+        table->file->print_error(error, MYF(0));
+      else
+      {
+        /* insert the server into the cache */
+        if ((error= one_server.insert_into_cache()))
+          my_error(ER_OUT_OF_RESOURCES, MYF(0));
+
+        is_server_cache_modified = true;
+      }
+    }
+
+    if(error) {
+      break;
+    }
+  }
+
+  if(error) {
+    my_hash_reset(&servers_cache);
+    free_root(&mem, MYF(0));
+    init_sql_alloc(key_memory_servers, &mem, ACL_ALLOC_BLOCK_SIZE, 0);
+    restore_server_cache();
+    is_server_cache_modified = true;
+  }
+
+  if(is_server_cache_modified) {  
+    /* maintain for create multi servers */
+    ++global_modify_server_version;
+    tc_server_cache_update_time = (ulong)time(NULL);
+  }
+
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+
+  if (modify_tdbctl_flag)
+  {
+    /*
+    tc_is_primary_tdbctl_node need to get THR_LOCK_servers,
+    so must maintain tdbctl_is_primary after unlock
+    */
+    // todo: I'm not sure if it is necessary to maintain the tdbctl_is_primary here
+    tdbctl_is_primary = tc_is_primary_tdbctl_node();
+    modify_tdbctl_flag = false;
+  }
+
+  if (error)
+    trans_rollback_stmt(thd);
+  else
+    trans_commit_stmt(thd);
+  close_mysql_tables(thd);
+
+  if (error == 0 && !thd->killed)
+    my_ok(thd, m_server_options_list.size());
+
+  tc_log_local_server_cache(thd);
+
+  DBUG_RETURN(error != 0 || thd->killed);
+}
 
 bool Sql_cmd_alter_server::execute(THD *thd)
 {
@@ -900,7 +1027,8 @@ bool Sql_cmd_alter_server::execute(THD *thd)
       // Update cache entry
       if ((error= m_server_options->update_cache(existing)))
         my_error(ER_OUT_OF_RESOURCES, MYF(0));
-      
+
+      /* maintain for alter server */
       ++global_modify_server_version;
       tc_server_cache_update_time = (ulong)time(NULL);
     }
@@ -1044,6 +1172,124 @@ bool Sql_cmd_drop_server::execute(THD *thd)
   DBUG_RETURN(error != 0 || thd->killed);
 }
 
+bool Sql_cmd_drop_multi_server::execute(THD *thd)
+{
+  DBUG_ENTER("Sql_cmd_drop_multi_server::execute");
+
+  if (Sql_cmd_common_server::check_and_open_table(thd))
+    DBUG_RETURN(true);
+
+  int error;
+  mysql_rwlock_wrlock(&THR_LOCK_servers);
+
+  bool is_server_cache_modified = false;
+
+  for(const Server_options &one_server: m_server_options_list)
+  {
+    table->use_all_columns();
+    empty_record(table);
+
+    /* set the field that's the PK to the value we're looking for */
+    table->field[SERVERS_FIELD_NAME]->store(one_server.m_server_name.str,
+                                            one_server.m_server_name.length,
+                                            system_charset_info);
+
+    error= table->file->ha_index_read_idx_map(
+      table->record[0], 0,
+      table->field[SERVERS_FIELD_NAME]->ptr,
+      HA_WHOLE_KEY, HA_READ_KEY_EXACT);
+    if (error)
+    {
+      if (error != HA_ERR_KEY_NOT_FOUND && error != HA_ERR_END_OF_FILE)
+        table->file->print_error(error, MYF(0));
+      else
+        error= 0; // Reset error
+    }
+    else
+    {
+      // Delete from table
+      if ((error= table->file->ha_delete_row(table->record[0])))
+        table->file->print_error(error, MYF(0));
+      else
+      {
+        // Remove from cache
+        FOREIGN_SERVER *server=
+          (FOREIGN_SERVER *)my_hash_search(&servers_cache,
+                                          (uchar*) one_server.m_server_name.str,
+                                          one_server.m_server_name.length);
+        if (server)
+        {
+          my_hash_delete(&servers_cache, (uchar*)server);
+          is_server_cache_modified = true;
+          if (!native_strncasecmp(one_server.m_server_name.str, tdbctl_control_wrapper_prefix, strlen(tdbctl_control_wrapper_prefix)))
+          {
+            modify_tdbctl_flag = true;
+          }
+          /* add to_delete_servername_list for TDBCTL DROP NODE command, which will
+          traverse the list later and delete SPIDER node's server_name also.
+          NB: We should have call delete_redundant_routings here, but it acquire
+          THR_LOCK_servers lock also(this function had acquired ), so we have to call
+          delete_redundant_routings after THR_LOCK_servers unlock.
+          In concurrence DROP SERVER situation, the to_delete_servername_list
+          may incorrect if we use outside of THR_LOCK_servers lock. In fact, no need to
+          worry, because follow:
+          Before we add this logic, DROP SERVER not care about spider's routing,
+          so the incorrect not affect DROP SERVER command. For TDBCTL DROP NODE command,
+          we had acquire a MDL_EXCLUSIVE lock by lock_statement_by_name function to block other
+          concurrence DROP NODE, so acceptable at present
+          */
+          // to_delete_servername_list.clear();
+          // to_delete_servername_list.push_back(server->server_name);
+        }
+      }
+    }
+    
+    if (error)
+      break;
+  }
+
+  if (is_server_cache_modified) {
+    /* maintain for drop server */
+    ++global_modify_server_version;
+    tc_server_cache_update_time = (ulong)time(NULL);
+  }
+
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+
+  if (modify_tdbctl_flag)
+  {
+    /*
+      tc_is_primary_tdbctl_node need to get THR_LOCK_servers,
+      so must maintain tdbctl_is_primary after unlock
+    */
+    // todo: I'm not sure if it is necessary to maintain the tdbctl_is_primary here
+    tdbctl_is_primary = tc_is_primary_tdbctl_node();
+    modify_tdbctl_flag = false;
+  }
+  if (error)
+    trans_rollback_stmt(thd);
+  else
+    trans_commit_stmt(thd);
+  close_mysql_tables(thd);
+
+  /* after delete server, should transfer to spider also */
+  for(const Server_options &one_server: m_server_options_list) 
+  {
+    if (close_cached_connection_tables(thd, one_server.m_server_name.str,
+                                      one_server.m_server_name.length))
+    {
+      push_warning_printf(thd, Sql_condition::SL_WARNING,
+                          ER_UNKNOWN_ERROR, "Server connection in use");
+    }
+  }
+
+  if (error == 0 && !thd->killed && !thd->no_send)
+    my_ok(thd, m_server_options_list.size());
+
+  tc_log_local_server_cache(thd);
+
+  DBUG_RETURN(error != 0 || thd->killed);
+}
 
 void servers_free(bool end)
 {
@@ -1299,6 +1545,40 @@ std::string get_new_server_name_by_number(
   server_name << get_wrapper_prefix_by_wrapper(wrapper_name);
   server_name << number;
   return server_name.str();
+}
+
+// Returns the highest numeric suffix from server names matching the given wrapper.
+// Returns -1 if no matching servers are found.
+long get_max_server_index_by_wrapper(
+    const char* wrapper_name
+)
+{
+  string server_prefix, server_suffix;
+  ulong records = 0;
+  long max_suffix_num = -1, suffix_num;
+
+  server_prefix = get_wrapper_prefix_by_wrapper(wrapper_name);
+  regex pattern(server_prefix.c_str(), regex::icase);
+
+  mysql_rwlock_rdlock(&THR_LOCK_servers);
+  records = servers_cache.records;
+
+  for (ulong i = 0; i < records; i++)
+  {
+    if (auto server = (FOREIGN_SERVER*)my_hash_element(&servers_cache, i))
+    {
+      if (!strcasecmp(server->scheme, wrapper_name))
+      {
+        server_suffix = regex_replace(server->server_name, pattern, "");
+        suffix_num = std::atol(server_suffix.c_str());
+        if (max_suffix_num < suffix_num)
+          max_suffix_num = suffix_num;
+      }
+    }
+  }
+  mysql_rwlock_unlock(&THR_LOCK_servers);
+
+  return max_suffix_num;
 }
 
 int get_node_type_by_wrapper(
@@ -1720,137 +2000,135 @@ static int check_all_privileges(MYSQL *mysql, const AUTH_INFO &auth) {
 int tc_do_grants_internal(THD *thd, LEX *lex) {
   Cluster_conn_manager *conn_mgr;
   AUTH_INFO auth_info;
-  FOREIGN_SERVER *server;
   const char *scheme;
   string create_user_sql, grant_sql;
   MYSQL *mysql; /* connection to the target node */
-  const Server_options &svr_options = lex->server_options;
   DBUG_ENTER("tc_do_grants_internal");
+
+  thd_proc_info(thd, "tdbctl: do grants");
 
   conn_mgr = thd->cluster_conn_manager;
   DBUG_ASSERT(conn_mgr);
   if (conn_mgr->refresh(FALSE, TRUE))
     DBUG_RETURN(TRUE);
 
-  if (lex->sql_command == TC_SQLCOM_ALTER_NODE) {
-    server = get_server_by_name(thd->mem_root,
-                                lex->server_options.m_server_name.str, NULL);
-    DBUG_ASSERT(server);
-    scheme = server->scheme;
-    /* DEPRECATED*/
-    /*if (unlikely(strcasecmp(scheme, MYSQL_WRAPPER) &&
-                 strcasecmp(scheme, MYSQL_SLAVE_WRAPPER))) {
-      DBUG_ASSERT(0);
-      DBUG_RETURN(TRUE);
-    }*/
+  const std::vector<Server_options> *svr_list_pointer;
+  std::vector<Server_options> tmp_svr_list;
+  if(lex->sql_command == TC_SQLCOM_CREATE_NODE) {
+    svr_list_pointer = &(lex->server_options_list);
   } else {
+    tmp_svr_list.push_back(lex->server_options);
+    svr_list_pointer = &tmp_svr_list;
+  }
+
+  for(const auto &svr_options : *svr_list_pointer) {
     scheme = svr_options.get_scheme();
-  }
-  fill_auth_info(&auth_info, svr_options.get_host(), svr_options.get_port(),
-                 svr_options.get_username(), svr_options.get_password(),
-                 scheme);
-  if (!(mysql = tc_conn_connect(auth_info))) {
-    my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), auth_info.ipport_str.c_str());
-    DBUG_RETURN(TRUE);
-  }
-  MYSQL_GUARD(mysql);
+    fill_auth_info(&auth_info, svr_options.get_host(), svr_options.get_port(),
+                  svr_options.get_username(), svr_options.get_password(),
+                  scheme);
+    if (!(mysql = tc_conn_connect(auth_info))) {
+      my_error(ER_TCADMIN_CONNECT_ERROR, MYF(0), auth_info.ipport_str.c_str());
+      DBUG_RETURN(TRUE);
+    }
+    MYSQL_GUARD(mysql);
 
-  /* Check we have ALL PRIVILEGES WITH GRANT OPTION on the new server */
-  if (check_all_privileges(mysql, auth_info))
-    DBUG_RETURN(TRUE);
-
-  if (!strcasecmp(scheme, MYSQL_WRAPPER) ||
-      !strcasecmp(scheme, MYSQL_SLAVE_WRAPPER)) {
-    /* Target Node Type: REMOTE */
-    /*
-      1. New Remote ==grant==> All Spiders
-      This allows all Spiders to access data on the new remote node.
-    */
-    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER))
+    /* Check we have ALL PRIVILEGES WITH GRANT OPTION on the new server */
+    if (check_all_privileges(mysql, auth_info))
       DBUG_RETURN(TRUE);
 
-    /*
-      2. New Remote ==grant==> All Tdbctls
-      This allows all Tdbctl nodes to operate on the new remote node.
-    */
-    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_CTL))
-      DBUG_RETURN(TRUE);
+    if (!strcasecmp(scheme, MYSQL_WRAPPER) ||
+        !strcasecmp(scheme, MYSQL_SLAVE_WRAPPER)) {
+      /* Target Node Type: REMOTE */
+      /*
+        1. New Remote ==grant==> All Spiders
+        This allows all Spiders to access data on the new remote node.
+      */
+      if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER))
+        DBUG_RETURN(TRUE);
 
-    /*
-      3. New Remote(slave) ==grant==> All Spiders(slave)
-    */
-    if (!strcasecmp(scheme, MYSQL_SLAVE_WRAPPER) &&
-        tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER_SLAVE))
-      DBUG_RETURN(TRUE);
-  } else if (!strcasecmp(scheme, SPIDER_WRAPPER) ||
-             !strcasecmp(scheme, SPIDER_SLAVE_WRAPPER)) {
-    /* Target Node Type: SPIDER */
-    /*
-      1. New Spider ==grant==> All Tdbctls
-      This allows all Tdbctl nodes to operate on the new Spider node.
-    */
-    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_CTL))
-      DBUG_RETURN(TRUE);
+      /*
+        2. New Remote ==grant==> All Tdbctls
+        This allows all Tdbctl nodes to operate on the new remote node.
+      */
+      if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_CTL))
+        DBUG_RETURN(TRUE);
 
-    /*
-      2. All Remotes(master & slave) ==grant==> New Spider
-      This allows the new Spider to access data on remote nodes.
-    */
-    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE) ||
-        tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE_SLAVE))
-      DBUG_RETURN(TRUE);
+      /*
+        3. New Remote(slave) ==grant==> All Spiders(slave)
+      */
+      if (!strcasecmp(scheme, MYSQL_SLAVE_WRAPPER) &&
+          tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER_SLAVE))
+        DBUG_RETURN(TRUE);
+    } else if (!strcasecmp(scheme, SPIDER_WRAPPER) ||
+              !strcasecmp(scheme, SPIDER_SLAVE_WRAPPER)) {
+      /* Target Node Type: SPIDER */
+      /*
+        1. New Spider ==grant==> All Tdbctls
+        This allows all Tdbctl nodes to operate on the new Spider node.
+      */
+      if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_CTL))
+        DBUG_RETURN(TRUE);
 
-    /*
-      3. All Tdbctls ==grant==> New Spider
-      This allows the new Spider to run DDLs on a cluster level (with
-      @@ddl_execute_by_ctl=ON).
-    */
-    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_CTL))
-      DBUG_RETURN(TRUE);
-  } else if (!strcasecmp(scheme, TDBCTL_WRAPPER)) {
-    /* Target Node Type: TDBCTL */
-    /*
-      1. New Tdbctl ==grant==> All Tdbctls
-      This allows existing Tdbctl nodes to operate on the new Tdbctl node.
-    */
-    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_CTL))
-      DBUG_RETURN(TRUE);
+      /*
+        2. All Remotes(master & slave) ==grant==> New Spider
+        This allows the new Spider to access data on remote nodes.
+      */
+      if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE) ||
+          tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE_SLAVE))
+        DBUG_RETURN(TRUE);
 
-    /*
-      2. All Tdbctls ==grant==> New Tdbctl
-      This allows the new Tdbctl to operate on all existing Tdbctl nodes.
-    */
-    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_CTL))
-      DBUG_RETURN(TRUE);
+      /*
+        3. All Tdbctls ==grant==> New Spider
+        This allows the new Spider to run DDLs on a cluster level (with
+        @@ddl_execute_by_ctl=ON).
+      */
+      if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_CTL))
+        DBUG_RETURN(TRUE);
+    } else if (!strcasecmp(scheme, TDBCTL_WRAPPER)) {
+      /* Target Node Type: TDBCTL */
+      /*
+        1. New Tdbctl ==grant==> All Tdbctls
+        This allows existing Tdbctl nodes to operate on the new Tdbctl node.
+      */
+      if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_CTL))
+        DBUG_RETURN(TRUE);
 
-    /*
-      3. All Spiders(master & slave) ==grant==> New Tdbctl
-      This allows the new Tdbctl to operate on all Spiders (usually when its
-      Primary Mode is enabled)
-    */
-    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_SPIDER) ||
-        tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_SPIDER_SLAVE))
-      DBUG_RETURN(TRUE);
+      /*
+        2. All Tdbctls ==grant==> New Tdbctl
+        This allows the new Tdbctl to operate on all existing Tdbctl nodes.
+      */
+      if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_CTL))
+        DBUG_RETURN(TRUE);
 
-    /*
-      4. New Tdbctl ==grant==> All Spiders(master & slave)
-      This allows all Spiders to run DDLs on the new Tdbctl on a cluster level
-      (with @@ddl_execute_by_ctl=ON).
-    */
-    if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER) ||
-        tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER_SLAVE))
-      DBUG_RETURN(TRUE);
+      /*
+        3. All Spiders(master & slave) ==grant==> New Tdbctl
+        This allows the new Tdbctl to operate on all Spiders (usually when its
+        Primary Mode is enabled)
+      */
+      if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_SPIDER) ||
+          tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_SPIDER_SLAVE))
+        DBUG_RETURN(TRUE);
 
-    /*
-      5. All Remotes(master & slave) ==grant==> New Tdbctl
-      This allows the new Tdbctl to operate on the remote nodes.
-    */
-    if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE) ||
-        tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE_SLAVE))
-      DBUG_RETURN(TRUE);
-  } else {
-    /* unreachable */
-    DBUG_ASSERT(0);
+      /*
+        4. New Tdbctl ==grant==> All Spiders(master & slave)
+        This allows all Spiders to run DDLs on the new Tdbctl on a cluster level
+        (with @@ddl_execute_by_ctl=ON).
+      */
+      if (tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER) ||
+          tc_grant_single_to_multi(thd, mysql, auth_info, NODE_TYPE_SPIDER_SLAVE))
+        DBUG_RETURN(TRUE);
+
+      /*
+        5. All Remotes(master & slave) ==grant==> New Tdbctl
+        This allows the new Tdbctl to operate on the remote nodes.
+      */
+      if (tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE) ||
+          tc_grant_multi_to_single(thd, auth_info, NODE_TYPE_REMOTE_SLAVE))
+        DBUG_RETURN(TRUE);
+    } else {
+      /* unreachable */
+      DBUG_ASSERT(0);
+    }
   }
 
   DBUG_RETURN(FALSE);
@@ -2123,25 +2401,33 @@ bool tc_flush_routing(LEX* lex, Cluster_conn_manager* conn_mgr)
     tdbctl_nodes.erase(tdbctl_server_name);
 
     // get the newly added node
-    std::string server_name = std::string(lex->server_options.m_server_name.str,
-                                          lex->server_options.m_server_name.length);
-    FOREIGN_SERVER *server =
-            get_server_by_name(&mem_root, server_name.c_str(), NULL);
-    if (!server) {
-      my_error(ER_FOREIGN_SERVER_DOESNT_EXIST, MYF(0), server_name.c_str());
-      result = TRUE;
+    std::set<std::string> new_spider_nodes;
+    std::set<std::string> new_spider_slave_nodes;
+    for(const Server_options &one_server: lex->server_options_list) {
+      std::string server_name = std::string(one_server.m_server_name.str,
+                                            one_server.m_server_name.length);
+      FOREIGN_SERVER *server =
+              get_server_by_name(&mem_root, server_name.c_str(), NULL);
+      if (!server) {
+        my_error(ER_FOREIGN_SERVER_DOESNT_EXIST, MYF(0), server_name.c_str());
+        result = TRUE;
+      }
+
+      if(strcasecmp(server->scheme, SPIDER_WRAPPER) == 0) {
+        new_spider_nodes.insert(string(server->server_name, server->server_name_length));
+      }
+      if(strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) == 0) {
+        new_spider_slave_nodes.insert(string(server->server_name, server->server_name_length));
+      }
+    }
+
+    if(result == TRUE)
+    {
       break;
     }
-    std::set<std::string> new_added_node;
-    new_added_node.insert(string(server->server_name, server->server_name_length));
 
-    /*
-      The TDBCTL node will definitely refresh the routing. Therefore, if the newly added node 
-      is also a TDBCTL node, there is no need to refresh the routing separately.
-    */
-    bool skip_new_node = (strcasecmp(server->scheme, TDBCTL_WRAPPER) == 0);
-
-    if ((!skip_new_node && tc_flush_routing_to_nodes(lex, new_added_node, conn_mgr, server->scheme)) ||
+    if (tc_flush_routing_to_nodes(lex, new_spider_nodes, conn_mgr, SPIDER_WRAPPER) ||
+        tc_flush_routing_to_nodes(lex, new_spider_slave_nodes, conn_mgr, SPIDER_SLAVE_WRAPPER) ||
         tc_flush_routing_to_nodes(lex, tdbctl_nodes, conn_mgr, TDBCTL_WRAPPER))
     {
       result = TRUE;
@@ -2165,6 +2451,11 @@ bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flush
   int retry_times = 3;
   std::set<std::string>::iterator its;
   map<std::string, tc_exec_info> result_map;
+
+  if(nodes_to_be_flushed.empty())
+  {
+    return result;
+  }
 
   for (its = nodes_to_be_flushed.begin(); its !=  nodes_to_be_flushed.end(); its++)
   {/* init for exec result: result_map */
@@ -2295,41 +2586,61 @@ finish:
   return result;
 }
 
-bool tc_flush_routing_to_foreign_server(LEX* lex)
+bool tc_flush_routing_to_foreign_servers(LEX* lex)
 {
-  DBUG_ENTER("tc_flush_routing_to_foreign_server");
+  DBUG_ENTER("tc_flush_routing_to_foreign_servers");
+
+  if(lex->server_options_list.empty()) {
+    DBUG_RETURN(false);
+  }
+
   // Create a temporary Cluster_conn_manager instance
   std::unique_ptr<Cluster_conn_manager> conn_mgr(new Cluster_conn_manager());
   conn_mgr->skip_refresh_intentionally();
+  std::set<std::string> foreign_spider_nodes;
+  std::set<std::string> foreign_spider_slave_nodes;
+  std::set<std::string> foreign_tdbctl_nodes;
 
-  // Prepare authentication information for the foreign server
-  AUTH_INFO foreign_server_info;
-  DBUG_ASSERT(lex->server_options.get_host() != NULL);
-  DBUG_ASSERT(lex->server_options.get_port() != lex->server_options.PORT_NOT_SET);
-  DBUG_ASSERT(lex->server_options.get_username() != NULL);
-  DBUG_ASSERT(lex->server_options.get_password() != NULL);
-  DBUG_ASSERT(lex->server_options.get_scheme() != NULL);
+  // Prepare authentication information for the foreign servers
+  for(const Server_options &one_server: lex->server_options_list) {
+    AUTH_INFO foreign_server_info;
+    DBUG_ASSERT(one_server.get_host() != NULL);
+    DBUG_ASSERT(one_server.get_port() != lex->server_options.PORT_NOT_SET);
+    DBUG_ASSERT(one_server.get_username() != NULL);
+    DBUG_ASSERT(one_server.get_password() != NULL);
+    DBUG_ASSERT(one_server.get_scheme() != NULL);
 
-  std::string foreign_server_wrapper = lex->server_options.get_scheme();
-  fill_auth_info(&foreign_server_info, 
-                 lex->server_options.get_host(), 
-                 lex->server_options.get_port(), 
-                 lex->server_options.get_username(), 
-                 lex->server_options.get_password(), 
-                 foreign_server_wrapper);
-  
-  // Generate foreign server name by combining wrapper prefix and IP:port string
-  std::string foreign_server_name = get_wrapper_prefix_by_wrapper(foreign_server_wrapper.c_str());
-  foreign_server_name += "_foreign_" + foreign_server_info.ipport_str;
-  
-  // Add the foreign server to the temporary connection manager
-  if(conn_mgr->add_foreign_server(foreign_server_info, foreign_server_name)) {
-    DBUG_RETURN(true);
+    std::string foreign_server_wrapper = one_server.get_scheme();
+    fill_auth_info(&foreign_server_info, 
+                  one_server.get_host(), 
+                  one_server.get_port(), 
+                  one_server.get_username(), 
+                  one_server.get_password(), 
+                  foreign_server_wrapper);
+    
+    // Generate foreign server name by combining wrapper prefix and IP:port string
+    std::string foreign_server_name = get_wrapper_prefix_by_wrapper(foreign_server_wrapper.c_str());
+    foreign_server_name += "_foreign_" + foreign_server_info.ipport_str;
+    
+    // Add the foreign server to the temporary connection manager
+    if(conn_mgr->add_foreign_server(foreign_server_info, foreign_server_name)) {
+      DBUG_RETURN(true);
+    }
+
+    if(strcasecmp(foreign_server_wrapper.c_str(), SPIDER_WRAPPER) == 0) {
+      foreign_spider_nodes.insert(foreign_server_name);
+    } else if (strcasecmp(foreign_server_wrapper.c_str(), SPIDER_SLAVE_WRAPPER) == 0) {
+      foreign_spider_slave_nodes.insert(foreign_server_name);
+    } else if (strcasecmp(foreign_server_wrapper.c_str(), TDBCTL_WRAPPER) == 0) {
+      foreign_tdbctl_nodes.insert(foreign_server_name);
+    }
   }
 
-  std::set<std::string> foreign_nodes{ foreign_server_name };
   // Flush routing information to the specified nodes
-  if(tc_flush_routing_to_nodes(lex, foreign_nodes, conn_mgr.get(), foreign_server_wrapper.c_str())) {
+  if(tc_flush_routing_to_nodes(lex, foreign_spider_nodes, conn_mgr.get(), SPIDER_WRAPPER) || 
+    tc_flush_routing_to_nodes(lex, foreign_spider_slave_nodes, conn_mgr.get(), SPIDER_SLAVE_WRAPPER) ||
+    tc_flush_routing_to_nodes(lex, foreign_tdbctl_nodes, conn_mgr.get(), TDBCTL_WRAPPER))
+  {
     DBUG_RETURN(true);
   }
 
@@ -2768,6 +3079,7 @@ int back_up_one_server(FOREIGN_SERVER* server)
   tmp->owner = safe_strdup_root(&mem_bak, server->owner);
   // "create server ..." may trigger a bug here
   // tmp->sport = safe_strdup_root(&mem_bak, server->sport);
+  tmp->sport = NULL;
   tmp->port = server->port;
   tmp->server_name_length = server->server_name_length;
   tmp->version = server->version;
@@ -2792,6 +3104,60 @@ bool backup_server_cache()
     if (back_up_one_server(server))
       DBUG_RETURN(TRUE);
   }
+  DBUG_RETURN(FALSE);
+}
+
+bool restore_one_server(FOREIGN_SERVER* server_backup)
+{
+  /* alloc a server struct */
+  char * const blank= (char*)"";
+  FOREIGN_SERVER *server= new (&mem) FOREIGN_SERVER();
+
+  DBUG_ENTER("restore_one_server");
+
+  /* get each field into the server struct ptr */
+  server->server_name= server_backup->server_name ? strdup_root(&mem, server_backup->server_name) : blank;
+  server->server_name_length= strlen(server->server_name);
+  server->host= server_backup->host ? strdup_root(&mem, server_backup->host) : blank;
+  server->db= server_backup->db ? strdup_root(&mem, server_backup->db) : blank;
+  server->username= server_backup->username ? strdup_root(&mem, server_backup->username) : blank;
+  server->password= server_backup->password ? strdup_root(&mem, server_backup->password) : blank;
+  server->sport= server_backup->sport ? strdup_root(&mem, server_backup->sport) : blank;
+  server->port= server_backup->port;
+  server->version = server_backup->version;
+
+  server->socket= server_backup->socket && strlen(server_backup->socket) ? strdup_root(&mem, server_backup->socket) : blank;
+  server->scheme= server_backup->scheme ? strdup_root(&mem, server_backup->scheme) : blank;
+  server->owner= server_backup->owner ? strdup_root(&mem, server_backup->owner) : blank;
+  DBUG_PRINT("info", ("server->server_name %s", server->server_name));
+  DBUG_PRINT("info", ("server->host %s", server->host));
+  DBUG_PRINT("info", ("server->db %s", server->db));
+  DBUG_PRINT("info", ("server->username %s", server->username));
+  DBUG_PRINT("info", ("server->password %s", server->password));
+  DBUG_PRINT("info", ("server->socket %s", server->socket));
+  if (my_hash_insert(&servers_cache, (uchar*) server))
+  {
+    DBUG_PRINT("info", ("had a problem inserting server %s at %lx",
+                        server->server_name, (long unsigned int) server));
+    // error handling needed here
+    DBUG_RETURN(TRUE);
+  }
+  DBUG_RETURN(FALSE);
+
+}
+
+bool restore_server_cache()
+{
+  FOREIGN_SERVER* server;
+  ulong share_records = servers_cache_bak.records;
+  DBUG_ENTER("restore_server_cache");
+  for (ulong i = 0; i < share_records; ++i)
+  {/* foreach share */
+    server = (FOREIGN_SERVER*)my_hash_element(&servers_cache_bak, i);
+    if (restore_one_server(server))
+      DBUG_RETURN(TRUE);
+  }
+
   DBUG_RETURN(FALSE);
 }
 
@@ -3085,31 +3451,74 @@ bool prepare_server_creation(THD *thd, LEX *lex, std::string &err_msg)
 {
   err_msg.clear();
 
-  /* Check if all USER, PASSWORD, HOST, PORT options are specified */
-  if (!lex->server_options.get_host() ||
-      (lex->server_options.get_port() == lex->server_options.PORT_NOT_SET) ||
-      !lex->server_options.get_username() ||
-      !lex->server_options.get_password())
+  if(lex->server_options_list.size() <= 0) 
   {
-    err_msg = "USER, PASSWORD, HOST, and PORT options should all be specified";
+    err_msg = "No server options specified";
     return true;
   }
-  
-  /* Generate new node's server name string */
-  std::string server_name;
-  if (lex->server_options.get_num() == lex->server_options.NUM_NOT_SET)
-  {
-    /* get an unique server_name by wrapper */
-    server_name = get_new_server_name_by_wrapper(lex->server_options.get_scheme());
-  } else {
-    // produce server_name with server_options->m_num
-    server_name = get_new_server_name_by_number(lex->server_options.get_scheme(),
-                                                lex->server_options.get_num());
+
+  /* Check if all USER, PASSWORD, HOST, PORT options are specified */
+  for(const auto &one_server: lex->server_options_list) {
+    if (!one_server.get_host() ||
+        (one_server.get_port() == one_server.PORT_NOT_SET) ||
+        !one_server.get_username() ||
+        !one_server.get_password())
+    {
+      err_msg = "USER, PASSWORD, HOST, and PORT options should all be specified";
+      return true;
+    }
   }
-  DBUG_ASSERT(server_name.length() != 0);
-  lex->server_options.m_server_name.length = server_name.length();
-  lex->server_options.m_server_name.str =
+  
+  const char *wrapper_name = lex->server_options_list.front().get_scheme();
+  if(wrapper_name == NULL) 
+  {
+    err_msg = "No wrapper specified";
+    return true;
+  }
+
+  /* Generate new nodes' server name string */
+  long server_index = get_max_server_index_by_wrapper(wrapper_name);
+  
+  std::string server_name;
+  if(lex->server_options_list.size() == 1) {
+    if (lex->server_options_list.front().get_num() == Server_options::NUM_NOT_SET)
+    {
+      if(server_index >= std::numeric_limits<long>::max()) {
+        err_msg += "The \'" + string(wrapper_name) + "\' server index has reached the maximum limit, ";
+        err_msg += "please modify it before adding new servers";
+        return true;
+      }
+      server_name = get_new_server_name_by_number(wrapper_name, server_index + 1);
+    } else {
+      // produce server_name with server_options->m_num
+      server_name = get_new_server_name_by_number(wrapper_name,
+                                                  lex->server_options_list.front().get_num());
+    }
+    DBUG_ASSERT(server_name.length() != 0);
+    lex->server_options_list.front().m_server_name.length = server_name.length();
+    lex->server_options_list.front().m_server_name.str =
       strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
+  } 
+  else 
+  {
+    for(auto &one_server: lex->server_options_list) {
+      if (one_server.get_num() == Server_options::NUM_NOT_SET) {
+        if(server_index >= std::numeric_limits<long>::max()) {
+          err_msg += "The \'" + string(wrapper_name) + "\' server index has reached the maximum limit, ";
+          err_msg += "please modify it before adding new servers";
+          return true;
+        }
+        server_name = get_new_server_name_by_number(wrapper_name, ++server_index);
+      } else {
+        err_msg = "NUMBER options cannot be specified when adding multiple servers";
+        return true;
+      }
+      DBUG_ASSERT(server_name.length() != 0);
+      one_server.m_server_name.length = server_name.length();
+      one_server.m_server_name.str =
+        strmake_root(thd->mem_root, server_name.c_str(), server_name.length());
+    }
+  }
   
   /* Get all servers */
   list<FOREIGN_SERVER *> server_list;
@@ -3123,31 +3532,62 @@ bool prepare_server_creation(THD *thd, LEX *lex, std::string &err_msg)
     For mysql and mysql_slave nodes, skip ip#port check
     For other node types, the new node's ip#port must be unique in the cluster
   */
-  bool is_already_exist = false;
-  string external_ip_port = string(lex->server_options.get_host()) + "#" +
-                            to_string(lex->server_options.get_port());
+  bool already_exists = false;
   string err_buff;
-  for(FOREIGN_SERVER *server : server_list) {
-    if (strcasecmp(lex->server_options.m_server_name.str, server->server_name) == 0) {
-      err_buff = "the server_name " + std::string(lex->server_options.m_server_name.str) + 
-                " already exists in the mysql.servers";
-      is_already_exist = true;
-      break;
+  for(auto lhs = lex->server_options_list.begin(); lhs != lex->server_options_list.end(); ++lhs) {
+    string lhs_ip_port = string(lhs->get_host()) + "#" +
+                                to_string(lhs->get_port());
+    for(auto rhs = std::next(lhs); rhs != lex->server_options_list.end(); ++rhs) {
+      if (strcasecmp(lhs->m_server_name.str, rhs->m_server_name.str) == 0) {
+        err_buff = "the server_name " + std::string(lhs->m_server_name.str) + 
+                  " is duplicated in the new servers list";
+        already_exists = true;
+        break;
+      }
+      if (strcasecmp(lhs->get_scheme(), MYSQL_WRAPPER) == 0 || 
+          strcasecmp(lhs->get_scheme(), MYSQL_SLAVE_WRAPPER) == 0) {
+        continue;
+      }
+      string rhs_ip_port = string(rhs->get_host()) + "#" +
+                                  to_string(rhs->get_port());
+      if (lhs_ip_port.compare(rhs_ip_port) == 0) {
+        err_buff = "the ip#port " + lhs_ip_port + " is duplicated in the new servers list";
+        already_exists = true;
+        break;
+      }
     }
-    if (strcasecmp(lex->server_options.get_scheme(), MYSQL_WRAPPER) == 0 || 
-        strcasecmp(lex->server_options.get_scheme(), MYSQL_SLAVE_WRAPPER) == 0) {
-      continue;
-    }
-    string internal_ip_port = string(server->host) + "#" + to_string(server->port);
-    if (external_ip_port.compare(internal_ip_port) == 0) {
-      err_buff = "the ip#port " + external_ip_port + " already exists in the mysql.servers";
-      is_already_exist = true;
-      break;
+    if (already_exists) {
+      err_msg = err_buff;
+      return true;
     }
   }
-  if (is_already_exist) {
-    err_msg = err_buff;
-    return true;
+  
+  for(const auto &one_server: lex->server_options_list) {
+    string external_ip_port = string(one_server.get_host()) + "#" +
+                                to_string(one_server.get_port());
+    for(FOREIGN_SERVER *cluster_node : server_list) {
+      if (strcasecmp(one_server.m_server_name.str, cluster_node->server_name) == 0) {
+        err_buff = "the server_name " + std::string(one_server.m_server_name.str) + 
+                  " already exists in the mysql.servers";
+        already_exists = true;
+        break;
+      }
+      if (strcasecmp(one_server.get_scheme(), MYSQL_WRAPPER) == 0 || 
+          strcasecmp(one_server.get_scheme(), MYSQL_SLAVE_WRAPPER) == 0) {
+        continue;
+      }
+      string internal_ip_port = string(cluster_node->host) + "#" + 
+                                  to_string(cluster_node->port);
+      if (external_ip_port.compare(internal_ip_port) == 0) {
+        err_buff = "the ip#port " + external_ip_port + " already exists in the mysql.servers";
+        already_exists = true;
+        break;
+      }
+    }
+    if (already_exists) {
+      err_msg = err_buff;
+      return true;
+    }
   }
 
   /* Check if IPs are consistent (all non-localhost or all localhost) */
@@ -3155,15 +3595,17 @@ bool prepare_server_creation(THD *thd, LEX *lex, std::string &err_msg)
   auto is_localhost = [](const char *ip) -> bool {
     return (!strcasecmp(ip, "127.0.0.1") || !strcasecmp(ip, "localhost"));
   };
-  if (is_localhost(lex->server_options.get_host())) {
-    ++localhost_count;
+  for(const auto &one_server: lex->server_options_list) {
+    if (is_localhost(one_server.get_host())) {
+      ++localhost_count;
+    }
   }
   for(FOREIGN_SERVER *server: server_list) {
     if (is_localhost(server->host)) {
       ++localhost_count;
     }
   }
-  if ((localhost_count > 0) && (localhost_count != server_list.size() + 1)) {
+  if ((localhost_count > 0) && (localhost_count != server_list.size() + lex->server_options_list.size())) {
     err_msg = "mysql.servers can't contain both loop-back network address and "
               "external network address, please change the value of 'host' column";
     return true;
@@ -3469,7 +3911,7 @@ bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex)
   if(!validate_auto_increment_settings(spider_autoinc_map, failure_items)) {
     errmsg = "Found auto-increment setting conflicts of current cluster spider nodes: ";
     err_detail = errmsg;
-    for(SPIDER_AUTOINC_CONFLICT_ITEM conflict_item : failure_items) {
+    for(const SPIDER_AUTOINC_CONFLICT_ITEM &conflict_item : failure_items) {
       err_detail += "\n" + conflict_item.second;
     }
     sql_print_warning(err_detail.c_str());
@@ -3488,6 +3930,114 @@ bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex)
     err_detail += foreign_server_conflict_reason;
     sql_print_warning(err_detail.c_str());
     errmsg += "please modify the auto-increment configuration for the new spider node";
+    my_error(error_number, MYF(0), errmsg.c_str());
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Check auto-increment settings for multiple new spider nodes to ensure compatibility with existing cluster nodes
+ * 
+ * @param thd Thread handler
+ * @param lex Lexical analyzer context
+ * @return bool True if check fails, false if check passes
+ */
+bool check_autoinc_for_multiple_new_spider_nodes(THD *thd, LEX *lex)
+{
+  std::string errmsg;
+  std::string err_detail;
+  int error_number = ER_TCADMIN_INTERNAL_ERROR;
+
+  // Only check auto-increment settings for SPIDER type nodes
+  DBUG_ASSERT(lex->server_options_list.size() > 0);
+  DBUG_ASSERT(lex->server_options_list.front().get_scheme() != NULL);
+  const std::string foreign_server_wrapper = lex->server_options_list.front().get_scheme();
+  if(strcasecmp(foreign_server_wrapper.c_str(), SPIDER_WRAPPER) != 0) {
+    return false;  // Not a spider node, no need to check
+  }
+
+  // Only check auto-increment settings for TDBCTL CREATE NODE command
+  switch(lex->sql_command) 
+  {
+  case TC_SQLCOM_CREATE_NODE:
+    error_number = ER_TCADMIN_CREATE_NODE_ERROR;
+    break;
+  default:
+    return false;  // Not a CREATE node, no need to check
+  }
+
+  // Prepare authentication information for the foreign servers
+  std::vector<AUTH_INFO> foreign_server_info;
+  std::vector<std::string> foreign_server_name;
+  std::string server_name_prefix = get_wrapper_prefix_by_wrapper(foreign_server_wrapper.c_str());
+  server_name_prefix.append("_new_");
+  for(const Server_options &one_server : lex->server_options_list) {
+    AUTH_INFO one_server_info;
+    DBUG_ASSERT(server_options.get_host() != NULL);
+    DBUG_ASSERT(server_options.get_port() != lex->server_options.PORT_NOT_SET);
+    DBUG_ASSERT(server_options.get_username() != NULL);
+    DBUG_ASSERT(server_options.get_password() != NULL);
+    DBUG_ASSERT(server_options.get_scheme() != NULL);
+    fill_auth_info(&one_server_info,
+                   one_server.get_host(), 
+                   one_server.get_port(), 
+                   one_server.get_username(), 
+                   one_server.get_password(), 
+                   one_server.get_scheme());
+    foreign_server_info.emplace_back(one_server_info);
+    // Generate unique server name using wrapper prefix and IP:port
+    foreign_server_name.emplace_back(server_name_prefix + foreign_server_info.back().ipport_str);
+  }
+
+  // Connect to the foreign server， Use RAII to ensure connections are automatically closed
+  std::vector<std::unique_ptr<MYSQL, void (*)(MYSQL *)>> foreign_server_conns;
+  for(size_t i = 0; i < foreign_server_info.size(); ++i) {
+    foreign_server_conns.emplace_back(tc_conn_connect(foreign_server_info[i]), mysql_close);
+    if(foreign_server_conns.back().get() == nullptr) {
+      errmsg = "Failed to connect to new server " + foreign_server_name[i] + 
+               " when checking auto-increment settings";
+      my_error(error_number, MYF(0), errmsg.c_str());
+      return true;
+    }
+  }
+
+  if (!thd->cluster_conn_manager) {
+    thd->cluster_conn_manager = new Cluster_conn_manager();
+  }
+  // Connect to all spider nodes of the cluster
+  if (thd->cluster_conn_manager->refresh(TRUE, TRUE) ||
+      thd->cluster_conn_manager->connect(NODE_TYPE_SPIDER, FALSE))
+    return true;
+  Cluster_conn_manager *conn_mgr = thd->cluster_conn_manager;
+
+  // Get all spider connections and add new connections of the foreign servers
+  auto spider_conn_map = conn_mgr->get_spider_conn_map();
+  for(size_t i = 0; i < foreign_server_conns.size(); ++i) {
+    spider_conn_map[foreign_server_name[i]] = foreign_server_conns[i].get();
+  }
+  
+  // Get auto-increment info from all spider nodes including the foreign servers
+  std::map<std::string, SPIDER_AUTOINC_INFO> spider_autoinc_map;
+  std::string query_err;
+  if(get_spider_autoinc_info(spider_conn_map, spider_autoinc_map, query_err)) {
+    errmsg = "When checking auto-increment settings: " + query_err;
+    my_error(error_number, MYF(0), errmsg.c_str());
+    return true;
+  }
+
+  // Validate existing nodes' auto-inc settings
+  std::vector<SPIDER_AUTOINC_CONFLICT_ITEM> failure_items;
+  if(!validate_auto_increment_settings(spider_autoinc_map, failure_items)) {
+    errmsg = "Found auto-increment setting conflicts: ";
+    err_detail = errmsg;
+    for(const SPIDER_AUTOINC_CONFLICT_ITEM &conflict_item : failure_items) {
+      err_detail += "\n" + conflict_item.second;
+    }
+    sql_print_warning(err_detail.c_str());
+    errmsg += "please check the auto-increment configurations for the new spider nodes"
+              " and the existing spider nodes in the cluster";
     my_error(error_number, MYF(0), errmsg.c_str());
     return true;
   }

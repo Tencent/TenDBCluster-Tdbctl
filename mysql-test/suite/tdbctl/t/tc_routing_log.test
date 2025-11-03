@@ -72,7 +72,9 @@ SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
 SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
 SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
 SET tc_admin = ON;
+SET tc_enable_schema_check = OFF;
 TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+SET tc_enable_schema_check = DEFAULT;
 SET GLOBAL tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
 
 --echo

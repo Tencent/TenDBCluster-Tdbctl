@@ -130,18 +130,18 @@ bool tc_flush_routing(LEX *lex, Cluster_conn_manager* conn_mgr);
 bool tc_flush_routing_to_nodes(LEX* lex, std::set<std::string> nodes_to_be_flushed, Cluster_conn_manager* conn_mgr, const char* wrapper);
 
 /**
- * Flush routing information to a foreign server.
+ * Flush routing information to foreign servers.
  * 
  * This function creates a temporary Cluster_conn_manager object, adds the user-specified 
- * foreign server to this temporary Cluster_conn_manager object, and then refreshes the 
- * routing for this foreign server.
+ * foreign servers to this temporary Cluster_conn_manager object, and then refreshes the 
+ * routing for the foreign servers.
  *
- * Note: Please additionally ensure that the user-specified node is an external node of the cluster.
+ * Note: Please additionally ensure that the user-specified nodes are external nodes of the cluster.
  * 
  * @param lex The LEX structure containing server options and other command information
  * @return bool Returns true if any operation fails, false if all operations succeed
  */
-bool tc_flush_routing_to_foreign_server(LEX* lex);
+bool tc_flush_routing_to_foreign_servers(LEX* lex);
 
 enum FLUSH_ROUTING_RESULT {
   SUCCESS = 0,                   // success
@@ -317,6 +317,36 @@ public:
 
 
 /**
+   This class implements the TDBCTL CREATE NODE statement.
+*/
+class Sql_cmd_create_multi_server : public Sql_cmd_common_server
+{
+
+  const std::vector<Server_options> &m_server_options_list;
+
+public:
+  Sql_cmd_create_multi_server(std::vector<Server_options> &server_options_list)
+    : Sql_cmd_common_server(), m_server_options_list(server_options_list)
+  { }
+
+  enum_sql_command sql_command_code() const
+  { return TC_SQLCOM_CREATE_NODE; }
+
+  /**
+     Create multiple new servers by inserting rows into the
+     mysql.servers table and creating cache entries for each.
+     The servers to create are specified in m_server_options_list.
+
+     @param thd  Thread context
+
+     @returns false if all servers were created successfully, 
+              true if any creation failed
+  */
+  bool execute(THD *thd);
+};
+
+
+/**
    This class implements the ALTER SERVER statement.
 */
 
@@ -383,6 +413,37 @@ public:
   bool execute(THD *thd);
 };
 
+
+/**
+   This class currently only serves the rollback operation for 
+   the TDBCTL CREATE NODE command.
+*/
+class Sql_cmd_drop_multi_server : public Sql_cmd_common_server
+{
+
+  const std::vector<Server_options> &m_server_options_list;
+
+public:
+  Sql_cmd_drop_multi_server(std::vector<Server_options> &server_options_list)
+    : Sql_cmd_common_server(), m_server_options_list(server_options_list)
+  { }
+
+  enum_sql_command sql_command_code() const
+  { return TC_SQLCOM_CREATE_NODE; }
+
+  /**
+     Drop multiple existing servers by deleting the matching rows from the
+     mysql.servers table and removing their cache entries.
+
+     @param thd  Thread context
+
+     @returns false if all servers were dropped successfully, 
+              true if any drop operation failed
+  */
+  bool execute(THD *thd);
+};
+
+
 bool server_compare(FOREIGN_SERVER*& first, FOREIGN_SERVER*& second);
 
 struct SPIDER_AUTOINC_INFO {
@@ -419,5 +480,9 @@ bool find_auto_increment_conflict(const std::map<std::string, SPIDER_AUTOINC_INF
 
 bool check_autoinc_settings_for_new_spider_node(THD *thd, LEX *lex);
 
+bool check_autoinc_for_multiple_new_spider_nodes(THD *thd, LEX *lex);
+
+bool restore_one_server(FOREIGN_SERVER* server_backup);
+bool restore_server_cache();
 
 #endif /* SQL_SERVERS_INCLUDED */

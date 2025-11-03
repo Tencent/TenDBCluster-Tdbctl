@@ -6760,3 +6760,29 @@ static Sys_var_ulong Sys_max_routing_log_files(
         TDBCTL GLOBAL_VAR(max_routing_log_files),
         CMD_LINE(REQUIRED_ARG), VALID_RANGE(0, 102400),
         DEFAULT(0), BLOCK_SIZE(1));
+
+static Sys_var_mybool Sys_tc_use_internal_backup_tool(
+       "tc_use_internal_backup_tool",
+       "If set to false, the mysqldump command will be called via system() to perform backup",
+       TDBCTL SESSION_VAR(tc_use_internal_backup_tool), CMD_LINE(OPT_ARG),
+       DEFAULT(TRUE));
+
+static Sys_var_mybool Sys_tc_use_internal_restore_tool(
+       "tc_use_internal_restore_tool",
+       "If set to false, the mysql command will be called via system() to restore backup files",
+       TDBCTL SESSION_VAR(tc_use_internal_restore_tool), CMD_LINE(OPT_ARG),
+       DEFAULT(TRUE));
+
+static Sys_var_mybool Sys_tc_enable_schema_check(
+       "tc_enable_schema_check",
+       "If true, check if the table structure of the newly added nodes and the backup source node "
+       "are consistent with the primary tdbctl node; otherwise skip the check",
+       TDBCTL SESSION_VAR(tc_enable_schema_check), CMD_LINE(OPT_ARG),
+       DEFAULT(TRUE));
+
+static Sys_var_charptr Sys_tc_skip_check_db_list(
+  "tc_skip_check_db_list",
+  "the list of database names that will be ignored when checking the table structure",
+  TDBCTL GLOBAL_VAR(tc_skip_check_db_list),
+  CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET,
+  DEFAULT("performance_schema,information_schema,mysql,test,sys"));

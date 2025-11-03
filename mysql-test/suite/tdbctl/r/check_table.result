@@ -50,7 +50,7 @@ TDBCTL CHECK TABLES FROM test_check_table LIKE 't%'
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
 SELECT @@server_uuid
-SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME LIKE 't%'
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME LIKE 't%' AND TABLE_TYPE IN('BASE TABLE')
 SELECT @@GLOBAL.table_open_cache
 SELECT @@GLOBAL.table_definition_cache
 SET @@GLOBAL.table_open_cache = 512
@@ -82,11 +82,12 @@ SELECT @@GLOBAL.table_open_cache
 SELECT @@GLOBAL.table_definition_cache
 SET @@GLOBAL.table_open_cache = 512
 SET @@GLOBAL.table_definition_cache = 656
+SHOW DATABASES LIKE 'test_check_table'
 SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
 SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
 SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
 SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
-SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME LIKE 't%'
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME LIKE 't%' AND TABLE_TYPE IN('BASE TABLE')
 SET @@GLOBAL.table_open_cache = 2000
 SET @@GLOBAL.table_definition_cache = 400
 --------------------
@@ -97,6 +98,7 @@ SELECT @@GLOBAL.table_open_cache
 SELECT @@GLOBAL.table_definition_cache
 SET @@GLOBAL.table_open_cache = 512
 SET @@GLOBAL.table_definition_cache = 656
+SHOW DATABASES LIKE 'test_check_table_0'
 SET NAMES latin1;
 SET sql_mode='';
 SET time_zone='SYSTEM';
@@ -113,7 +115,7 @@ SET NAMES latin1;
 SET sql_mode='';
 SET time_zone='SYSTEM';
 SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='t2'
-SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME LIKE 't%'
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME LIKE 't%' AND TABLE_TYPE IN('BASE TABLE')
 SET @@GLOBAL.table_open_cache = 2000
 SET @@GLOBAL.table_definition_cache = 1400
 --------------------
@@ -150,7 +152,7 @@ TDBCTL CHECK DATABASE test_check_table
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
 SELECT @@server_uuid
-SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table'
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_TYPE IN('BASE TABLE')
 SELECT @@GLOBAL.table_open_cache
 SELECT @@GLOBAL.table_definition_cache
 SET @@GLOBAL.table_open_cache = 512
@@ -190,13 +192,14 @@ SELECT @@GLOBAL.table_open_cache
 SELECT @@GLOBAL.table_definition_cache
 SET @@GLOBAL.table_open_cache = 512
 SET @@GLOBAL.table_definition_cache = 656
+SHOW DATABASES LIKE 'test_check_table'
 SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
 SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t1'
 SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
 SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='t2'
 SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='u1'
 SET NAMES latin1;SET sql_mode='';SET time_zone='SYSTEM';SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table' AND TABLE_NAME='u1'
-SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table'
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table' AND TABLE_TYPE IN('BASE TABLE')
 SET @@GLOBAL.table_open_cache = 2000
 SET @@GLOBAL.table_definition_cache = 400
 --------------------
@@ -207,6 +210,7 @@ SELECT @@GLOBAL.table_open_cache
 SELECT @@GLOBAL.table_definition_cache
 SET @@GLOBAL.table_open_cache = 512
 SET @@GLOBAL.table_definition_cache = 656
+SHOW DATABASES LIKE 'test_check_table_0'
 SET NAMES latin1;
 SET sql_mode='';
 SET time_zone='SYSTEM';
@@ -231,7 +235,7 @@ SET NAMES latin1;
 SET sql_mode='';
 SET time_zone='SYSTEM';
 SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLLATION_NAME, COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_NAME='u1'
-SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0'
+SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='test_check_table_0' AND TABLE_TYPE IN('BASE TABLE')
 SET @@GLOBAL.table_open_cache = 2000
 SET @@GLOBAL.table_definition_cache = 1400
 --------------------
@@ -369,7 +373,33 @@ Server_name	Db	Table	Status	Message
 TDBCTL CHECK DATABASE test_check_table;
 Server_name	Db	Table	Status	Message
 
+# Reset tables.
+SET tc_admin = ON;
+DROP DATABASE IF EXISTS test_check_table;
+CREATE DATABASE test_check_table1;
+TDBCTL CONNECT NODE SPT1 EXECUTE "DROP DATABASE test_check_table1_1";
+CREATE DATABASE test_check_table2;
+SET tc_admin = OFF;
+DROP DATABASE test_check_table2;
+
+# Case 7: Missing databases
+# Execute TDBCTL CHECK TABLES.
+SET tc_admin = ON;
+TDBCTL CHECK TABLE test_check_table1.t1;
+ERROR 42S02: Unknown table 'test_check_table1.t1'
+TDBCTL CHECK TABLES IN test_check_table1;
+Server_name	Db	Table	Status	Message
+SPT1	test_check_table1_1	-	Error	(1)This database does not exist
+TDBCTL CHECK TABLES IN test_check_table2 LIKE 't%';
+ERROR 42000: Unknown database 'test_check_table2'
+
 # Restore to the initial state.
 SET tc_admin = ON;
 DROP DATABASE IF EXISTS test_check_table;
+Warnings:
+Note	1008	Can't drop database 'test_check_table'; database doesn't exist
+DROP DATABASE IF EXISTS test_check_table1;
+DROP DATABASE IF EXISTS test_check_table2;
+Warnings:
+Note	1008	Can't drop database 'test_check_table2'; database doesn't exist
 SET @@SESSION.tc_admin = @origin_tc_admin;

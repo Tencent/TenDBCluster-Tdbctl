@@ -1,13 +1,20 @@
 /*
   Copyright (C) 2020 Tencent. All rights reserved.
 */
+#include <cstddef>
+#include <cstdio>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <string>
 #include <list>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "auth_common.h"
+#include "mysql.h"
+#include "mysql/service_my_snprintf.h"
 #include "sql_class.h"
 #include "sql_db.h"
 #include "sql_show.h" // IS_COLUMNS_* indices
@@ -19,6 +26,8 @@ using std::string;
 using std::map;
 using std::unordered_set;
 using std::list;
+using std::pair;
+using std::unique_ptr;
 
 
 /* Select all fields for scalability concerns */
@@ -53,10 +62,13 @@ using std::list;
 
 /* Get table names for multi-table checks */
 #define SQL_GET_ALL_TABLES_IN_DB                                               \
-  "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='%s'"
+  "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='%s' "  \
+  "AND TABLE_TYPE IN('BASE TABLE')"
 #define SQL_GET_TABLES_IN_DB_LIKE                                              \
   "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='%s' "  \
-  "AND TABLE_NAME LIKE '%s'"
+  "AND TABLE_NAME LIKE '%s' AND TABLE_TYPE IN('BASE TABLE')"
+#define SQL_GET_ALL_DBS                                                        \
+  "SHOW DATABASES"
 
 #define IS_TABLES_TABLE_SCHEMA          1
 #define IS_TABLES_TABLE_NAME            2
@@ -81,7 +93,7 @@ using std::list;
  * @note TDBCTL node is explicitly excluded as it serves as the reference baseline
  *       for comparison operations.
  */
-static const enum_node_type CHECK_NODE_TYPES[] = {
+static const enum_node_type DEFAULT_CHECK_NODE_TYPES[] = {
     NODE_TYPE_SPIDER,
     NODE_TYPE_SPIDER_SLAVE,
     NODE_TYPE_REMOTE
@@ -91,6 +103,7 @@ struct Column_record;
 struct Table_info;
 struct Message_writer;
 class Check_tables_handling;
+class Check_result_item;
 
 typedef std::map<std::string, Column_record> Column_records;
 
@@ -109,26 +122,33 @@ static bool get_table_info_for_server(THD *thd, const std::string &db_name,
                                       enum_node_type node_type);
 static bool fill_tables_list(MYSQL *conn, const char *db, String *wild,
                             list<std::string> &tables);
+static bool fill_dbs_list(MYSQL *conn, list<std::string> &dbs);
 static bool do_send_metadata(THD *thd);
 static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
                                const string &db_name, const string &table_name, bool do_send);
 static bool validate_db_grants(THD *thd, const char *db);
 
 static void *query_table_and_column_info_thread(void *arg);
-static bool do_check_one_table_by_parallel_query(THD *thd, Cluster_conn_manager *conn_mgr,
-                                                 Check_tables_handling *check_tables_hdl,
+static bool do_check_one_table_by_parallel_query(THD *thd, Check_tables_handling *check_tables_hdl,
                                                  const string &db_name, const string &table_name,
-                                                 bool do_send); 
-static bool check_redundant_tables(THD *thd, Cluster_conn_manager *conn_mgr, 
+                                                 bool do_send,
+                                                 bool *consistency = NULL,
+                                                 list<Check_result_item> *check_res = NULL); 
+static bool check_db_existence(THD *thd, Check_tables_handling * check_tables_hdl,
+                              string my_db_name, bool do_send, 
+                              bool *consistency = NULL, list<Check_result_item> *check_res = NULL);
+static bool check_redundant_tables(THD *thd, Check_tables_handling *check_tables_hdl, 
                                    string db_name, String *wild,
-                                   const list<string> &my_table_list, bool do_send);
-static bool get_table_cache(THD *thd, Cluster_conn_manager *conn_mgr, 
+                                   const list<string> &my_table_list, bool do_send, 
+                                   bool *consistency = NULL,
+                                   list<Check_result_item> *check_res = NULL);
+static bool get_table_cache(THD *thd, Check_tables_handling *check_tables_hdl, 
                             map<string, string> &open_cache_map, 
                             map<string, string> &def_cache_map);
-static bool set_table_cache(THD *thd, Cluster_conn_manager *conn_mgr, 
+static bool reset_table_cache(THD *thd, Check_tables_handling *check_tables_hdl, 
                             const map<string, string> &open_cache_map, 
                             const map<string, string> &def_cache_map);
-static bool set_table_cache(THD *thd, Cluster_conn_manager *conn_mgr, 
+static bool set_table_cache(THD *thd, Check_tables_handling *check_tables_hdl, 
                             const string &open_cache_val, 
                             const string &def_cache_val);
 bool compare_table_info(const Table_info &expected, const Table_info &actual, 
@@ -273,46 +293,235 @@ enum Query_job_status {
 class Check_tables_handling
 {
   friend void *query_table_and_column_info_thread(void *arg);
-public:
-  Check_tables_handling(THD *thd): m_thd(thd),  
-                                   m_query_table_mgr(thd), 
-                                   m_query_column_mgr(thd) {
+private:
+  /* Set the permission to private and provide factory methods 
+   to ensure the correctness of parameters */
+  Check_tables_handling(THD *thd, 
+                        Cluster_conn_manager *conn_mgr,
+                        const enum_node_type *check_node_types,
+                        size_t num_check_node_types)
+    : m_thd(thd),  
+    m_conn_mgr(conn_mgr),
+    m_query_table_mgr(thd), 
+    m_query_column_mgr(thd) 
+  {
     DBUG_ASSERT(m_thd != NULL);
+    DBUG_ASSERT(m_conn_mgr != NULL);
+
     /*
       Prepare resources required for concurrent queries.
     */
-    Cluster_conn_manager *conn_mgr = m_thd->cluster_conn_manager;
-
-    string my_server = conn_mgr->get_my_server_name();
+    string my_server = m_conn_mgr->get_my_server_name();
     m_nodes_to_check = {{my_server, Query_job_status::QUERY_JOB_COMPLETED}};
     m_nodes_type = {{my_server, NODE_TYPE_CTL}};
 
-    for(enum_node_type node_type: CHECK_NODE_TYPES) {
-      const map<string, MYSQL *> &conns_map = conn_mgr->get_conn_map(node_type);
+    for(size_t i = 0; i < num_check_node_types; ++i) {
+      enum_node_type node_type = check_node_types[i];
+      const map<string, MYSQL *> &conns_map = m_conn_mgr->get_conn_map(node_type);
       for(const auto &conn_item: conns_map) {
+        if(conn_item.first == my_server) {
+          continue;
+        }
         m_nodes_to_check.insert({conn_item.first, Query_job_status::QUERY_JOB_COMPLETED});
         m_nodes_type.insert({conn_item.first, node_type});
       }
     }
 
     m_num_threads = min(m_nodes_to_check.size(), MAX_NUM_CHECK_THREADS);
+    m_num_alive_threads = 0;
     m_need_stop = false;
+    m_need_recycle_threads = false;
 
     /*
       Prepare mutexes and semaphores required for concurrent queries.
     */
     mysql_mutex_init(PSI_NOT_INSTRUMENTED, &m_lock_nodes_to_check, MY_MUTEX_INIT_FAST);
     mysql_mutex_init(PSI_NOT_INSTRUMENTED, &m_lock_stop_flag, MY_MUTEX_INIT_FAST);
+    mysql_mutex_init(PSI_NOT_INSTRUMENTED, &m_lock_num_alive_threads, MY_MUTEX_INIT_FAST);
     mysql_cond_init(PSI_NOT_INSTRUMENTED, &m_cond_query_finish);
     mysql_cond_init(PSI_NOT_INSTRUMENTED, &m_cond_new_query);
+  }
+
+public:
+  /*
+    Factory method for creating a default handler.
+    For command: TDBCTL CHECK TABLES
+  */
+  static std::unique_ptr<Check_tables_handling> make_default_handler(THD *thd) 
+  {
+    if(thd == NULL) {
+      return nullptr;
+    }
+    Cluster_conn_manager *conn_mgr = thd->cluster_conn_manager;
+    if(conn_mgr == NULL) {
+      return nullptr;
+    }
+    if(conn_mgr->get_my_server_name() == Cluster_conn_manager::UNKOWN_SERVER_NAME) {
+      return nullptr;
+    }
+    return std::unique_ptr<Check_tables_handling>(
+                new Check_tables_handling(thd, conn_mgr,
+                          DEFAULT_CHECK_NODE_TYPES, 
+                          sizeof(DEFAULT_CHECK_NODE_TYPES) / sizeof(enum_node_type)
+                      ));
+  }
+
+  /*
+    Factory method for creating a handler.
+    For command: TDBCTL CREATE NODE ... WITH SCHEMA
+  */
+  static pair<unique_ptr<Check_tables_handling>, unique_ptr<Cluster_conn_manager>>
+                      make_handler_for_new_nodes(THD *thd,
+                                                LEX *lex,
+                                                FOREIGN_SERVER *back_source, 
+                                                string &errmsg) 
+  {
+    errmsg.clear();
+
+    if((thd == NULL) || (lex == NULL) || (thd->cluster_conn_manager == NULL)) {
+      errmsg = "thd or lex or cluster_conn_manager is NULL";
+      return {nullptr, nullptr};
+    }
+    if(lex->sql_command != TC_SQLCOM_CREATE_NODE) {
+      errmsg = "not TC_SQLCOM_CREATE_NODE command";
+      return {nullptr, nullptr};
+    }
+    if(lex->server_options_list.empty() && (back_source == NULL)) {
+      errmsg = "no nodes specified";
+      return {nullptr, nullptr};
+    }
+
+    // Create the specified Cluster_conn_manager instance
+    std::unique_ptr<Cluster_conn_manager> conn_mgr(new Cluster_conn_manager());
+    conn_mgr->skip_refresh_intentionally();
+    string my_name = thd->cluster_conn_manager->get_my_server_name();
+    if(my_name == Cluster_conn_manager::UNKOWN_SERVER_NAME) {
+      errmsg = "my server name is unknown";
+      return {nullptr, nullptr};
+    }
+    const AUTH_INFO &my_info = 
+        thd->cluster_conn_manager->get_auth_map(NODE_TYPE_CTL).at(my_name);
+    if(conn_mgr->add_foreign_server(my_info, my_name, 
+                                    false, true)) {
+      errmsg = "add my server failed";
+      return {nullptr, nullptr};
+    }
+    if(conn_mgr->identify_self()) {
+      errmsg = "identify self failed";
+      return {nullptr, nullptr};
+    }
+
+    auto safe_str = [](const char *str) {
+      return (str == NULL) ? "" : str;
+    };
+
+    int node_type = -1;
+    // Prepare authentication information for the foreign servers
+    for(const Server_options &one_server: lex->server_options_list) {
+      AUTH_INFO foreign_server_info;
+      DBUG_ASSERT(one_server.get_host() != NULL);
+      DBUG_ASSERT(one_server.get_port() != lex->server_options.PORT_NOT_SET);
+      DBUG_ASSERT(one_server.get_username() != NULL);
+      DBUG_ASSERT(one_server.get_password() != NULL);
+      DBUG_ASSERT(one_server.get_scheme() != NULL);
+
+      if(node_type == -1) {
+        node_type = get_node_type_by_wrapper(one_server.get_scheme());
+      }
+      std::string foreign_server_wrapper = one_server.get_scheme();
+      fill_auth_info(&foreign_server_info, 
+                    safe_str(one_server.get_host()), 
+                    one_server.get_port(), 
+                    safe_str(one_server.get_username()), 
+                    safe_str(one_server.get_password()), 
+                    foreign_server_wrapper);
+      
+      // Generate foreign server name by combining wrapper prefix and IP:port string
+      std::string foreign_server_name = get_wrapper_prefix_by_wrapper(foreign_server_wrapper.c_str());
+      foreign_server_name += "_new_" + foreign_server_info.ipport_str;
+      
+      // Add the foreign server to the connection manager
+      if(conn_mgr->add_foreign_server(foreign_server_info, foreign_server_name,
+                                      false, true)) {
+        errmsg = "add foreign server failed: " + foreign_server_name;
+        return {nullptr, nullptr};
+      }
+    }
+
+    // Add the back source to the connection manager
+    if(back_source != NULL) {
+      AUTH_INFO back_source_info;
+      if(node_type == -1) {
+        node_type = get_node_type_by_wrapper(back_source->scheme);
+      }
+      fill_auth_info(&back_source_info, 
+                    safe_str(back_source->host), 
+                    back_source->port, 
+                    safe_str(back_source->username), 
+                    safe_str(back_source->password), 
+                    safe_str(back_source->scheme));
+      // Generate backup source server name
+      std::string back_source_name = string(safe_str(back_source->server_name));
+      back_source_name += string("_back_source_") + back_source_info.ipport_str;
+      
+      // Add the back source to the connection manager
+      if(conn_mgr->add_foreign_server(back_source_info, back_source_name,
+                                      false, true)) {
+        errmsg = "add back source failed: " + back_source_name;
+        return {nullptr, nullptr};
+      }
+    }
+
+    switch(node_type)
+    {
+      case NODE_TYPE_SPIDER:
+      case NODE_TYPE_SPIDER_SLAVE:
+      {
+        enum_node_type check_node_types[] = {NODE_TYPE_SPIDER, NODE_TYPE_SPIDER_SLAVE};
+        return {std::unique_ptr<Check_tables_handling>(
+                    new Check_tables_handling(thd, conn_mgr.get(),
+                      check_node_types, 
+                      sizeof(check_node_types) / sizeof(enum_node_type)
+                    )), std::move(conn_mgr)};
+      }
+      case NODE_TYPE_CTL:
+      {
+        enum_node_type check_node_types[] = {NODE_TYPE_CTL};
+        return {std::unique_ptr<Check_tables_handling>(
+                    new Check_tables_handling(thd, conn_mgr.get(),
+                    check_node_types,
+                    sizeof(check_node_types) / sizeof(enum_node_type)
+                  )), std::move(conn_mgr)};
+      }
+      default:
+        errmsg = "invalid node type";
+        return {nullptr, nullptr};
+    }
+
+    return {nullptr, nullptr};  // make compiler happy
   }
 
   ~Check_tables_handling() {
     /*
       Ensure that child threads terminate properly and release all resources.
     */
+    if(m_need_recycle_threads) {
+      terminate_parallel_query_threads();
+    }
+    uint wait_interval_microseconds = 100000;  // 100ms
+    uint wait_times = 10;
+    while((get_num_alive_threads() > 0) && (wait_times > 0)) {
+      --wait_times;
+      sql_print_information("Checking tables handler: waiting for threads to terminate");
+      my_sleep(wait_interval_microseconds);
+    }
+    if(get_num_alive_threads() > 0) {
+      sql_print_error("Checking tables handler: threads not terminated properly");
+    }
+
     mysql_mutex_destroy(&m_lock_nodes_to_check);
     mysql_mutex_destroy(&m_lock_stop_flag);
+    mysql_mutex_destroy(&m_lock_num_alive_threads);
     mysql_cond_destroy(&m_cond_query_finish);
     mysql_cond_destroy(&m_cond_new_query);
     free_query_result();
@@ -326,8 +535,11 @@ public:
       false, Success
   */
   bool launch_parallel_query_threads() {
+    if(get_num_alive_threads() > 0) {
+      return false;
+    }
     set_stop_flag(false);
-    for (int i = 0; i < m_num_threads; ++i)
+    for (uint i = 0; i < m_num_threads; ++i)
     {
       my_thread_handle thr_handle;
       my_thread_attr_t thr_attr;
@@ -338,8 +550,10 @@ public:
         terminate_parallel_query_threads();
         return true;
       }
+      modify_num_alive_threads(+1);
       my_thread_attr_destroy(&thr_attr);
     }
+    m_need_recycle_threads = true;
     return false;
   }
 
@@ -349,9 +563,9 @@ public:
   */
   void prepare_for_next_query(const string &database_name, const string &table_name) {
     free_query_result();
-    m_query_table_mgr.build_server_maps(m_thd->cluster_conn_manager);
+    m_query_table_mgr.build_server_maps(m_conn_mgr);
     m_query_table_mgr.reset_error();
-    m_query_column_mgr.build_server_maps(m_thd->cluster_conn_manager);
+    m_query_column_mgr.build_server_maps(m_conn_mgr);
     m_query_column_mgr.reset_error();
     m_schema_to_check = database_name;
     m_table_to_check = table_name;
@@ -383,6 +597,7 @@ public:
     set_stop_flag(true);
     mysql_cond_broadcast(&m_cond_new_query);
     mysql_mutex_unlock(&m_lock_nodes_to_check);
+    m_need_recycle_threads = false;
   }
 
   /*
@@ -463,6 +678,18 @@ public:
     return false;
   }
 
+  const string &get_my_server_name() const {
+    return m_conn_mgr->get_my_server_name();
+  }
+
+  const map<string, enum_node_type> &get_nodes_map() const {
+    return m_nodes_type;
+  }
+
+  const map<string, MYSQL*> &get_conn_map(enum_node_type node_type) const {
+    return m_conn_mgr->get_conn_map(node_type);
+  }
+
 private:
 
   void free_query_result() {
@@ -525,6 +752,20 @@ private:
     m_need_stop = flag;
     mysql_mutex_unlock(&m_lock_stop_flag);
   }
+
+  void modify_num_alive_threads(int delta) {
+    mysql_mutex_lock(&m_lock_num_alive_threads);
+    m_num_alive_threads += delta;
+    mysql_mutex_unlock(&m_lock_num_alive_threads);
+  }
+
+  uint get_num_alive_threads() {
+    uint res;
+    mysql_mutex_lock(&m_lock_num_alive_threads);
+    res = m_num_alive_threads;
+    mysql_mutex_unlock(&m_lock_num_alive_threads);
+    return res;
+  }
   
   /*
     Actual Implementation of Worker Functions for Parallel Querying Threads
@@ -541,6 +782,7 @@ private:
       if(need_stop_query()) {  
         mysql_mutex_unlock(&m_lock_nodes_to_check);
         sql_print_information("Checking tables worker %lu is terminated", my_thread_self());
+        modify_num_alive_threads(-1);
         return;
       }
       while(!get_unstarted_node(server_name, false)) {
@@ -550,6 +792,7 @@ private:
         if(need_stop_query()) {  
           mysql_mutex_unlock(&m_lock_nodes_to_check);
           sql_print_information("Checking tables worker %lu is terminated", my_thread_self());
+          modify_num_alive_threads(-1);
           return;
         }
       }
@@ -584,7 +827,7 @@ private:
                                                   enum_node_type node_type, 
                                                   const string &db_name,
                                                   const string &table_name) {
-    MYSQL *mysql = m_thd->cluster_conn_manager->get_conn_map(node_type).at(server_name);
+    MYSQL *mysql = m_conn_mgr->get_conn_map(node_type).at(server_name);
     tc_exec_info exec_info;
     char query_buff[512];
 
@@ -619,8 +862,10 @@ private:
   }
 
 private:
-  THD *m_thd;
-  int m_num_threads;  // Number of concurrent query threads
+  THD *m_thd;  // reserve for future use
+  Cluster_conn_manager *m_conn_mgr;  // may not belong to m_thd
+  uint m_num_threads;  // Number of concurrent query threads
+  uint m_num_alive_threads;  // Number of alive query threads
 
   /*
     Mutexes and semaphores required for concurrent queries.
@@ -628,6 +873,7 @@ private:
   mysql_cond_t m_cond_query_finish, m_cond_new_query;
   mysql_mutex_t m_lock_nodes_to_check;
   mysql_mutex_t m_lock_stop_flag;
+  mysql_mutex_t m_lock_num_alive_threads;
   
 
   /*
@@ -649,7 +895,40 @@ private:
   /* The bool variable used to control thread termination for concurrent queries */
   bool m_need_stop;
 
+  /* Whether to terminate threads in Destructor */
+  bool m_need_recycle_threads;
 };
+
+
+class Check_result_item {
+public:
+  string Server;
+  string Database;
+  string Table;
+  string Status;
+  string Message;
+
+  Check_result_item() {}
+  Check_result_item(const string &server, const string &db, const string &table,
+                  const string &status, const string &message)
+    : Server(server), Database(db), Table(table), Status(status), Message(message)
+  {}
+
+  string to_string() const {
+    string res;
+    res.append(Server).append("\t");
+    res.append(Database).append("\t");
+    res.append(Table).append("\t");
+    res.append(Status).append("\t");
+    res.append(Message);
+    return res;
+  }
+
+  static string header() {
+    return "Server\tDatabase\tTable\tStatus\tMessage";
+  }
+};
+
 
 /*
   ​​Thread worker function for parallel querying table schema information​.
@@ -805,6 +1084,8 @@ static bool fill_tables_list(MYSQL *conn, const char *db, String *wild,
   MYSQL_RES *res;
   DBUG_ENTER("fill_tables_list");
 
+  tables.clear();
+
   if (wild) {
     snprintf(query_buff, sizeof(query_buff), SQL_GET_TABLES_IN_DB_LIKE, db,
              wild->ptr());
@@ -820,7 +1101,45 @@ static bool fill_tables_list(MYSQL *conn, const char *db, String *wild,
   while ((row = mysql_fetch_row(res))) {
     tables.push_back(string(row[0], mysql_fetch_lengths(res)[0]));
   }
+  mysql_free_result(res);
 
+  DBUG_RETURN(FALSE);
+}
+
+static bool fill_dbs_list(MYSQL *conn, list<std::string> &dbs)
+{
+  char query_buff[512];
+  std::string db_name;
+  unordered_set<string> ignore_dbs;
+  MYSQL_ROW row;
+  MYSQL_RES *res;
+  DBUG_ENTER("fill_dbs_list");
+
+  dbs.clear();
+
+  // Skip specified databases if any
+  if (tc_skip_check_db_list)
+  {
+    std::stringstream ignore_db_list(tc_skip_check_db_list);
+    while (std::getline(ignore_db_list, db_name, ',')) {
+      if(!db_name.empty()) {
+        ignore_dbs.insert(db_name);
+      }
+    }
+  }
+
+  snprintf(query_buff, sizeof(query_buff), SQL_GET_ALL_DBS);
+
+  if (mysql_real_query(conn, query_buff, strlen(query_buff)) ||
+      !(res = mysql_store_result(conn)))
+    DBUG_RETURN(TRUE);
+
+  while ((row = mysql_fetch_row(res))) {
+    db_name = string(row[0], mysql_fetch_lengths(res)[0]);
+    if(!db_name.empty() && (ignore_dbs.find(db_name) == ignore_dbs.end())) {
+      dbs.push_back(db_name);
+    }
+  }
   mysql_free_result(res);
 
   DBUG_RETURN(FALSE);
@@ -907,10 +1226,28 @@ int tdbctl_check_tables(THD *thd, const char *db, String *wild) {
     DBUG_RETURN(TRUE);
   conn_mgr = thd->cluster_conn_manager;
 
+  thd_proc_info(thd, "Fetching tables to check");
   my_server = conn_mgr->get_my_server_name();
   my_conn = conn_mgr->get_conn_map(NODE_TYPE_CTL).at(my_server);
   if (fill_tables_list(my_conn, db_name.c_str(), wild, tables)) {
     my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), "failed to fetch tables of current tdbctl node");
+    DBUG_RETURN(TRUE);
+  }
+
+  thd_proc_info(thd, "Preparing to check tables");
+
+  /* Send metadata for check results */
+  if (do_send_metadata(thd)) {
+    DBUG_RETURN(TRUE);
+  }
+
+  /*
+    Create and launch sub-threads for concurrent queries.
+  */
+  std::unique_ptr<Check_tables_handling> check_tables_hdl = 
+                              Check_tables_handling::make_default_handler(thd);
+  if(!check_tables_hdl) {
+    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), "failed to construct Table Check Handler");
     DBUG_RETURN(TRUE);
   }
 
@@ -920,9 +1257,20 @@ int tdbctl_check_tables(THD *thd, const char *db, String *wild) {
   */
   map<string, string> old_open_cache_map;
   map<string, string> old_def_cache_map;
-  if(get_table_cache(thd, conn_mgr, old_open_cache_map, old_def_cache_map)) {
+  if(get_table_cache(thd, check_tables_hdl.get(), 
+                    old_open_cache_map, old_def_cache_map)) {
     DBUG_RETURN(TRUE);
   }
+
+  bool need_reset = true;
+  std::function<void()> reset_table_cache_func = [&]() {
+    if(!need_reset) {
+      return;
+    }
+    reset_table_cache(thd, check_tables_hdl.get(), 
+                      old_open_cache_map, old_def_cache_map); 
+  };
+  auto reset_table_cache_guard = TC_SCOPE_EXIT<std::function<void()>>(reset_table_cache_func);
 
   /*
     Set the system variables table_open_cache and table_definition_cache 
@@ -931,56 +1279,49 @@ int tdbctl_check_tables(THD *thd, const char *db, String *wild) {
   */
   string my_open_cache = old_open_cache_map[my_server];
   string my_def_cache = old_def_cache_map[my_server];
-  if(set_table_cache(thd, conn_mgr, my_open_cache, my_def_cache)) {
+  if(set_table_cache(thd, check_tables_hdl.get(), 
+                    my_open_cache, my_def_cache)) {
     DBUG_RETURN(TRUE);
   }
 
-  /*
-    Create and launch sub-threads for concurrent queries.
-  */
-  Check_tables_handling check_tables_hdl(thd);
-  if(check_tables_hdl.launch_parallel_query_threads()) {
+  if(check_tables_hdl->launch_parallel_query_threads()) {
     my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), "failed to create sub-threads");
     DBUG_RETURN(TRUE);
   }
 
-  /* Send metadata for check results */
-  if (do_send_metadata(thd)) {
-    check_tables_hdl.terminate_parallel_query_threads();
+  if(check_db_existence(thd, check_tables_hdl.get(), 
+            db_name, TRUE)) {
     DBUG_RETURN(TRUE);
   }
 
-  int res = 0;
+  thd_proc_info(thd, "Checking tables by parallel query");
   for (const string &table: tables) {
-    if (do_check_one_table_by_parallel_query(thd, conn_mgr, &check_tables_hdl, db_name, table, TRUE)) {
-      res = 1;
-      break;
+    if (do_check_one_table_by_parallel_query(thd, check_tables_hdl.get(), 
+                                            db_name, table, TRUE)) {
+      DBUG_RETURN(TRUE);
     }
   }
-
-  /*
-    Terminate sub-threads of concurrent queries.
-  */
-  check_tables_hdl.terminate_parallel_query_threads();
 
   /*
     Process tables that are unexpectedly present compared to the primary tdbctl node.
   */
-  if(!res) {
-    if(check_redundant_tables(thd, conn_mgr, db_name, wild, tables, TRUE)) {
-      res = 1;
-    }
+  thd_proc_info(thd, "Checking redundant tables");
+  if(check_redundant_tables(thd, check_tables_hdl.get(), 
+                            db_name, wild, tables, TRUE)) {
+    DBUG_RETURN(TRUE);
   }
 
   /*
     Restore the table_open_cache and table_definition_cache values to their original values.
   */
-  if(set_table_cache(thd, conn_mgr, old_open_cache_map, old_def_cache_map)) {
+  need_reset = false;
+  if(reset_table_cache(thd, check_tables_hdl.get(), 
+                      old_open_cache_map, old_def_cache_map)) {
     DBUG_RETURN(TRUE);
   }
 
   my_eof(thd);
-  DBUG_RETURN(res);
+  DBUG_RETURN(FALSE);
 }
 
 /**
@@ -1032,7 +1373,7 @@ static bool do_check_one_table(THD *thd, Cluster_conn_manager *conn_mgr,
     Compare table & column definition from each Spider/Remote server against
     this server's.
   */
-  for (enum_node_type type: CHECK_NODE_TYPES) {
+  for (enum_node_type type: DEFAULT_CHECK_NODE_TYPES) {
     map<string, MYSQL *>::const_iterator conn_it;
     map<string, MYSQL *> conns = conn_mgr->get_conn_map(type);
     for (conn_it = conns.begin(); conn_it != conns.end(); ++conn_it) {
@@ -1137,13 +1478,20 @@ static bool validate_db_grants(THD *thd, const char *db) {
  * @retval True on error, False on success
  * */
 static bool do_check_one_table_by_parallel_query(THD *thd, 
-                                                 Cluster_conn_manager *conn_mgr,
                                                  Check_tables_handling *check_tables_hdl,
                                                  const string &db_name, 
                                                  const string &table_name,
-                                                 bool do_send) 
+                                                 bool do_send,
+                                                 bool *consistency,
+                                                 list<Check_result_item> *check_res) 
 {
   Protocol *protocol = (do_send ? thd->get_protocol() : NULL);
+  if(consistency) {
+    *consistency = true;
+  }
+  if(check_res) {
+    check_res->clear();
+  }
   uint err_code = 0;
   string err_msg;
   char err_buff[1024];
@@ -1172,7 +1520,7 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
   /* Get column records for the table on this server */
   Table_info my_table_info;
   Column_records my_records;
-  string my_server = conn_mgr->get_my_server_name();
+  const string &my_server = check_tables_hdl->get_my_server_name();
 
   if (check_tables_hdl->get_table_info(my_server, NODE_TYPE_CTL, my_table_info, 
                                        err_code, err_msg)) {
@@ -1206,18 +1554,20 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
     Compare table & column definition from each Spider/Remote server against
     this server's.
   */
-  for (enum_node_type type: CHECK_NODE_TYPES) {
-    map<string, MYSQL *>::const_iterator conn_it;
-    map<string, MYSQL *> conns = conn_mgr->get_conn_map(type);
-    for (conn_it = conns.begin(); conn_it != conns.end(); ++conn_it) {
-      const string &server_name = conn_it->first;
+  const map<string, enum_node_type> &nodes_map = check_tables_hdl->get_nodes_map();
+  for (const auto& one_node : nodes_map)
+  {
+    const string& server_name = one_node.first;
+    enum_node_type server_type = one_node.second;
+    if(server_name != my_server)
+    {
       Table_info table_info;
       Column_records records;
       const char *status;
       Message_writer writer;
 
       /* For Remotes, add a numeric suffix according to their server_name */
-      string fixed_db_name = fix_db_name(db_name, server_name, type);
+      string fixed_db_name = fix_db_name(db_name, server_name, server_type);
 
       if (do_send && (protocol != NULL)) {
         protocol->start_row();
@@ -1230,7 +1580,7 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
       }
 
       /* STAGE 1: check table info */
-      if (check_tables_hdl->get_table_info(server_name, type, table_info, 
+      if (check_tables_hdl->get_table_info(server_name, server_type, table_info, 
                                            err_code, err_msg)) {
         writer.write(Message_writer::MSG_LEVEL_ERROR, "failed to get table information" \
                      ", err_code: %d, err_msg: %s", err_code, err_msg.c_str());
@@ -1243,21 +1593,24 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
         goto send_row;
       }
 
-      compare_table_info(my_table_info, table_info, type, writer);
+      compare_table_info(my_table_info, table_info, server_type, writer);
 
       /* STAGE 2: check column definitions */
-      if (check_tables_hdl->get_column_records(server_name, type, records,
+      if (check_tables_hdl->get_column_records(server_name, server_type, records,
                                                err_code, err_msg)) {
         writer.write(Message_writer::MSG_LEVEL_ERROR, "failed to get columns information"
                      ", err_code: %d, err_msg: %s", err_code, err_msg.c_str());
         goto send_row;
       }
 
-      compare_columns_info(my_records, records, type, writer);
+      compare_columns_info(my_records, records, server_type, writer);
 
     send_row:
+      status = (writer.has_error() ? "Error" : "OK");
+      if(consistency && writer.has_error()) {
+        *consistency = false;
+      }
       if (do_send && (protocol != NULL)) {
-        status = (writer.has_error() ? "Error" : "OK");
         protocol->store(status, strlen(status), system_charset_info);
         protocol->store(writer.raw_str(),
                         MY_MIN(writer.length(), max_message_length),
@@ -1268,6 +1621,81 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
              fixed_db_name.c_str(), table_name.c_str(), server_name.c_str());
           my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff);
           DBUG_RETURN(TRUE);
+        }
+      }
+      if (check_res) {
+        check_res->emplace_back(server_name, fixed_db_name, table_name, 
+                                status, writer.raw_str());
+      }
+    }
+  }
+
+  DBUG_RETURN(FALSE);
+}
+
+static bool check_db_existence(THD *thd, Check_tables_handling * check_tables_hdl,
+                              string my_db_name, bool do_send, 
+                              bool *consistency, list<Check_result_item> *check_res) 
+{
+  DBUG_ENTER("check_db_existence");
+  Protocol *protocol = (do_send ? thd->get_protocol() : NULL);
+  if(consistency) {
+    *consistency = true;
+  }
+  if(check_res) {
+    check_res->clear();
+  }
+
+  const char *SQL_SHOW_DATABASES_LIKE = "SHOW DATABASES LIKE '%s'";
+  char query_buff[512];
+  MYSQL_RES *result = NULL;
+
+  const map<string, enum_node_type> &nodes_map = check_tables_hdl->get_nodes_map();
+  for (const auto& one_node : nodes_map) 
+  {
+    const string& server_name = one_node.first;
+    enum_node_type server_type = one_node.second;
+    MYSQL *node_conn = check_tables_hdl->get_conn_map(server_type).at(server_name);
+    if(server_name != check_tables_hdl->get_my_server_name()) 
+    {
+      string fixed_db_name = fix_db_name(my_db_name, server_name, server_type);
+      my_snprintf(query_buff, sizeof(query_buff), SQL_SHOW_DATABASES_LIKE, fixed_db_name.c_str());
+      if (mysql_real_query(node_conn, query_buff, strlen(query_buff)) ||
+          !(result = mysql_store_result(node_conn))) {
+        string err_buff = "failed to execute query: " + string(query_buff) + 
+                          ", err_code: " + to_string(mysql_errno(node_conn)) + 
+                          ", err_msg: " + mysql_error(node_conn);
+        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff.c_str());
+        DBUG_RETURN(TRUE);
+      }
+      MYSQL_RES_GUARD(result);
+
+      if (0 == mysql_num_rows(result)) {
+        Message_writer writer;
+        const char *status;
+        writer.write(Message_writer::MSG_LEVEL_ERROR, "This database does not exist");
+        status = (writer.has_error() ? "Error" : "OK");
+
+        if (consistency) {
+          *consistency = false;
+        }
+        if (do_send && (protocol != NULL)) {
+          protocol->start_row();
+          protocol->store(server_name.c_str(), server_name.length(),
+                          system_charset_info);
+          protocol->store(fixed_db_name.c_str(), fixed_db_name.length(),
+                          system_charset_info);
+          protocol->store("-", strlen("-"), system_charset_info);
+          protocol->store(status, strlen(status), system_charset_info);
+          protocol->store(writer.raw_str(),
+                          MY_MIN(writer.length(), max_message_length),
+                          system_charset_info);
+          if (protocol->end_row())
+            DBUG_RETURN(TRUE);
+        }
+        if (check_res) {
+          check_res->emplace_back(server_name, fixed_db_name, "-", 
+                                  status, writer.raw_str());
         }
       }
     }
@@ -1281,31 +1709,46 @@ static bool do_check_one_table_by_parallel_query(THD *thd,
 
   Arguments:
     thd: Thread handler
-    conn_mgr: Connection manager.
+    check_tables_hdl: Check tables handling object
     db_name: Target database
     wild: Table name wildcard, null value means all tables in target db
     my_table_list: List of table names selected from the primary tdbctl node.
 */
-static bool check_redundant_tables(THD *thd, Cluster_conn_manager *conn_mgr, 
+static bool check_redundant_tables(THD *thd, Check_tables_handling * check_tables_hdl,
                                    string db_name, String *wild,
-                                   const list<string> &my_table_list, bool do_send) {
+                                   const list<string> &my_table_list, bool do_send, 
+                                   bool *consistency,
+                                   list<Check_result_item> *check_res) 
+{
+  DBUG_ENTER("check_redundant_tables");
   Protocol *protocol = (do_send ? thd->get_protocol() : NULL);
+  if(consistency) {
+    *consistency = true;
+  }
+  if(check_res) {
+    check_res->clear();
+  }
   unordered_set<string> my_tables_set(my_table_list.begin(), my_table_list.end());
 
   /*
     Find tables present on Spider/Remote nodes but not found on the current node.
   */
-  for(enum_node_type node_type: CHECK_NODE_TYPES) {
-    map<std::string, MYSQL *> conns_map = conn_mgr->get_conn_map(node_type);
-    for(const auto &node_conn: conns_map) {
-      string server_name = node_conn.first;
+  const map<string, enum_node_type> &nodes_map = check_tables_hdl->get_nodes_map();
+  for (const auto& one_node : nodes_map)
+  {
+    string server_name = one_node.first;
+    enum_node_type node_type = one_node.second;
+    MYSQL *node_conn = check_tables_hdl->get_conn_map(node_type).at(server_name);
+
+    if(server_name != check_tables_hdl->get_my_server_name()) 
+    {
       string fixed_db_name = fix_db_name(db_name, server_name, node_type);
 
       /*
         Fetch tables of Spider/Remote nodes.
       */
       list<string> node_tables;
-      if (fill_tables_list(node_conn.second, fixed_db_name.c_str(), wild, node_tables)) {
+      if (fill_tables_list(node_conn, fixed_db_name.c_str(), wild, node_tables)) {
         string err_buff = "failed to fetch tables of node " + server_name;
         my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff.c_str());
         DBUG_RETURN(TRUE);
@@ -1322,6 +1765,10 @@ static bool check_redundant_tables(THD *thd, Cluster_conn_manager *conn_mgr,
                      "table '%s.%s' exists unexpectedly", fixed_db_name.c_str(),
                      table_name.c_str());
           
+          status = (writer.has_error() ? "Error" : "OK");
+          if (consistency) {
+            *consistency = false;
+          }
           if (do_send && (protocol != NULL)) {
             protocol->start_row();
             protocol->store(server_name.c_str(), server_name.length(),
@@ -1330,7 +1777,6 @@ static bool check_redundant_tables(THD *thd, Cluster_conn_manager *conn_mgr,
                             system_charset_info);
             protocol->store(table_name.c_str(), table_name.length(),
                             system_charset_info);
-            status = (writer.has_error() ? "Error" : "OK");
             protocol->store(status, strlen(status), system_charset_info);
             protocol->store(writer.raw_str(),
                             MY_MIN(writer.length(), max_message_length),
@@ -1338,6 +1784,95 @@ static bool check_redundant_tables(THD *thd, Cluster_conn_manager *conn_mgr,
             if (protocol->end_row())
               DBUG_RETURN(TRUE);
           }
+
+          if(check_res) {
+            check_res->emplace_back(server_name, fixed_db_name, table_name, 
+                                    status, writer.raw_str());
+          }
+        }
+      }
+    }
+  }
+
+  DBUG_RETURN(FALSE);
+}
+
+static bool check_redundant_dbs(THD *thd, Check_tables_handling *check_tables_hdl,
+                                const list<string> &my_db_list, bool do_send, 
+                                bool *consistency,
+                                list<Check_result_item> *check_res)
+{
+  DBUG_ENTER("check_redundant_dbs");
+  Protocol *protocol = (do_send ? thd->get_protocol() : NULL);
+  if(consistency) {
+    *consistency = true;
+  }
+  if(check_res) {
+    check_res->clear();
+  }
+
+  /*
+    Find databases present on Spider/Remote nodes but not found on the current node.
+  */
+  const map<string, enum_node_type> &nodes_map = check_tables_hdl->get_nodes_map();
+  list<string> node_dbs;
+  for (const auto& one_node : nodes_map)
+  {
+    string server_name = one_node.first;
+    enum_node_type node_type = one_node.second;
+    MYSQL *node_conn = check_tables_hdl->get_conn_map(node_type).at(server_name);
+
+    if(server_name == check_tables_hdl->get_my_server_name()) {
+      continue;
+    }
+
+    unordered_set<string> my_dbs_set;
+    for(const string &db_name: my_db_list) {
+      my_dbs_set.insert(fix_db_name(db_name, server_name, node_type));
+    }
+
+    /*
+      Fetch databases of Spider/Remote nodes.
+    */
+    if (fill_dbs_list(node_conn, node_dbs)) {
+      string err_buff = "failed to fetch databases of node " + server_name;
+      my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff.c_str());
+      DBUG_RETURN(TRUE);
+    }
+
+    /*
+      Send redundant databases.
+    */
+    for(const string &db_name: node_dbs) {
+      if(my_dbs_set.find(db_name) == my_dbs_set.end()) {
+        Message_writer writer;
+        const char *status;
+        writer.write(Message_writer::MSG_LEVEL_ERROR,
+                    "database '%s' exists unexpectedly", db_name.c_str());
+        
+        status = (writer.has_error() ? "Error" : "OK");
+        if (consistency) {
+          *consistency = false;
+        }
+        if (do_send && (protocol != NULL)) {
+          protocol->start_row();
+          protocol->store(server_name.c_str(), server_name.length(),
+                          system_charset_info);
+          protocol->store(db_name.c_str(), db_name.length(),
+                          system_charset_info);
+          protocol->store("-", strlen("-"),
+                          system_charset_info);
+          protocol->store(status, strlen(status), system_charset_info);
+          protocol->store(writer.raw_str(),
+                          MY_MIN(writer.length(), max_message_length),
+                          system_charset_info);
+          if (protocol->end_row())
+            DBUG_RETURN(TRUE);
+        }
+
+        if(check_res) {
+          check_res->emplace_back(server_name, db_name, "-", 
+                                  status, writer.raw_str());
         }
       }
     }
@@ -1358,39 +1893,34 @@ static bool check_redundant_tables(THD *thd, Cluster_conn_manager *conn_mgr,
     true       error
     false      ok
 */
-static bool get_table_cache(THD *thd, Cluster_conn_manager *conn_mgr, 
+static bool get_table_cache(THD *thd, Check_tables_handling *check_tables_hdl, 
                             map<string, string> &open_cache_map, 
                             map<string, string> &def_cache_map) {
   const string sys_table_open_cache = "@@GLOBAL.table_open_cache";
   const string sys_table_def_cache = "@@GLOBAL.table_definition_cache";
   string server_name;
+  enum_node_type node_type;
   MYSQL *server_conn = NULL;
 
   open_cache_map.clear();
   def_cache_map.clear();
-  
-  vector<enum_node_type> node_type_array{NODE_TYPE_CTL};
-  std::copy(std::begin(CHECK_NODE_TYPES), std::end(CHECK_NODE_TYPES), std::back_inserter(node_type_array));
 
-  for(enum_node_type node_type: node_type_array) {
-    map<std::string, MYSQL *> conns_map = conn_mgr->get_conn_map(node_type);
-    for(const auto &node_conn: conns_map) {
-      server_name = node_conn.first;
-      server_conn = node_conn.second;
-      if((node_type == NODE_TYPE_CTL) && 
-         (server_name != conn_mgr->get_my_server_name())) {
-        continue;
-      }
+  const map<string, enum_node_type> &nodes_map = check_tables_hdl->get_nodes_map();
 
-      if(tc_get_variable_value(server_conn, sys_table_open_cache, 
-                               open_cache_map[server_name]) || 
-         tc_get_variable_value(server_conn, sys_table_def_cache, 
-                               def_cache_map[server_name])) {
-        string err_buff = "failed to get table_open_cache or table_definition_cache" \
-                          " of node " + server_name;
-        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff.c_str());
-        return true;
-      }
+  for(const auto &one_node: nodes_map)
+  {
+    server_name = one_node.first;
+    node_type = one_node.second;
+    server_conn = check_tables_hdl->get_conn_map(node_type).at(server_name);
+
+    if(tc_get_variable_value(server_conn, sys_table_open_cache, 
+                              open_cache_map[server_name]) || 
+        tc_get_variable_value(server_conn, sys_table_def_cache, 
+                              def_cache_map[server_name])) {
+      string err_buff = "failed to get table_open_cache or table_definition_cache" \
+                        " of node " + server_name;
+      my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), err_buff.c_str());
+      return true;
     }
   }
 
@@ -1398,7 +1928,7 @@ static bool get_table_cache(THD *thd, Cluster_conn_manager *conn_mgr,
 }
 
 /*
-  Set the values of table_open_cache and table_definition_cache 
+  Reset the values of table_open_cache and table_definition_cache 
   for all nodes related to table consistency validation.
 
   Args:
@@ -1409,49 +1939,54 @@ static bool get_table_cache(THD *thd, Cluster_conn_manager *conn_mgr,
     true       error
     false      ok
 */
-static bool set_table_cache(THD *thd, Cluster_conn_manager *conn_mgr, 
-                            const map<string, string> &open_cache_map, 
-                            const map<string, string> &def_cache_map) {
+static bool reset_table_cache(THD *thd, Check_tables_handling *check_tables_hdl, 
+                              const map<string, string> &open_cache_map, 
+                              const map<string, string> &def_cache_map) {
   const string sys_table_open_cache = "@@GLOBAL.table_open_cache";
   const string sys_table_def_cache = "@@GLOBAL.table_definition_cache";
   string server_name;
+  enum_node_type node_type;
   MYSQL *server_conn = NULL;
-  uint err_code;
+  uint err_code1, err_code2;
   string err_msg;
-  char info_buff[512];
+  std::vector<string> failed_nodes;
 
-  vector<enum_node_type> node_type_array{NODE_TYPE_CTL};
-  std::copy(std::begin(CHECK_NODE_TYPES), std::end(CHECK_NODE_TYPES), std::back_inserter(node_type_array));
+  const map<string, enum_node_type> &nodes_map = check_tables_hdl->get_nodes_map();
 
-  for(enum_node_type node_type: node_type_array) {
-    map<std::string, MYSQL *> conns_map = conn_mgr->get_conn_map(node_type);
-    for(const auto &node_conn: conns_map) {
-      server_name = node_conn.first;
-      server_conn = node_conn.second;
-      if((node_type == NODE_TYPE_CTL) && 
-         (server_name != conn_mgr->get_my_server_name())) {
-        continue;
-      }
+  for(const auto &one_node: nodes_map)
+  {
+    server_name = one_node.first;
+    node_type = one_node.second;
+    server_conn = check_tables_hdl->get_conn_map(node_type).at(server_name);
 
-      err_code = tc_set_variable_value(server_conn, sys_table_open_cache, 
-                                       open_cache_map.at(server_name), err_msg);
-      if(err_code > 0) {
-        snprintf(info_buff, sizeof(info_buff),
-                 "failed to set table_open_cache of node %s, err_code: %u, err_msg: %s", 
-                 server_name.c_str(), err_code, err_msg.c_str());
-        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), info_buff);
-        return true;
-      }
-      err_code = tc_set_variable_value(server_conn, sys_table_def_cache, 
-                                       def_cache_map.at(server_name), err_msg);
-      if(err_code > 0) {
-        snprintf(info_buff, sizeof(info_buff),
-                 "failed to set table_definition_cache of node %s, err_code: %u, err_msg: %s", 
-                 server_name.c_str(), err_code, err_msg.c_str());
-        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), info_buff);
-        return true;
-      }
+    err_code1 = tc_set_variable_value(server_conn, sys_table_open_cache, 
+                                      open_cache_map.at(server_name), err_msg);
+    if(err_code1 > 0) {
+      sql_print_error("failed to reset table_open_cache of node %s, err_code: %u, err_msg: %s",
+                        server_name.c_str(), err_code1, err_msg.c_str());
     }
+    err_code2 = tc_set_variable_value(server_conn, sys_table_def_cache, 
+                                      def_cache_map.at(server_name), err_msg);
+    if(err_code2 > 0) {
+      sql_print_error("failed to reset table_definition_cache of node %s, err_code: %u, err_msg: %s",
+                        server_name.c_str(), err_code2, err_msg.c_str());
+    }
+
+    if(err_code1 > 0 || err_code2 > 0) {
+      failed_nodes.push_back(server_name);
+    }
+  }
+
+  if (!failed_nodes.empty()) {
+    string failed_nodes_str;
+    for (const auto &node : failed_nodes) {
+      failed_nodes_str += node + ",";
+    }
+    failed_nodes_str.pop_back();
+    my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0),
+            ("failed to reset table_open_cache or table_definition_cache of nodes: " 
+            + failed_nodes_str).c_str());
+    return true;
   }
 
   return false;
@@ -1469,48 +2004,42 @@ static bool set_table_cache(THD *thd, Cluster_conn_manager *conn_mgr,
     true       error
     false      ok
 */
-static bool set_table_cache(THD *thd, Cluster_conn_manager *conn_mgr, 
+static bool set_table_cache(THD *thd, Check_tables_handling *check_tables_hdl, 
                             const string &open_cache_val, 
                             const string &def_cache_val) {
   const string sys_table_open_cache = "@@GLOBAL.table_open_cache";
   const string sys_table_def_cache = "@@GLOBAL.table_definition_cache";
   string server_name;
+  enum_node_type node_type;
   MYSQL *server_conn = NULL;
   uint err_code;
   string err_msg;
   char info_buff[512];
 
-  vector<enum_node_type> node_type_array{NODE_TYPE_CTL};
-  std::copy(std::begin(CHECK_NODE_TYPES), std::end(CHECK_NODE_TYPES), std::back_inserter(node_type_array));
+  const map<string, enum_node_type> &nodes_map = check_tables_hdl->get_nodes_map();
 
-  for(enum_node_type node_type: node_type_array) {
-    map<std::string, MYSQL *> conns_map = conn_mgr->get_conn_map(node_type);
-    for(const auto &node_conn: conns_map) {
-      server_name = node_conn.first;
-      server_conn = node_conn.second;
-      if((node_type == NODE_TYPE_CTL) && 
-         (server_name != conn_mgr->get_my_server_name())) {
-        continue;
-      }
+  for(const auto &node: nodes_map) {
+    server_name = node.first;
+    node_type = node.second;
+    server_conn = check_tables_hdl->get_conn_map(node_type).at(server_name);
 
-      err_code = tc_set_variable_value(server_conn, sys_table_open_cache, 
-                                       open_cache_val, err_msg);
-      if(err_code > 0) {
-        snprintf(info_buff, sizeof(info_buff),
-                 "failed to set table_open_cache of node %s, err_code: %u, err_msg: %s", 
-                 server_name.c_str(), err_code, err_msg.c_str());
-        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), info_buff);
-        return true;
-      }
-      err_code = tc_set_variable_value(server_conn, sys_table_def_cache, 
-                                       def_cache_val, err_msg);
-      if(err_code > 0) {
-        snprintf(info_buff, sizeof(info_buff),
-                 "failed to set table_definition_cache of node %s, err_code: %u, err_msg: %s", 
-                 server_name.c_str(), err_code, err_msg.c_str());
-        my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), info_buff);
-        return true;
-      }
+    err_code = tc_set_variable_value(server_conn, sys_table_open_cache, 
+                                      open_cache_val, err_msg);
+    if(err_code > 0) {
+      snprintf(info_buff, sizeof(info_buff),
+                "failed to set table_open_cache of node %s, err_code: %u, err_msg: %s", 
+                server_name.c_str(), err_code, err_msg.c_str());
+      my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), info_buff);
+      return true;
+    }
+    err_code = tc_set_variable_value(server_conn, sys_table_def_cache, 
+                                      def_cache_val, err_msg);
+    if(err_code > 0) {
+      snprintf(info_buff, sizeof(info_buff),
+                "failed to set table_definition_cache of node %s, err_code: %u, err_msg: %s", 
+                server_name.c_str(), err_code, err_msg.c_str());
+      my_error(ER_TCADMIN_CHECK_TABLES_ERROR, MYF(0), info_buff);
+      return true;
     }
   }
 
@@ -1623,4 +2152,217 @@ bool compare_columns_info(const Column_records &expected, const Column_records &
   }
 
   return ret;
+}
+
+void print_check_details(FILE *file, 
+                        const string &head, 
+                        const list<Check_result_item> &items,
+                        const string &end="\n\n") 
+{
+  fprintf(file, "%s\n", head.c_str());
+  if(!items.empty()) {
+    fprintf(file, "%s\n", Check_result_item::header().c_str());
+    for(list<Check_result_item>::const_iterator it = items.begin();
+        it != items.end(); ++it) {
+      fprintf(file, "%s\n", it->to_string().c_str());
+    }
+  }
+  fprintf(file, "%s", end.c_str());
+}
+
+
+TC_CHECK_SCHEMA_RESULT tc_check_schema_of_multiple_new_nodes(THD *thd, 
+                                              FOREIGN_SERVER *back_source,
+                                              const std::string &record_filename)
+{
+  FILE *record_file;
+  MYSQL *my_conn;
+  string my_server;
+  Cluster_conn_manager *conn_mgr;
+  list<string> all_dbs, tables;
+  bool break_when_find_inconsistency = true;
+  DBUG_ENTER("tc_check_schema_of_multiple_new_nodes");
+
+  if (!(record_file= my_fopen(record_filename.c_str(), 
+                            O_WRONLY | FILE_BINARY | O_APPEND,
+                            MYF(MY_WME)))) {
+    my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), 
+              ("failed to open record file: " + 
+              record_filename).c_str());
+    DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+  }
+  TC_File_Guard file_guard(record_file);
+
+  if (init_cluster_conn_manager(thd, TRUE, FALSE, TRUE))
+    DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+  conn_mgr = thd->cluster_conn_manager;
+
+  my_server = conn_mgr->get_my_server_name();
+  my_conn = conn_mgr->get_conn_map(NODE_TYPE_CTL).at(my_server);
+
+  thd_proc_info(thd, "Fetching databases to check");
+  if (fill_dbs_list(my_conn, all_dbs)) {
+    my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), 
+            "failed to fetch databases of current tdbctl node");
+    DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+  }
+
+  thd_proc_info(thd, "Launching parallel query threads to check schema");
+  string make_errmsg;
+  auto hdl_res = Check_tables_handling::make_handler_for_new_nodes(
+                      thd, thd->lex, back_source, make_errmsg);
+  Check_tables_handling *check_tables_hdl = hdl_res.first.get();
+  if(!check_tables_hdl) {
+    my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), 
+            ("failed to construct Table Check Handler: "
+             + make_errmsg).c_str());
+    DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+  }
+
+  /*
+    Get the table_open_cache and table_definition_cache values for all nodes 
+    related to ​table consistency validation, in order to facilitate recovery.
+  */
+  map<string, string> old_open_cache_map;
+  map<string, string> old_def_cache_map;
+  if(get_table_cache(thd, check_tables_hdl, 
+                    old_open_cache_map, old_def_cache_map)) {
+    DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+  }
+
+  bool need_reset = true;
+  std::function<void()> reset_table_cache_func = [&]() {
+    if(!need_reset) {
+      return;
+    }
+    reset_table_cache(thd, check_tables_hdl, 
+                      old_open_cache_map, old_def_cache_map); 
+  };
+  auto reset_table_cache_guard = TC_SCOPE_EXIT<std::function<void()>>(reset_table_cache_func);
+
+  /*
+    Set the system variables table_open_cache and table_definition_cache 
+    on cluster nodes to the values of the current primary tdbctl 
+    to minimize the risk of OOM (Out Of Memory).
+  */
+  string my_open_cache = old_open_cache_map[my_server];
+  string my_def_cache = old_def_cache_map[my_server];
+  if(set_table_cache(thd, check_tables_hdl, 
+                    my_open_cache, my_def_cache)) {
+    DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+  }
+
+  if(check_tables_hdl->launch_parallel_query_threads()) {
+    my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), "failed to create sub-threads");
+    DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+  }
+
+  auto report_inconsistency = [&]() {
+    sql_print_error("Found schema inconsistencies of new nodes. "
+                    "For details, see %s", record_filename.c_str());               
+    my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), 
+              ("found schema inconsistencies of new nodes. "
+              "For details, see " + record_filename).c_str());
+  };
+
+  TC_CHECK_SCHEMA_RESULT res = TC_CHECK_SCHEMA_SUCCESS;
+  bool consistency = TRUE;
+  list<Check_result_item> check_res;
+  for(const string &db_name: all_dbs) 
+  {
+    thd_proc_info(thd, ("Checking database " + db_name).c_str());
+
+    if (validate_db_grants(thd, db_name.c_str()))
+      DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+
+    if(check_db_existence(thd, check_tables_hdl, db_name, false, 
+                            &consistency, &check_res)) {
+      DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+    }
+    if(!consistency) {
+      res = TC_CHECK_SCHEMA_INCONSISTENT;
+      print_check_details(record_file, "Found missing databases:",
+                          check_res);
+      if(break_when_find_inconsistency) {
+        report_inconsistency();
+        DBUG_RETURN(TC_CHECK_SCHEMA_INCONSISTENT);
+      }
+    }
+
+    if (fill_tables_list(my_conn, db_name.c_str(), NULL, tables)) {
+      my_error(ER_TCADMIN_CREATE_NODE_ERROR, MYF(0), 
+                ("failed to fetch tables of database " + db_name +
+                " on current tdbctl node").c_str());
+      DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+    }
+
+    for (const string &table: tables) {
+      if (do_check_one_table_by_parallel_query(thd, check_tables_hdl, db_name, table, false, 
+                                                &consistency, &check_res)) {
+        DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+      }
+      if(!consistency) {
+        res = TC_CHECK_SCHEMA_INCONSISTENT;
+        print_check_details(record_file, "Found inconsistent tables:",
+                          check_res);
+        if(break_when_find_inconsistency) {
+          report_inconsistency();
+          DBUG_RETURN(TC_CHECK_SCHEMA_INCONSISTENT);
+        }
+      }
+    }
+
+    /*
+      Process tables that are unexpectedly present compared to the primary tdbctl node.
+    */
+    if(check_redundant_tables(thd, check_tables_hdl, db_name, NULL, tables, false,
+                              &consistency, &check_res)) {
+      DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+    }
+    if(!consistency) {
+      res = TC_CHECK_SCHEMA_INCONSISTENT;
+      print_check_details(record_file, "Found redundant tables:",
+                          check_res);
+      if(break_when_find_inconsistency) {
+        report_inconsistency();
+        DBUG_RETURN(TC_CHECK_SCHEMA_INCONSISTENT);
+      }
+    }
+  }
+
+  /*
+    Process databases that are unexpectedly present compared to the primary tdbctl node.
+  */
+  thd_proc_info(thd, "Checking redundant databases");
+  if(check_redundant_dbs(thd, check_tables_hdl, all_dbs, false, 
+                        &consistency, &check_res)) {
+    DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+  }
+  if(!consistency) {
+    res = TC_CHECK_SCHEMA_INCONSISTENT;
+    print_check_details(record_file, "Found redundant databases:",
+                      check_res);
+    if(break_when_find_inconsistency) {
+      report_inconsistency();
+      DBUG_RETURN(TC_CHECK_SCHEMA_INCONSISTENT);
+    }
+  }
+
+  if(res == TC_CHECK_SCHEMA_SUCCESS) {
+    print_check_details(record_file, "No inconsistencies were found", 
+                      {}, "");
+  } else if(res == TC_CHECK_SCHEMA_INCONSISTENT) {
+    report_inconsistency();
+  }
+
+  /*
+    Restore the table_open_cache and table_definition_cache values to their original values.
+  */
+  need_reset = false;
+  if(reset_table_cache(thd, check_tables_hdl, 
+                      old_open_cache_map, old_def_cache_map)) {
+    DBUG_RETURN(TC_CHECK_SCHEMA_FAILED);
+  }
+
+  DBUG_RETURN(res);
 }

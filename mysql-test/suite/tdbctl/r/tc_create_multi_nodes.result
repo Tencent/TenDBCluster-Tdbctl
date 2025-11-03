@@ -1,0 +1,453 @@
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
+SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
+SELECT @@GLOBAL.tc_routing_log_file INTO @origin_tc_routing_log_file;
+SELECT @@GLOBAL.tc_routing_log INTO @origin_tc_routing_log;
+SELECT @@SESSION.tc_read_timeout INTO @origin_tc_read_timeout;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+# Original routing table.
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Case 1: TDBCTL CREATE NODE execution failed due to option validation check failure.
+
+# Set routing.
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER0;
+TDBCTL DROP NODE SPIDER1;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Skip dump database.
+SET tc_admin=ON;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+
+# Missing required options
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql');
+ERROR HY000: CREATE NODE FAILED: USER, PASSWORD, HOST, and PORT options should all be specified
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PORT 3306),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306)
+WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: USER, PASSWORD, HOST, and PORT options should all be specified
+# NUMBER options cannot be specified when adding multiple servers
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306, NUMBER 1),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: NUMBER options cannot be specified when adding multiple servers
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306, NUMBER 2)
+WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: NUMBER options cannot be specified when adding multiple servers
+# The specified ip#port already exists
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: the ip#port 172.18.0.7#3306 is duplicated in the new servers list
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306)
+WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: the ip#port 172.18.0.6#3306 is duplicated in the new servers list
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.5', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: the ip#port 172.18.0.5#3306 already exists in the mysql.servers
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.11', USER 'mysql', PASSWORD 'mysql', PORT 3306)
+WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: the ip#port 172.18.0.11#3306 already exists in the mysql.servers
+# The specified ip is not consistent with the cluster
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '127.0.0.1', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: mysql.servers can't contain both loop-back network address and external network address, please change the value of 'host' column
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST 'localhost', USER 'mysql', PASSWORD 'mysql', PORT 3306)
+WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: mysql.servers can't contain both loop-back network address and external network address, please change the value of 'host' column
+# server index has reached the maximum limit
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306, NUMBER 9223372036854775807);
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: The 'SPIDER' server index has reached the maximum limit, please modify it before adding new servers
+TDBCTL DROP NODE SPIDER9223372036854775807;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306, NUMBER 9223372036854775806);
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR HY000: CREATE NODE FAILED: The 'SPIDER' server index has reached the maximum limit, please modify it before adding new servers
+TDBCTL DROP NODE SPIDER9223372036854775806;
+
+# Case 2: TDBCTL CREATE NODE execution failed due to auto-increment configuration conflicts.
+
+SET tc_admin=ON;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306)
+WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: Found auto-increment setting conflicts: please check the auto-increment configurations for the new spider nodes and the existing spider nodes in the cluster
+SET tc_enable_autoinc_check = OFF;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306)
+WITH SCHEMA;
+Warnings:
+Warning	12034	WITH SCHEMA option was skipped: No server to dump schema
+SET tc_enable_autoinc_check = ON;
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Restore mysql.servers;
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+# Case 3: Test the rollback functionality of the TDBCTL CREATE NODE command.
+
+# Set routing.
+SET tc_admin=ON;
+TDBCTL DROP NODE SPIDER0;
+TDBCTL DROP NODE SPIDER1;
+TDBCTL DROP NODE SPIDER2;
+TDBCTL FLUSH ROUTING;
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Skip database backup and autoinc check
+SET tc_admin=ON;
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+SET tc_enable_autoinc_check = OFF;
+
+# Set tc_read_timeout
+SET SESSION tc_read_timeout = 3;
+
+# Get datadir
+datadir:/data1/mysqldata/data/
+
+# Lock TDBCTL1 mysql.user
+# tdbctl1 session
+SET tc_admin=OFF;
+LOCK TABLE mysql.user WRITE;
+
+# Set routing log: /data1/mysqldata/data//create_nodes_rollback1
+SET @@GLOBAL.tc_routing_log_file = '/data1/mysqldata/data//create_nodes_rollback1';;
+SET @@GLOBAL.tc_routing_log = ON;
+# Failed during the "do grants" part, roll back the changes to the mysql.servers table and server_cache
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+ERROR 08S01: Got timeout reading communication packets
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Show routing log
+/usr/local/mysql/bin/mysqld, Version: 5.7.20-tdbctl-test-log (MySQL Community Server (GPL)). started with:
+Tcp port: 3306  Unix socket: /data1/mysqldata/mysql.sock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 )
+Target_server: (self)
+Info: 
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	0x0719200ca43bc65814560d8ba96cac63	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	0xedaf0edfd096e27e14e7fdb28e0e60ea	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	0x06ebf97b1e79ba9676526a2c005d57cc	3306		SPIDER	
+SPT0	172.18.0.2		mysql	0xb69204bd70080a70f9aa77ffb78806ec	3306		mysql	
+SPT1	172.18.0.3		mysql	0x3cde25fae496f2cfbed6fa7045257da1	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	0x48aceb7235e820c1cc67cfe66a4bdf30	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	0x9c4fd7330919e9c83a5583aeca26e0aa	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	0x8ff4de62e2e35010f03b040403213b8e	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	0x84618cf90e7073545767dd91aa905da1	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	0x432c4d7dbfa2b93c94d615d5a8f5c953	3306		TDBCTL	
+10 rows in set (version_num: <ignored>)
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 )
+Target_server: (self)
+Info: 
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	0xb69204bd70080a70f9aa77ffb78806ec	3306		mysql	
+SPT1	172.18.0.3		mysql	0x3cde25fae496f2cfbed6fa7045257da1	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	0x48aceb7235e820c1cc67cfe66a4bdf30	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	0x9c4fd7330919e9c83a5583aeca26e0aa	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	0x8ff4de62e2e35010f03b040403213b8e	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	0x84618cf90e7073545767dd91aa905da1	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	0x432c4d7dbfa2b93c94d615d5a8f5c953	3306		TDBCTL	
+7 rows in set (version_num: <ignored>)
+
+
+# Unlock TDBCTL1 mysql.user and Lock TDBCTL1 mysql.servers
+# tdbctl1 session
+UNLOCK TABLES;
+LOCK TABLE mysql.servers WRITE;
+
+# Set routing log: /data1/mysqldata/data//create_nodes_rollback2
+SET @@GLOBAL.tc_routing_log_file = '/data1/mysqldata/data//create_nodes_rollback2';;
+SET @@GLOBAL.tc_routing_log = ON;
+# Failed during the "flush routing" part, roll back the changes to the mysql.servers table and server_cache
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306)
+WITH SCHEMA;
+ERROR HY000: CREATE NODE FAILED: with schema option, failed to modify mysql.servers table
+TDBCTL1: .
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SELECT * FROM information_schema.TDBCTL_SERVER_CACHE;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+
+# Show routing log
+/usr/local/mysql/bin/mysqld, Version: 5.7.20-tdbctl-test-log (MySQL Community Server (GPL)). started with:
+Tcp port: 3306  Unix socket: /data1/mysqldata/mysql.sock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER_foreign_172.18.0.6#3306,SPIDER_foreign_172.18.0.7#3306,SPIDER_foreign_172.18.0.8#3306
+Info: set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER_foreign_172.18.0.6#3306,SPIDER_foreign_172.18.0.7#3306,SPIDER_foreign_172.18.0.8#3306
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER_foreign_172.18.0.6#3306,SPIDER_foreign_172.18.0.7#3306,SPIDER_foreign_172.18.0.8#3306
+Info: flush tables with no block;flush table with read lock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER_foreign_172.18.0.6#3306,SPIDER_foreign_172.18.0.7#3306,SPIDER_foreign_172.18.0.8#3306
+Info: flush privileges
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER_foreign_172.18.0.6#3306,SPIDER_foreign_172.18.0.7#3306,SPIDER_foreign_172.18.0.8#3306
+Info: unlock tables
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: (self)
+Info: 
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	0x0719200ca43bc65814560d8ba96cac63	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	0xedaf0edfd096e27e14e7fdb28e0e60ea	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	0x06ebf97b1e79ba9676526a2c005d57cc	3306		SPIDER	
+SPT0	172.18.0.2		mysql	0xb69204bd70080a70f9aa77ffb78806ec	3306		mysql	
+SPT1	172.18.0.3		mysql	0x3cde25fae496f2cfbed6fa7045257da1	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	0x48aceb7235e820c1cc67cfe66a4bdf30	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	0x9c4fd7330919e9c83a5583aeca26e0aa	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	0x8ff4de62e2e35010f03b040403213b8e	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	0x84618cf90e7073545767dd91aa905da1	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	0x432c4d7dbfa2b93c94d615d5a8f5c953	3306		TDBCTL	
+10 rows in set (version_num: <ignored>)
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER0,SPIDER1,SPIDER2
+Info: set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER0,SPIDER1,SPIDER2
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER0,SPIDER1,SPIDER2
+Info: flush tables with no block;flush table with read lock
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER0,SPIDER1,SPIDER2
+Info: flush privileges
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: SPIDER0,SPIDER1,SPIDER2
+Info: unlock tables
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: TDBCTL1,TDBCTL2
+Info: set tc_admin=0;set sql_log_bin = off;set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: TDBCTL1,TDBCTL2
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: TDBCTL1,TDBCTL2
+Info: set tc_admin=0;set sql_log_bin = off;set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: TDBCTL1,TDBCTL2
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: TDBCTL1,TDBCTL2
+Info: set tc_admin=0;set sql_log_bin = off;set lock_wait_timeout = 60;set wait_timeout = 180
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: TDBCTL1,TDBCTL2
+Info: The SQL for modifying mysql.servers is hidden
+
+Time: <ignored>
+Thread_id: <ignored>
+Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
+Target_server: (self)
+Info: 
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPT0	172.18.0.2		mysql	0xb69204bd70080a70f9aa77ffb78806ec	3306		mysql	
+SPT1	172.18.0.3		mysql	0x3cde25fae496f2cfbed6fa7045257da1	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	0x48aceb7235e820c1cc67cfe66a4bdf30	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	0x9c4fd7330919e9c83a5583aeca26e0aa	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	0x8ff4de62e2e35010f03b040403213b8e	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	0x84618cf90e7073545767dd91aa905da1	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	0x432c4d7dbfa2b93c94d615d5a8f5c953	3306		TDBCTL	
+7 rows in set (version_num: <ignored>)
+
+
+# Unlock TDBCTL1 tables
+# tdbctl1 session
+UNLOCK TABLES;
+
+# Restore mysql.servers;
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+# Restore to the initial state.
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@SESSION.tc_read_timeout = @origin_tc_read_timeout;
+SET @@GLOBAL.tc_routing_log = @origin_tc_routing_log;
+SET @@GLOBAL.tc_routing_log_file = @origin_tc_routing_log_file;
+SET @@GLOBAL.tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
+SET @@SESSION.tc_admin = @origin_tc_admin;
