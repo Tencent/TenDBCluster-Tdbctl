@@ -84,6 +84,8 @@ GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.7' WITH GRANT OPTION
 
 show variables like  'server_uuid'
 
+show variables like  'server_uuid'
+
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
 TDBCTL ALTER NODE SPIDER1 OPTIONS (host '172.18.0.6', port 3306) WITH SYNC
@@ -96,6 +98,8 @@ set tc_admin = 0;
 drop user 'mysql'@'172.18.0.6'
 CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.6' IDENTIFIED WITH 'mysql_native_password' AS '<secret>'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.6' WITH GRANT OPTION
+
+show variables like  'server_uuid'
 
 show variables like  'server_uuid'
 
@@ -242,6 +246,12 @@ TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC
 
 show variables like  'server_uuid'
 
+show variables like  'server_uuid'
+
+show variables like  'server_uuid'
+
+show variables like  'server_uuid'
+
 --------------------
 SELECT argument AS spider0_log FROM mysql.general_log WHERE user_host LIKE '%172.18.0.9%' AND argument NOT LIKE '%spider0_log%' AND command_type NOT LIKE 'Connect';
 spider0_log
@@ -339,9 +349,13 @@ TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC
 
 show variables like  'server_uuid'
 
+show variables like  'server_uuid'
+
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
 TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC
+
+show variables like  'server_uuid'
 
 show variables like  'server_uuid'
 
@@ -349,6 +363,8 @@ SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
 SET tc_admin=ON
 TDBCTL FLUSH ROUTING CACHE
+
+show variables like  'server_uuid'
 
 show variables like  'server_uuid'
 

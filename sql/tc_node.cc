@@ -390,25 +390,34 @@ std::pair<FOREIGN_SERVER *, std::string> tc_find_dump_source_node(THD *thd, LEX 
 
   /*
     Node selection algorithm with priority:
-    1) Exclude the newly added node (host/port doesn't match)
+    1) Exclude the newly added nodes (host/port doesn't match)
     2) Prefer local server (IP matches current node)
     3) Fall back to first server in alphabetical order
   */
   for(auto it = server_list.begin(); it != server_list.end(); it++) {
-    // Skip the newly added node (current operation target)
-    if(!(strcasecmp((*it)->host, lex->server_options.get_host()) == 0 &&
-       (*it)->port == lex->server_options.get_port())) {
-      // First candidate server
-      if (dump_server == NULL) {
-        dump_server = *it;
-      } 
-      // Prefer local server (localhost/127.0.0.1 or matching IP)
-      if (!strcasecmp((*it)->host, local_ip.c_str()) || 
-          !strcasecmp((*it)->host, "127.0.0.1") ||
-          !strcasecmp((*it)->host, "localhost")) {
-        dump_server = *it;
-        break;  // Found optimal candidate, stop searching
+    // Skip the newly added nodes (current operation targets)
+    bool found_target = false;
+    for(auto &one_server: lex->server_options_list) {
+      if ((strcasecmp((*it)->host, one_server.get_host()) == 0) &&
+          ((*it)->port == one_server.get_port())) {
+        found_target = true;
+        break;
       }
+    }
+    if (found_target) {
+      continue;
+    }
+
+    // First candidate server
+    if (dump_server == NULL) {
+      dump_server = *it;
+    } 
+    // Prefer local server (localhost/127.0.0.1 or matching IP)
+    if (!strcasecmp((*it)->host, local_ip.c_str()) || 
+        !strcasecmp((*it)->host, "127.0.0.1") ||
+        !strcasecmp((*it)->host, "localhost")) {
+      dump_server = *it;
+      break;  // Found optimal candidate, stop searching
     }
   }
 
