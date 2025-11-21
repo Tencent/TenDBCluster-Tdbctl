@@ -1128,7 +1128,7 @@ public:
   Tc_Error(int code, const string &msg) : m_code(code), m_msg(msg) {}
   int code() const { return m_code; }
   const string &msg() const { return m_msg; }
-  operator bool() const { return m_code != 0; }
+  explicit operator bool() const { return m_code != 0; }
 private:
   int m_code;
   string m_msg;

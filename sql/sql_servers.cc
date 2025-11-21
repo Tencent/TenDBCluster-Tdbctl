@@ -1777,9 +1777,9 @@ static Gen_Sql_Result generate_routing_sql_for_spider(bool is_slave_routing)
 
   // now, get current server name as the primary tdbctl name
   int ret = 0;
-	MEM_ROOT mem_root;
+  MEM_ROOT mem_root;
   init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
-	string primary_tdbctl_name = tc_get_server_name(ret, &mem_root, TDBCTL_WRAPPER, true);
+  string primary_tdbctl_name = tc_get_server_name(ret, &mem_root, TDBCTL_WRAPPER, true);
   free_root(&mem_root, MYF(0));
 
   if (ret)
@@ -2224,7 +2224,7 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
   }
   string replace_sql = gen_sql_ret.sql;
 
-  if (!is_flush_only_cache && gen_sql_ret.error)  //empty replace sql
+  if (!is_flush_only_cache && bool(gen_sql_ret.error))  //empty replace sql
   {
     return FLUSH_ROUTING_RESULT::GEN_SQL_FAILURE;
   }
@@ -2322,7 +2322,7 @@ enum FLUSH_ROUTING_RESULT tc_sync_servers_table_by_wrapper(map<string, tc_exec_i
   }
   std::string replace_sql = gen_sql_ret.sql;
 
-  if (gen_sql_ret.error)  //empty replace sql
+  if (bool(gen_sql_ret.error))  //empty replace sql
   {
     return FLUSH_ROUTING_RESULT::GEN_SQL_FAILURE;
   }
@@ -3000,7 +3000,7 @@ int tc_check_and_repair_routing()
   }
 
   gen_sql_ret = generate_routing_sql_for_spider();
-  if (gen_sql_ret.error) {
+  if (bool(gen_sql_ret.error)) {
     sql_print_error("failed to generate routing sql when repairing routing");
     result = 1;
     goto finish;
