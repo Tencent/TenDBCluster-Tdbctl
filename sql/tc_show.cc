@@ -703,9 +703,9 @@ void tc_fill_node_slave_status(MYSQL *mysql,
         
         node_info.feature_info.emplace_back(tc_node_info::NODE_INFO_KEY_MASTER_NAME, master_name);
         node_info.feature_info.emplace_back(tc_node_info::NODE_INFO_KEY_SLAVE_STATUS, slave_status_json_str);
-        
-        mysql_free_result(slave_status_res);
       }
+      
+      mysql_free_result(slave_status_res);
     }
     else 
     {
