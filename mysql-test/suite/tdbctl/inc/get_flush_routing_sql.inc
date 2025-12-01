@@ -1,0 +1,25 @@
+--let $sql_pat1 = %delete from mysql.servers%
+--let $sql_pat2 = %replace into mysql.servers%
+--let $sql_pat3 = %begin;delete from mysql.servers%;replace into mysql.servers%;commit;%
+
+--echo # show flush routing sql.
+--disable_query_log
+--echo --------------------
+--connection tdbctl0
+--eval SELECT argument AS '[tdbctl0]' FROM mysql.general_log WHERE (argument NOT LIKE '%mysql.general_log%') AND ((argument LIKE '$sql_pat1') OR (argument LIKE '$sql_pat2'));
+--connection tdbctl1
+--eval SELECT argument AS '[tdbctl1]' FROM mysql.general_log WHERE (argument NOT LIKE '%mysql.general_log%') AND ((argument LIKE '$sql_pat1') OR (argument LIKE '$sql_pat2'));
+--connection tdbctl2
+--eval SELECT argument AS '[tdbctl2]' FROM mysql.general_log WHERE (argument NOT LIKE '%mysql.general_log%') AND ((argument LIKE '$sql_pat1') OR (argument LIKE '$sql_pat2'));
+--connection spider0
+--eval SELECT argument AS '[spider0]' FROM mysql.general_log WHERE (argument NOT LIKE '%mysql.general_log%') AND (argument LIKE '$sql_pat3');
+--connection spider1
+--eval SELECT argument AS '[spider1]' FROM mysql.general_log WHERE (argument NOT LIKE '%mysql.general_log%') AND (argument LIKE '$sql_pat3');
+--connection spider2
+--eval SELECT argument AS '[spider2]' FROM mysql.general_log WHERE (argument NOT LIKE '%mysql.general_log%') AND (argument LIKE '$sql_pat3');
+--connection remote_master0
+--eval SELECT argument AS '[remote_master0]' FROM mysql.general_log WHERE (argument NOT LIKE '%mysql.general_log%') AND ((argument LIKE '$sql_pat1') OR (argument LIKE '$sql_pat2') OR (argument LIKE '$sql_pat3'));
+--connection remote_master1
+--eval SELECT argument AS '[remote_master1]' FROM mysql.general_log WHERE (argument NOT LIKE '%mysql.general_log%') AND ((argument LIKE '$sql_pat1') OR (argument LIKE '$sql_pat2') OR (argument LIKE '$sql_pat3'));
+--echo --------------------
+--enable_query_log

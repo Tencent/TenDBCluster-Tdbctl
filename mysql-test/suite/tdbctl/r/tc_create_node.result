@@ -267,6 +267,8 @@ TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql',
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
 SELECT @@server_uuid
+show variables like  'server_uuid'
+
 
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
@@ -294,6 +296,8 @@ GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.8' WITH GRANT OPTION
 
 show variables like  'server_uuid'
 
+show variables like  'server_uuid'
+
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
 --------------------
@@ -302,6 +306,8 @@ tdbctl1_log
 
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
+show variables like  'server_uuid'
+
 
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
@@ -314,6 +320,8 @@ set tc_admin = 0;
 drop user 'mysql'@'172.18.0.8'
 CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.8' IDENTIFIED WITH 'mysql_native_password' AS '<secret>'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.8' WITH GRANT OPTION
+
+show variables like  'server_uuid'
 
 show variables like  'server_uuid'
 
@@ -332,6 +340,8 @@ tdbctl2_log
 
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
+show variables like  'server_uuid'
+
 
 SET SESSION tc_admin=0
 SET SESSION sql_log_bin=0
@@ -344,6 +354,8 @@ set tc_admin = 0;
 drop user 'mysql'@'172.18.0.8'
 CREATE USER IF NOT EXISTS 'mysql'@'172.18.0.8' IDENTIFIED WITH 'mysql_native_password' AS '<secret>'
 GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'172.18.0.8' WITH GRANT OPTION
+
+show variables like  'server_uuid'
 
 show variables like  'server_uuid'
 

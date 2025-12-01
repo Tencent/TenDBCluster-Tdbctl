@@ -311,7 +311,7 @@ Time: <ignored>
 Thread_id: <ignored>
 Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
 Target_server: SPIDER_foreign_172.18.0.6#3306,SPIDER_foreign_172.18.0.7#3306,SPIDER_foreign_172.18.0.8#3306
-Info: The SQL for modifying mysql.servers is hidden
+Info: begin;delete from mysql.servers where Server_name not in ("SPT1","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPT1","172.18.0.3","","mysql","<secret>",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","<secret>",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","<secret>",3306,"","TDBCTL","");commit;flush tables with no block;
 
 Time: <ignored>
 Thread_id: <ignored>
@@ -359,7 +359,7 @@ Time: <ignored>
 Thread_id: <ignored>
 Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
 Target_server: SPIDER0,SPIDER1,SPIDER2
-Info: The SQL for modifying mysql.servers is hidden
+Info: begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","<secret>",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","<secret>",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","<secret>",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","<secret>",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","<secret>",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","<secret>",3306,"","TDBCTL","");commit;flush tables with no block;
 
 Time: <ignored>
 Thread_id: <ignored>
@@ -389,7 +389,7 @@ Time: <ignored>
 Thread_id: <ignored>
 Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
 Target_server: TDBCTL1,TDBCTL2
-Info: The SQL for modifying mysql.servers is hidden
+Info: delete from mysql.servers;replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","<secret>",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","<secret>",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","<secret>",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","<secret>",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","<secret>",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","<secret>",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","<secret>",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","<secret>",3306,"","SPIDER",""),("TDBCTL1","172.18.0.10","","mysql","<secret>",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","<secret>",3306,"","TDBCTL","")
 
 Time: <ignored>
 Thread_id: <ignored>
@@ -401,7 +401,7 @@ Time: <ignored>
 Thread_id: <ignored>
 Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
 Target_server: TDBCTL1,TDBCTL2
-Info: The SQL for modifying mysql.servers is hidden
+Info: delete from mysql.servers;replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","<secret>",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","<secret>",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","<secret>",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","<secret>",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","<secret>",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","<secret>",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","<secret>",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","<secret>",3306,"","SPIDER",""),("TDBCTL1","172.18.0.10","","mysql","<secret>",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","<secret>",3306,"","TDBCTL","")
 
 Time: <ignored>
 Thread_id: <ignored>
@@ -413,7 +413,7 @@ Time: <ignored>
 Thread_id: <ignored>
 Command: TDBCTL CREATE NODE WRAPPER 'SPIDER' OPTIONS ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.6', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.7', PORT 3306 ), ( PASSWORD '<secret>', USER 'mysql', HOST '172.18.0.8', PORT 3306 ) WITH SCHEMA
 Target_server: TDBCTL1,TDBCTL2
-Info: The SQL for modifying mysql.servers is hidden
+Info: delete from mysql.servers;replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","<secret>",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","<secret>",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","<secret>",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","<secret>",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","<secret>",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","<secret>",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","<secret>",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","<secret>",3306,"","SPIDER",""),("TDBCTL1","172.18.0.10","","mysql","<secret>",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","<secret>",3306,"","TDBCTL","")
 
 Time: <ignored>
 Thread_id: <ignored>

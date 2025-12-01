@@ -2,10 +2,10 @@
 #include "mysql/service_my_snprintf.h"
 #include "sql_string.h"
 #include "mysql.h"
-#include "errmsg.h"
 #include "tc_dump.h"
 #include "tc_base.h"
 #include "my_dir.h"
+#include "errmsg.h"
 
 #include <cstring>
 #include <sys/times.h>

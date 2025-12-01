@@ -99,6 +99,7 @@ enum enum_servers_table_field
 const char *FLUSH_ROUTING_INFO[] = {
   "success", 
   "node type that cannot flush routing", 
+  "fail to generate flush routing sql",
   "failed to set option", 
   "failed to modify mysql.servers table", 
   "failed to execute 'flush tables; flush table with read lock;'", 
@@ -111,8 +112,26 @@ const char *FLUSH_ROUTING_INFO[] = {
 
 static int check_all_privileges(MYSQL *mysql, const AUTH_INFO &auth);
 
-static std::string generate_routing_sql_for_spider(bool is_slave_routing = false);
-static std::string generate_routing_sql_for_tdbctl();
+class Gen_Sql_Result
+{
+public:
+  Gen_Sql_Result() {}
+  Gen_Sql_Result(string sql, string sql_safe) : sql(sql), sql_safe(sql_safe) {}
+  Gen_Sql_Result(int err_code, const string &err_msg) : error(err_code, err_msg) {}
+  Tc_Error error;
+  string sql;
+  string sql_safe;
+
+  static Gen_Sql_Result make_error_result(int err_code, const string &err_msg) {
+    return Gen_Sql_Result(err_code, err_msg);
+  }
+  static Gen_Sql_Result make_sql_result(string sql, string sql_safe) {
+    return Gen_Sql_Result(sql, sql_safe);
+  }
+};
+
+static Gen_Sql_Result generate_routing_sql_for_spider(bool is_slave_routing = false);
+static Gen_Sql_Result generate_routing_sql_for_tdbctl();
 static bool get_server_from_table_to_cache(TABLE *table);
 
 static uchar *servers_cache_get_key(FOREIGN_SERVER *server, size_t *length,
@@ -1653,8 +1672,15 @@ void trim_wrapper_name_slave_suffix(std::string &wrapper_name)
 
   tdbctl routing info: all spider,spider_slave,remote,remote_slave and tdbctl nodes
 */
-static std::string generate_routing_sql_for_tdbctl()
+static Gen_Sql_Result generate_routing_sql_for_tdbctl()
 {
+  // first of all, make sure the current server is primary tdbctl
+  if (tdbctl_is_primary != 1) {
+    string err_msg = "current server is not primary tdbctl, null sql returned";
+    sql_print_error(err_msg.c_str());
+    return Gen_Sql_Result::make_error_result(1, err_msg);
+  }
+
   ulong records = 0;
   FOREIGN_SERVER* server;
   mysql_rwlock_rdlock(&THR_LOCK_servers);
@@ -1666,20 +1692,21 @@ static std::string generate_routing_sql_for_tdbctl()
 
   if (records == 0)
   {
-    sql_print_warning("no records found in mysql.servers, null sql returned");
+    string err_msg = "no records found in mysql.servers, null sql returned";
+    sql_print_error("%s", err_msg.c_str());
     mysql_rwlock_unlock(&THR_LOCK_servers);
-    return "";
+    return Gen_Sql_Result::make_error_result(1, err_msg);
   }
 
   /*
     flush the mysql.server info to other tdbctl nodes
   */
   ss.str("");
-  //ss << "delete from mysql.servers where Wrapper='";
-  //ss << TDBCTL_WRAPPER;
-  //ss << "';";
   ss << "delete from mysql.servers;";
   replace_sql_all.insert(0, ss.str());
+
+  // compared with replace_sql_all, its password is secret. So, it's safe to show the concrete sql
+  string replace_sql_all_s = replace_sql_all;
 
   for (ulong i = 0; i < records; i++)
   {
@@ -1687,6 +1714,7 @@ static std::string generate_routing_sql_for_tdbctl()
     if (server)
     {
       std::string replace_sql_cur = "(";
+      std::string replace_sql_cur_s = "(";
       std::string server_name = server->server_name;
       std::string wrapper_name = server->scheme;
       
@@ -1705,13 +1733,21 @@ static std::string generate_routing_sql_for_tdbctl()
       replace_sql_cur = replace_sql_cur + name + host + db + username
         + password + port_s + socket + wrapper + owner;
       replace_sql_cur += "),";
+
+      replace_sql_cur_s += name + host + db + username
+        + "\"<secret>\"," + port_s + socket + wrapper + owner;
+      replace_sql_cur_s += "),";
+
       replace_sql_all += replace_sql_cur;
+      replace_sql_all_s += replace_sql_cur_s;
     }
   }
 
   replace_sql_all.erase(replace_sql_all.end() - 1);
+  replace_sql_all_s.pop_back();
+
   mysql_rwlock_unlock(&THR_LOCK_servers);
-  return replace_sql_all;
+  return Gen_Sql_Result::make_sql_result(replace_sql_all, replace_sql_all_s);
 }
 
 /*
@@ -1730,15 +1766,37 @@ static std::string generate_routing_sql_for_tdbctl()
   Single-Primary: use Primary node
   None-MGR scenario: use local node
 */
-static string generate_routing_sql_for_spider(bool is_slave_routing)
+static Gen_Sql_Result generate_routing_sql_for_spider(bool is_slave_routing)
 {
+  // first of all, make sure the current server is primary tdbctl
+  if (tdbctl_is_primary != 1) {
+    string err_msg = "current server is not primary tdbctl, null sql returned";
+    sql_print_error(err_msg.c_str());
+    return Gen_Sql_Result::make_error_result(1, err_msg);
+  }
+
+  // now, get current server name as the primary tdbctl name
+  int ret = 0;
+  MEM_ROOT mem_root;
+  init_sql_alloc(key_memory_servers , &mem_root, ACL_ALLOC_BLOCK_SIZE, 0);
+  string primary_tdbctl_name = tc_get_server_name(ret, &mem_root, TDBCTL_WRAPPER, true);
+  free_root(&mem_root, MYF(0));
+
+  if (ret)
+  {
+    string err_msg = "cannot find current server in mysql.servers, null sql returned";
+    sql_print_error(err_msg.c_str());
+    return Gen_Sql_Result::make_error_result(1, err_msg);
+  }
+  
   ulong records = 0;
   FOREIGN_SERVER* server;
-  std::map<std::string, std::pair<std::string, std::string>> tdbctl_sql_map;
   mysql_rwlock_rdlock(&THR_LOCK_servers);
   records = servers_cache.records;
   string replace_sql_all = "replace into mysql.servers"
     "(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values";
+  // compared with replace_sql_all, its password is secret. So, it's safe to show the concrete sql
+  string replace_sql_all_s = replace_sql_all;  
   stringstream ss;
   string comma = ",";
   std::string begin_sql = "begin;";
@@ -1747,15 +1805,20 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
 
   if (records == 0)
   {
-    sql_print_warning("no records found in mysql.servers, null sql returned");
+    string err_msg = "no records found in mysql.servers, null sql returned";
+    sql_print_error(err_msg.c_str());
     mysql_rwlock_unlock(&THR_LOCK_servers);
-    return "";
+    return Gen_Sql_Result::make_error_result(1, err_msg);
   }
 
   /*
     Construct SQL to delete redundant nodes
   */
   string delete_sql_all = "delete from mysql.servers where Server_name not in (";
+
+  bool found_primary_tdbctl = false;
+  string replace_sql_primary_tdbctl, delete_sql_primary_tdbctl;
+  string replace_sql_primary_tdbctl_s;
 
   for (ulong i = 0; i < records; i++)
   {
@@ -1768,8 +1831,14 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
       // flush routing to master_spider, skip slave_spider and slave_mysql
       if (!is_slave_routing && (!strcasecmp(server->scheme, SPIDER_SLAVE_WRAPPER) || !strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER)))
         continue;
+      
+      // skip non-primary tdbctl
+      if ((strcasecmp(server->scheme, TDBCTL_WRAPPER) == 0) && (strcasecmp(server->server_name, primary_tdbctl_name.c_str()) != 0))
+        continue;
+
       //sql_print_information("slave %d, server_name %s", is_slave_routing, server->server_name);
       std::string replace_sql_cur = "(";
+      std::string replace_sql_cur_s = "(";
       std::string server_name;
       std::string wrapper_name;
       if (!strcasecmp(server->scheme, MYSQL_SLAVE_WRAPPER))
@@ -1802,62 +1871,47 @@ static string generate_routing_sql_for_spider(bool is_slave_routing)
       replace_sql_cur = replace_sql_cur + name + host + db + username
         + password + port_s + socket + wrapper + owner;
       replace_sql_cur += "),";
-      /* for tdbctl node, need special deal subsequent */
-      if (strcasecmp(server->scheme, TDBCTL_WRAPPER) == 0)
+
+      replace_sql_cur_s += name + host + db + username
+        + "\"<secret>\"," + port_s + socket + wrapper + owner;
+      replace_sql_cur_s += "),";
+
+      /* for primary tdbctl */
+      if ((strcasecmp(server->scheme, TDBCTL_WRAPPER) == 0) && (strcasecmp(server->server_name, primary_tdbctl_name.c_str()) == 0))
       {
-        /* NOTE: at present, ip#port must be unique for tdbctl */
-        string ip_port = string(server->host) + "#" + ss.str();
-        tdbctl_sql_map.insert({ip_port, {name, replace_sql_cur}});
+        found_primary_tdbctl = true;
+        replace_sql_cur.pop_back();
+        replace_sql_primary_tdbctl = replace_sql_cur;
+        name.pop_back();
+        delete_sql_primary_tdbctl = name;
+        replace_sql_cur_s.pop_back();
+        replace_sql_primary_tdbctl_s = replace_sql_cur_s;
         continue;
       }
+
       replace_sql_all += replace_sql_cur;
       delete_sql_all += name;
+      replace_sql_all_s += replace_sql_cur_s;
     }
   }
 
-  if (!tdbctl_sql_map.empty())
-  {
-    string ip_port;
-    string primary_host = "";
-    uint primary_port;
-    if (tc_get_primary_node(primary_host, &primary_port) != 0)
-    {
-      ss.str("");
-      ss << primary_port;
-      ip_port = primary_host + "#" + ss.str();
-
-      if (tdbctl_sql_map.count(ip_port) == 1) {
-        //add tdbctl insert sql
-        replace_sql_all += tdbctl_sql_map[ip_port].second;
-        delete_sql_all += tdbctl_sql_map[ip_port].first;
-      }
-      else
-      {
-        sql_print_warning("primary node not in mysql.servers, null sql returned");
-        mysql_rwlock_unlock(&THR_LOCK_servers);
-        return "";
-      }
-    }
-    else
-    {// unknown error, such as network partition.
-      sql_print_warning("get primary node info failed, null sql returned");
-      mysql_rwlock_unlock(&THR_LOCK_servers);
-      return "";
-    }
-  } else {
-    sql_print_warning("primary node not in mysql.servers, null sql returned");
+  if (!found_primary_tdbctl) {
+    string err_msg = "primary node not in mysql.servers, null sql returned";
+    sql_print_error(err_msg.c_str());
     mysql_rwlock_unlock(&THR_LOCK_servers);
-    return "";
+    return Gen_Sql_Result::make_error_result(1, err_msg);
   }
 
-  replace_sql_all.pop_back();
-  replace_sql_all += ";";
-  delete_sql_all.pop_back();
-  delete_sql_all += ");";
+  replace_sql_all += replace_sql_primary_tdbctl + ";";
+  delete_sql_all += delete_sql_primary_tdbctl + ");";
+  replace_sql_all_s += replace_sql_primary_tdbctl_s + ";";
   std::string flush_routing_sql = begin_sql + delete_sql_all + replace_sql_all
                                   + commit_sql + flush_table_sql;
+  std::string flush_routing_sql_s = begin_sql + delete_sql_all + replace_sql_all_s
+                                  + commit_sql + flush_table_sql;
+  
   mysql_rwlock_unlock(&THR_LOCK_servers);
-  return flush_routing_sql;
+  return Gen_Sql_Result::make_sql_result(flush_routing_sql, flush_routing_sql_s);
 }
 
 
@@ -2156,24 +2210,23 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
     is_force = true;
   }
   std::string unlock_sql = "unlock tables";
-  std::string replace_sql;
+
+  Gen_Sql_Result gen_sql_ret;
   if (!strcasecmp(wrapper, SPIDER_WRAPPER))
-    replace_sql = generate_routing_sql_for_spider(false);
+    gen_sql_ret = generate_routing_sql_for_spider(false);
   else if (!strcasecmp(wrapper, SPIDER_SLAVE_WRAPPER))
-    replace_sql = generate_routing_sql_for_spider(true);
+    gen_sql_ret = generate_routing_sql_for_spider(true);
   else if (!strcasecmp(wrapper, TDBCTL_WRAPPER))
-    replace_sql = generate_routing_sql_for_tdbctl();
+    gen_sql_ret = generate_routing_sql_for_tdbctl();
   else
   {
     return FLUSH_ROUTING_RESULT::UNEXPECTED_WRAPPER;
   }
+  string replace_sql = gen_sql_ret.sql;
 
-  if (!is_flush_only_cache && (replace_sql.length() == 0))  //empty replace sql
+  if (!is_flush_only_cache && bool(gen_sql_ret.error))  //empty replace sql
   {
-    if (current_thd)
-      push_warning(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_FLUSH_ROUTING_ERROR,
-                  "routing sql is null, flush do nothing");
-    return FLUSH_ROUTING_RESULT::SUCCESS;
+    return FLUSH_ROUTING_RESULT::GEN_SQL_FAILURE;
   }
 
   string target_server;
@@ -2197,7 +2250,7 @@ enum FLUSH_ROUTING_RESULT tc_flush_routing_by_wrapper(map<string, tc_exec_info> 
   /* Modify the mysql.servers table, but the routing information does not take effect. */
   if (!is_flush_only_cache) {  // If the CACHE option is specified, skip this step. 
     exec_ret = tc_exec_sql_paral(replace_sql, conn_map, result_map);
-    tc_log_cluster_routing_event(thd, target_server, "The SQL for modifying mysql.servers is hidden");
+    tc_log_cluster_routing_event(thd, target_server, gen_sql_ret.sql_safe);
     if (exec_ret)
     {
       /* if failed to replace mysql.servers; set changed data node read only */
@@ -2255,24 +2308,23 @@ enum FLUSH_ROUTING_RESULT tc_sync_servers_table_by_wrapper(map<string, tc_exec_i
     std::string set_sql_log_bin_sql = "set tc_admin=0;set sql_log_bin = off;";
     set_option_sql = set_sql_log_bin_sql + set_option_sql;
   }
-  std::string replace_sql;
+
+  Gen_Sql_Result gen_sql_ret;
   if (!strcasecmp(wrapper, SPIDER_WRAPPER))
-    replace_sql = generate_routing_sql_for_spider(false);
+    gen_sql_ret = generate_routing_sql_for_spider(false);
   else if (!strcasecmp(wrapper, SPIDER_SLAVE_WRAPPER))
-    replace_sql = generate_routing_sql_for_spider(true);
+    gen_sql_ret = generate_routing_sql_for_spider(true);
   else if (!strcasecmp(wrapper, TDBCTL_WRAPPER))
-    replace_sql = generate_routing_sql_for_tdbctl();
+    gen_sql_ret = generate_routing_sql_for_tdbctl();
   else
   {
     return FLUSH_ROUTING_RESULT::UNEXPECTED_WRAPPER;
   }
+  std::string replace_sql = gen_sql_ret.sql;
 
-  if (replace_sql.length() == 0)  //empty replace sql
+  if (bool(gen_sql_ret.error))  //empty replace sql
   {
-    if (current_thd)
-      push_warning(current_thd, Sql_condition::SL_WARNING, ER_TCADMIN_FLUSH_ROUTING_ERROR,
-                  "routing sql is null, flush do nothing");
-    return FLUSH_ROUTING_RESULT::SUCCESS;
+    return FLUSH_ROUTING_RESULT::GEN_SQL_FAILURE;
   }
 
   string target_server;
@@ -2293,7 +2345,7 @@ enum FLUSH_ROUTING_RESULT tc_sync_servers_table_by_wrapper(map<string, tc_exec_i
   }
 
   exec_ret = tc_exec_sql_paral(replace_sql, conn_map, result_map);
-  tc_log_cluster_routing_event(thd, target_server, "The SQL for modifying mysql.servers is hidden");
+  tc_log_cluster_routing_event(thd, target_server, gen_sql_ret.sql_safe);
   if (exec_ret)
   {
     return FLUSH_ROUTING_RESULT::SYNC_SERVERS_FAILURE;
@@ -2927,6 +2979,7 @@ int tc_check_and_repair_routing()
   string sql = "select Server_name,Host,Db,Username,Password,Port,Socket,Wrapper,Owner "
     "from mysql.servers order by Server_name";
   string flush_priv_sql = "flush privileges";
+  Gen_Sql_Result gen_sql_ret;
   string replace_sql;
   string repair_sql_all;
   tc_exec_info exec_info;
@@ -2945,7 +2998,14 @@ int tc_check_and_repair_routing()
     result = 1;
     goto finish;
   }
-  replace_sql = generate_routing_sql_for_spider();
+
+  gen_sql_ret = generate_routing_sql_for_spider();
+  if (bool(gen_sql_ret.error)) {
+    sql_print_error("failed to generate routing sql when repairing routing");
+    result = 1;
+    goto finish;
+  }
+  replace_sql = gen_sql_ret.sql;
   repair_sql_all = replace_sql + ";" + flush_priv_sql;
   thd->variables.lock_wait_timeout = tc_check_repair_routing_interval;
   
@@ -3975,11 +4035,11 @@ bool check_autoinc_for_multiple_new_spider_nodes(THD *thd, LEX *lex)
   server_name_prefix.append("_new_");
   for(const Server_options &one_server : lex->server_options_list) {
     AUTH_INFO one_server_info;
-    DBUG_ASSERT(server_options.get_host() != NULL);
-    DBUG_ASSERT(server_options.get_port() != lex->server_options.PORT_NOT_SET);
-    DBUG_ASSERT(server_options.get_username() != NULL);
-    DBUG_ASSERT(server_options.get_password() != NULL);
-    DBUG_ASSERT(server_options.get_scheme() != NULL);
+    DBUG_ASSERT(one_server.get_host() != NULL);
+    DBUG_ASSERT(one_server.get_port() != lex->server_options.PORT_NOT_SET);
+    DBUG_ASSERT(one_server.get_username() != NULL);
+    DBUG_ASSERT(one_server.get_password() != NULL);
+    DBUG_ASSERT(one_server.get_scheme() != NULL);
     fill_auth_info(&one_server_info,
                    one_server.get_host(), 
                    one_server.get_port(), 

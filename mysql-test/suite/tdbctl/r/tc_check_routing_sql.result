@@ -1,0 +1,254 @@
+SELECT * FROM mysql.servers;
+Server_name	Host	Db	Username	Password	Port	Socket	Wrapper	Owner
+SPIDER0	172.18.0.6		mysql	mysql	3306		SPIDER	
+SPIDER1	172.18.0.7		mysql	mysql	3306		SPIDER	
+SPIDER2	172.18.0.8		mysql	mysql	3306		SPIDER	
+SPT0	172.18.0.2		mysql	mysql	3306		mysql	
+SPT1	172.18.0.3		mysql	mysql	3306		mysql	
+SPT_SLAVE0	172.18.0.4		mysql	mysql	3306		mysql_slave	
+SPT_SLAVE1	172.18.0.5		mysql	mysql	3306		mysql_slave	
+TDBCTL0	172.18.0.9		mysql	mysql	3306		TDBCTL	
+TDBCTL1	172.18.0.10		mysql	mysql	3306		TDBCTL	
+TDBCTL2	172.18.0.11		mysql	mysql	3306		TDBCTL	
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+SELECT @@SESSION.tc_enable_autoinc_check INTO @origin_tc_enable_autoinc_check;
+SELECT @@GLOBAL.tc_skip_dump_db_list INTO @origin_tc_skip_dump_db_list;
+SELECT @@GLOBAL.tc_skip_check_db_list INTO @origin_tc_skip_check_db_list;
+SET tc_admin=OFF;
+CREATE TEMPORARY TABLE origin_servers LIKE mysql.servers;
+INSERT INTO origin_servers SELECT * FROM mysql.servers;
+
+# Disable tc_enable_autoinc_check
+SET tc_enable_autoinc_check = OFF;
+
+# Set general_log output to table.
+Set general log for all cluster nodes.
+
+# Test Empty routing table
+# Truncate mysql.servers.
+SET tc_admin=OFF;
+DELETE FROM mysql.servers;
+# execute TDBCTL FLUSH ROUTING command.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+ERROR HY000: failed to flush routing: no tdbctl node found
+
+# Only primary tdbctl
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+SET tc_admin = ON;
+TDBCTL CREATE NODE WRAPPER TDBCTL OPTIONS (HOST '172.18.0.9', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+ERROR HY000: Internal error: failed to identify current server
+TDBCTL CREATE NODE WRAPPER TDBCTL OPTIONS (HOST '172.18.0.9', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+# show flush routing sql.
+--------------------
+[tdbctl0]
+[tdbctl1]
+[tdbctl2]
+[spider0]
+[spider1]
+[spider2]
+[remote_master0]
+[remote_master1]
+--------------------
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+SET tc_admin = ON;
+TDBCTL FLUSH ROUTING;
+# show flush routing sql.
+--------------------
+[tdbctl0]
+[tdbctl1]
+[tdbctl2]
+[spider0]
+[spider1]
+[spider2]
+[remote_master0]
+[remote_master1]
+--------------------
+
+# Only tdbctl nodes
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+SET tc_admin = ON;
+TDBCTL CREATE NODE WRAPPER TDBCTL OPTIONS 
+(HOST '172.18.0.10', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.11', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+TDBCTL FLUSH ROUTING;
+# show flush routing sql.
+--------------------
+[tdbctl0]
+[tdbctl1]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL","")
+[tdbctl2]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL","")
+[spider0]
+[spider1]
+[spider2]
+[remote_master0]
+[remote_master1]
+--------------------
+
+# Add spider nodes
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+SET tc_admin = ON;
+TDBCTL CREATE NODE WRAPPER mysql OPTIONS 
+(HOST '172.18.0.2', USER 'mysql', PASSWORD 'mysql', PORT 3306), 
+(HOST '172.18.0.3', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+TDBCTL CREATE NODE WRAPPER mysql_slave OPTIONS
+(HOST '172.18.0.4', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.5', USER 'mysql', PASSWORD 'mysql', PORT 3306);
+SET GLOBAL tc_skip_dump_db_list = "performance_schema,information_schema,mysql,test,db_infobase,my-test";
+SET GLOBAL tc_skip_check_db_list = "performance_schema,information_schema,mysql,test,sys,db_infobase,my-test";
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS (HOST '172.18.0.6', USER 'mysql', PASSWORD 'mysql', PORT 3306) WITH SCHEMA;
+Warnings:
+Warning	12034	WITH SCHEMA option was skipped: No server to dump schema
+# show flush routing sql.
+--------------------
+[tdbctl0]
+[tdbctl1]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL","")
+[tdbctl2]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL","")
+[spider0]
+begin;delete from mysql.servers where Server_name not in ("SPT1","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+begin;delete from mysql.servers where Server_name not in ("SPT1","SPIDER0","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[spider1]
+[spider2]
+[remote_master0]
+[remote_master1]
+--------------------
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+SET tc_admin = ON;
+TDBCTL CREATE NODE WRAPPER SPIDER OPTIONS 
+(HOST '172.18.0.7', USER 'mysql', PASSWORD 'mysql', PORT 3306),
+(HOST '172.18.0.8', USER 'mysql', PASSWORD 'mysql', PORT 3306) 
+WITH SCHEMA;
+# show flush routing sql.
+--------------------
+[tdbctl0]
+[tdbctl1]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","")
+[tdbctl2]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","")
+[spider0]
+[spider1]
+begin;delete from mysql.servers where Server_name not in ("SPT1","SPIDER0","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[spider2]
+begin;delete from mysql.servers where Server_name not in ("SPT1","SPIDER0","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[remote_master0]
+[remote_master1]
+--------------------
+
+# Teset spider_slave nodes 
+SET tc_admin=OFF;
+UPDATE mysql.servers SET Wrapper = 'spider_slave' WHERE Host = '172.18.0.8' AND PORT = 3306;
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+# show flush routing sql.
+--------------------
+[tdbctl0]
+[tdbctl1]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","spider_slave",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","")
+[tdbctl2]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","spider_slave",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","")
+[spider0]
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[spider1]
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[spider2]
+begin;delete from mysql.servers where Server_name not in ("SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPT1","172.18.0.5","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","spider_slave",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[remote_master0]
+[remote_master1]
+--------------------
+
+# Alter nodes and flush routing cache
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+SET tc_admin=ON;
+TDBCTL ALTER NODE SPT0 OPTIONS (host '127.0.0.4', port 3306) WITH SYNC;
+TDBCTL ALTER NODE SPT1 OPTIONS (host '127.0.0.5', port 3306) WITH SYNC;
+# show flush routing sql.
+--------------------
+[tdbctl0]
+[tdbctl1]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","spider_slave",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","")
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","127.0.0.5","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","spider_slave",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","")
+[tdbctl2]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","spider_slave",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","")
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","127.0.0.5","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","spider_slave",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","")
+[spider0]
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","127.0.0.5","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[spider1]
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","127.0.0.5","","mysql","mysql",3306,"","mysql",""),("SPT0","127.0.0.4","","mysql","mysql",3306,"","mysql",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[spider2]
+begin;delete from mysql.servers where Server_name not in ("SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPT1","172.18.0.5","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","spider_slave",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+begin;delete from mysql.servers where Server_name not in ("SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPT1","172.18.0.5","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.4","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","spider_slave",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[remote_master0]
+[remote_master1]
+--------------------
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING CACHE;
+# show flush routing sql.
+--------------------
+[tdbctl0]
+[tdbctl1]
+[tdbctl2]
+[spider0]
+[spider1]
+[spider2]
+[remote_master0]
+[remote_master1]
+--------------------
+
+# Recover cluster routing
+# Restore mysql.servers.
+SET tc_admin=OFF;
+TRUNCATE mysql.servers;
+INSERT INTO mysql.servers SELECT * FROM origin_servers;
+# Truncate general_log.
+execute 'TRUNCATE TABLE mysql.general_log;' on all cluster nodes.
+# execute TDBCTL FLUSH ROUTING command.
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+# show flush routing sql.
+--------------------
+[tdbctl0]
+[tdbctl1]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","")
+[tdbctl2]
+delete from mysql.servers;
+replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("TDBCTL2","172.18.0.11","","mysql","mysql",3306,"","TDBCTL",""),("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE1","172.18.0.5","","mysql","mysql",3306,"","mysql_slave",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT_SLAVE0","172.18.0.4","","mysql","mysql",3306,"","mysql_slave",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL1","172.18.0.10","","mysql","mysql",3306,"","TDBCTL",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","")
+[spider0]
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[spider1]
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[spider2]
+begin;delete from mysql.servers where Server_name not in ("SPIDER0","SPIDER1","SPT1","SPT0","SPIDER2","TDBCTL0");replace into mysql.servers(Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner)  values("SPIDER0","172.18.0.6","","mysql","mysql",3306,"","SPIDER",""),("SPIDER1","172.18.0.7","","mysql","mysql",3306,"","SPIDER",""),("SPT1","172.18.0.3","","mysql","mysql",3306,"","mysql",""),("SPT0","172.18.0.2","","mysql","mysql",3306,"","mysql",""),("SPIDER2","172.18.0.8","","mysql","mysql",3306,"","SPIDER",""),("TDBCTL0","172.18.0.9","","mysql","mysql",3306,"","TDBCTL","");commit;flush tables with no block
+[remote_master0]
+[remote_master1]
+--------------------
+
+# Restore to the initial state.
+Set general log to original state for all cluster nodes.
+SET tc_admin=OFF;
+DROP TEMPORARY TABLE origin_servers;
+SET @@GLOBAL.tc_skip_dump_db_list = @origin_tc_skip_dump_db_list;
+SET @@GLOBAL.tc_skip_check_db_list = @origin_tc_skip_check_db_list;
+SET @@SESSION.tc_enable_autoinc_check = @origin_tc_enable_autoinc_check;
+SET @@SESSION.tc_admin = @origin_tc_admin;

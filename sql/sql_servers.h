@@ -146,6 +146,7 @@ bool tc_flush_routing_to_foreign_servers(LEX* lex);
 enum FLUSH_ROUTING_RESULT {
   SUCCESS = 0,                   // success
   UNEXPECTED_WRAPPER,            // node type that cannot flush routing
+  GEN_SQL_FAILURE,               // fail to generate flush routing sql
   SET_OPTION_FAILURE,            // fail to set option
   SYNC_SERVERS_FAILURE,          // fail to modify mysql.servers table
   FLUSH_TABLE_FAILURE,           // fail to execute 'flush tables; flush table with read lock;'
