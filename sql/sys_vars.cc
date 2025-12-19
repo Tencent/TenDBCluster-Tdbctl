@@ -6785,4 +6785,4 @@ static Sys_var_charptr Sys_tc_skip_check_db_list(
   "the list of database names that will be ignored when checking the table structure",
   TDBCTL GLOBAL_VAR(tc_skip_check_db_list),
   CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET,
-  DEFAULT("performance_schema,information_schema,mysql,test,sys,infodba_schema"));
+  DEFAULT("performance_schema,information_schema,mysql,test,sys"));
