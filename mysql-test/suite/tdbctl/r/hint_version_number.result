@@ -1,0 +1,99 @@
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+
+# Case 1: When tc_admin is off, test the version number control functionality.
+SET tc_admin = OFF;
+/*!50717 SELECT 'executed' AS '50717' */;
+50717
+executed
+/*!50720 SELECT 'executed' AS '50720' */;
+50720
+executed
+/*!50721 SELECT 'executed' AS '50721' */;
+/*!920000 SELECT 'executed' AS '920000' */;
+/*!920001 SELECT 'executed' AS '920001' */;
+920001
+executed
+/*!920413 SELECT 'executed' AS '920413' */;
+920413
+executed
+/*!920414 SELECT 'executed' AS '920414' */;
+
+# Case 2: When tc_admin is on, test the version number control functionality.
+SET tc_admin = ON;
+CREATE DATABASE test_hint_version_number;
+USE test_hint_version_number;
+/*!50717 CREATE TABLE `50717` (id int primary key, v int) */;
+/*!50720 CREATE TABLE `50720` (id int primary key, v int) */;
+/*!50721 CREATE TABLE `50721` (id int primary key, v int) */;
+/*!920000 CREATE TABLE `920000` (id int primary key, v int) */;
+/*!920001 CREATE TABLE `920001` (id int primary key, v int) */;
+/*!920413 CREATE TABLE `920413` (id int primary key, v int) */;
+/*!920414 CREATE TABLE `920414` (id int primary key, v int) */;
+TDBCTL CHECK DATABASE test_hint_version_number;
+Server_name	Db	Table	Status	Message
+SPIDER0	test_hint_version_number	50717	OK	
+SPIDER1	test_hint_version_number	50717	OK	
+SPIDER2	test_hint_version_number	50717	OK	
+SPT0	test_hint_version_number_0	50717	OK	
+SPT1	test_hint_version_number_1	50717	OK	
+SPIDER0	test_hint_version_number	50720	OK	
+SPIDER1	test_hint_version_number	50720	OK	
+SPIDER2	test_hint_version_number	50720	OK	
+SPT0	test_hint_version_number_0	50720	OK	
+SPT1	test_hint_version_number_1	50720	OK	
+SPIDER0	test_hint_version_number	920001	OK	
+SPIDER1	test_hint_version_number	920001	OK	
+SPIDER2	test_hint_version_number	920001	OK	
+SPT0	test_hint_version_number_0	920001	OK	
+SPT1	test_hint_version_number_1	920001	OK	
+SPIDER0	test_hint_version_number	920413	OK	
+SPIDER1	test_hint_version_number	920413	OK	
+SPIDER2	test_hint_version_number	920413	OK	
+SPT0	test_hint_version_number_0	920413	OK	
+SPT1	test_hint_version_number_1	920413	OK	
+DROP DATABASE test_hint_version_number;
+
+/*!920413 SET GLOBAL tc_skip_check_db_list = '920413' */;
+TDBCTL SHOW VARIABLES LIKE 'tc_skip_check_db_list';
+Server_name	Variable_name	Value
+TDBCTL0	tc_skip_check_db_list	920413
+TDBCTL1	tc_skip_check_db_list	performance_schema,information_schema,mysql,test,sys
+TDBCTL2	tc_skip_check_db_list	performance_schema,information_schema,mysql,test,sys
+/*!920414 SET GLOBAL tc_skip_check_db_list = '920414' */;
+TDBCTL SHOW VARIABLES LIKE 'tc_skip_check_db_list';
+Server_name	Variable_name	Value
+TDBCTL0	tc_skip_check_db_list	920413
+TDBCTL1	tc_skip_check_db_list	performance_schema,information_schema,mysql,test,sys
+TDBCTL2	tc_skip_check_db_list	performance_schema,information_schema,mysql,test,sys
+SET GLOBAL tc_skip_check_db_list = default;
+
+/*!920413 SET time_zone = '+04:13' */;
+TDBCTL SHOW VARIABLES LIKE 'time_zone';
+Server_name	Variable_name	Value
+SPIDER0	time_zone	+04:13
+SPIDER1	time_zone	+04:13
+SPIDER2	time_zone	+04:13
+SPT0	time_zone	+04:13
+SPT1	time_zone	+04:13
+SPT_SLAVE0	time_zone	+04:13
+SPT_SLAVE1	time_zone	+04:13
+TDBCTL0	time_zone	+04:13
+TDBCTL1	time_zone	+04:13
+TDBCTL2	time_zone	+04:13
+/*!920414 SET time_zone = '+04:14' */;
+TDBCTL SHOW VARIABLES LIKE 'time_zone';
+Server_name	Variable_name	Value
+SPIDER0	time_zone	+04:13
+SPIDER1	time_zone	+04:13
+SPIDER2	time_zone	+04:13
+SPT0	time_zone	+04:13
+SPT1	time_zone	+04:13
+SPT_SLAVE0	time_zone	+04:13
+SPT_SLAVE1	time_zone	+04:13
+TDBCTL0	time_zone	+04:13
+TDBCTL1	time_zone	+04:13
+TDBCTL2	time_zone	+04:13
+SET time_zone = default;
+
+# Restore to the initial state.
+SET @@SESSION.tc_admin = @origin_tc_admin;
