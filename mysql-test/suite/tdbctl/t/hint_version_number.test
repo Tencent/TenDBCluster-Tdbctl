@@ -1,0 +1,53 @@
+# Test the version number control functionality in hints. 
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+
+--echo
+--echo # Case 1: When tc_admin is off, test the version number control functionality.
+--connection tdbctl0
+SET tc_admin = OFF;
+/*!50717 SELECT 'executed' AS '50717' */;
+/*!50720 SELECT 'executed' AS '50720' */;
+/*!50721 SELECT 'executed' AS '50721' */;
+/*!920000 SELECT 'executed' AS '920000' */;
+/*!920001 SELECT 'executed' AS '920001' */;
+/*!920413 SELECT 'executed' AS '920413' */;
+/*!920414 SELECT 'executed' AS '920414' */;
+
+--echo
+--echo # Case 2: When tc_admin is on, test the version number control functionality.
+--connection tdbctl0
+SET tc_admin = ON;
+CREATE DATABASE test_hint_version_number;
+USE test_hint_version_number;
+/*!50717 CREATE TABLE `50717` (id int primary key, v int) */;
+/*!50720 CREATE TABLE `50720` (id int primary key, v int) */;
+/*!50721 CREATE TABLE `50721` (id int primary key, v int) */;
+/*!920000 CREATE TABLE `920000` (id int primary key, v int) */;
+/*!920001 CREATE TABLE `920001` (id int primary key, v int) */;
+/*!920413 CREATE TABLE `920413` (id int primary key, v int) */;
+/*!920414 CREATE TABLE `920414` (id int primary key, v int) */;
+TDBCTL CHECK DATABASE test_hint_version_number;
+DROP DATABASE test_hint_version_number;
+
+--echo
+/*!920413 SET GLOBAL tc_skip_check_db_list = '920413' */;
+TDBCTL SHOW VARIABLES LIKE 'tc_skip_check_db_list';
+/*!920414 SET GLOBAL tc_skip_check_db_list = '920414' */;
+TDBCTL SHOW VARIABLES LIKE 'tc_skip_check_db_list';
+SET GLOBAL tc_skip_check_db_list = default;
+
+--echo
+/*!920413 SET time_zone = '+04:13' */;
+TDBCTL SHOW VARIABLES LIKE 'time_zone';
+/*!920414 SET time_zone = '+04:14' */;
+TDBCTL SHOW VARIABLES LIKE 'time_zone';
+SET time_zone = default;
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+SET @@SESSION.tc_admin = @origin_tc_admin;
