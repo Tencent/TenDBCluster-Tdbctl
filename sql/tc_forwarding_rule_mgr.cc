@@ -306,19 +306,23 @@ std::string exec_flag_to_string(Exec_Flag flag, const char *separater) {
   return str;
 }
 
-Forwarding_rule_mgr::SQL_Rule_Cache Forwarding_rule_mgr::m_global_rules_cache;
+mysql_mutex_t Forwarding_rule_mgr::LOCK_global_rules;
 Forwarding_rule_mgr::SQL_Rule_Cache Forwarding_rule_mgr::m_global_rules_valid_cache;
-Forwarding_rule_mgr::Var_Rule_Cache Forwarding_rule_mgr::m_global_var_rules_cache;
 Forwarding_rule_mgr::Var_Rule_Cache Forwarding_rule_mgr::m_global_var_rules_valid_cache;
 
 Forwarding_rule_mgr::Forwarding_rule_mgr():m_primary_rules(SQLCOM_END, 0), m_secondary_rules(SQLCOM_END, 0) {
-  m_session_rules_cache.reserve(supported_sql_count);
-  Forwarding_rule_mgr::m_global_rules_cache.reserve(supported_sql_count);
   reset_primary_rules();
   for(Supported_SQL_Command supported_sql: supported_sql_commands) {
     m_secondary_rules[supported_sql.sql_type] = supported_sql.secondary_default_rule;
   }
   reset_primary_var_rules();
+  
+  // Initialize the global mutex if not already initialized
+  static bool mutex_initialized = false;
+  if (!mutex_initialized) {
+    mysql_mutex_init(PSI_NOT_INSTRUMENTED, &LOCK_global_rules, MY_MUTEX_INIT_FAST);
+    mutex_initialized = true;
+  }
 }
 
 /**
@@ -448,7 +452,7 @@ bool Forwarding_rule_mgr::check_forwarding_rules(THD *thd, set_var *var, std::st
 
   std::string rectified_json_str;
   if(var->type == OPT_GLOBAL) {
-    if(!parse_forwarding_rules(json_text, json_text_len, err_msg, &(Forwarding_rule_mgr::m_global_rules_cache), &rectified_json_str)) {
+    if(!parse_forwarding_rules(json_text, json_text_len, err_msg, &(thd->forward_rule_mgr.m_global_rules_cache), &rectified_json_str)) {
       return false;
     }
   } else {
@@ -478,10 +482,16 @@ bool Forwarding_rule_mgr::check_forwarding_rules(THD *thd, set_var *var, std::st
             true            failure
 */
 bool Forwarding_rule_mgr::server_boot_verify_forwarding_rules(const char *json_text, size_t json_text_len, std::string &err_str) {
-  if(!parse_forwarding_rules(json_text, json_text_len, err_str, &(Forwarding_rule_mgr::m_global_rules_cache))) {
+  SQL_Rule_Cache global_rules_cache;
+  
+  if(!parse_forwarding_rules(json_text, json_text_len, err_str, &global_rules_cache)) {
     return true;
   }
-  Forwarding_rule_mgr::m_global_rules_valid_cache = Forwarding_rule_mgr::m_global_rules_cache;
+  
+  mysql_mutex_lock(&LOCK_global_rules);
+  Forwarding_rule_mgr::m_global_rules_valid_cache = global_rules_cache;
+  mysql_mutex_unlock(&LOCK_global_rules);
+  
   return false;
 }
 
@@ -497,10 +507,16 @@ bool Forwarding_rule_mgr::server_boot_verify_forwarding_rules(const char *json_t
             true            failure
 */
 bool Forwarding_rule_mgr::server_boot_verify_variable_rules(const char *json_text, size_t json_text_len, std::string &err_str, std::string &wrn_str) {
-  if(!parse_sysvar_rules(json_text, json_text_len, err_str, wrn_str, 0, &(Forwarding_rule_mgr::m_global_var_rules_cache))) {
+  Var_Rule_Cache global_var_rules_cache;
+  
+  if(!parse_sysvar_rules(json_text, json_text_len, err_str, wrn_str, 0, &global_var_rules_cache)) {
     return true;
   }
-  Forwarding_rule_mgr::m_global_var_rules_valid_cache = Forwarding_rule_mgr::m_global_var_rules_cache;
+  
+  mysql_mutex_lock(&LOCK_global_rules);
+  Forwarding_rule_mgr::m_global_var_rules_valid_cache = global_var_rules_cache;
+  mysql_mutex_unlock(&LOCK_global_rules);
+  
   return false;
 }
 
@@ -892,7 +908,9 @@ bool Forwarding_rule_mgr::update_forwarding_rules(THD *thd, enum_var_type type) 
     thd->forward_rule_mgr.reset_primary_rules();
     thd->forward_rule_mgr.cover_primary_forwarding_rules(thd->forward_rule_mgr.m_session_rules_cache);
   } else {
-    Forwarding_rule_mgr::m_global_rules_valid_cache = Forwarding_rule_mgr::m_global_rules_cache;
+    mysql_mutex_lock(&LOCK_global_rules);
+    Forwarding_rule_mgr::m_global_rules_valid_cache = thd->forward_rule_mgr.m_global_rules_cache;
+    mysql_mutex_unlock(&LOCK_global_rules);
   }
   return true;
 }
@@ -967,7 +985,7 @@ bool Forwarding_rule_mgr::check_var_rules(THD *thd, set_var *var, std::string &e
   std::string err_str, wrn_str, rectified_json_str;
   if(var->type == OPT_GLOBAL){
     if(!parse_sysvar_rules(json_text, json_text_len, err_msg, warn_msg, thd, 
-      &(Forwarding_rule_mgr::m_global_var_rules_cache), &rectified_json_str)) {
+      &(thd->forward_rule_mgr.m_global_var_rules_cache), &rectified_json_str)) {
       return false;
     }
   } else {
@@ -1004,7 +1022,9 @@ bool Forwarding_rule_mgr::update_var_rules(THD *thd, enum_var_type type) {
     thd->forward_rule_mgr.reset_primary_var_rules();
     thd->forward_rule_mgr.cover_primary_var_rules(thd->forward_rule_mgr.m_session_var_rules_cache);
   } else {
-    Forwarding_rule_mgr::m_global_var_rules_valid_cache = Forwarding_rule_mgr::m_global_var_rules_cache;
+    mysql_mutex_lock(&LOCK_global_rules);
+    Forwarding_rule_mgr::m_global_var_rules_valid_cache = thd->forward_rule_mgr.m_global_var_rules_cache;
+    mysql_mutex_unlock(&LOCK_global_rules);
   }
   return true;
 }
@@ -1014,7 +1034,10 @@ bool Forwarding_rule_mgr::update_var_rules(THD *thd, enum_var_type type) {
 */
 void Forwarding_rule_mgr::init() {
   reset_primary_rules();
-  cover_primary_forwarding_rules(Forwarding_rule_mgr::m_global_rules_valid_cache);
   reset_primary_var_rules();
+
+  mysql_mutex_lock(&LOCK_global_rules);
+  cover_primary_forwarding_rules(Forwarding_rule_mgr::m_global_rules_valid_cache);
   cover_primary_var_rules(Forwarding_rule_mgr::m_global_var_rules_valid_cache);
+  mysql_mutex_unlock(&LOCK_global_rules);
 }

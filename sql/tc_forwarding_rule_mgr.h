@@ -112,6 +112,9 @@ class Forwarding_rule_mgr
   typedef std::map<std::string, Exec_Flag> Var_Rule_Hash;
 private:
 
+  /* Mutex to protect access to global forwarding rules */
+  static mysql_mutex_t LOCK_global_rules;
+
   /*
     Class members used to store the sql-level forwarding rules.
   */
@@ -119,7 +122,7 @@ private:
   /* Store the checked session forwarding rules (Need storage between check and update). */
   SQL_Rule_Cache m_session_rules_cache; 
   /* Store the checked global forwarding rules (Need storage between check and update). */
-  static SQL_Rule_Cache m_global_rules_cache;
+  SQL_Rule_Cache m_global_rules_cache;
   /* Store the checked global forwarding rules. It will only be changed if the forwarding rules is verified as valid. */
   static SQL_Rule_Cache m_global_rules_valid_cache;
   /* Store the latest forwarding rules of primary tdbctl node. sql_command -> exec_flag */
@@ -134,7 +137,7 @@ private:
   /* Store the checked session system variables' forwarding rules (Need storage between check and update). */
   Var_Rule_Cache m_session_var_rules_cache;
   /* Store the checked global system variables' forwarding rules (Need storage between check and update). */
-  static Var_Rule_Cache m_global_var_rules_cache;
+  Var_Rule_Cache m_global_var_rules_cache;
   /* Store the checked global system variables' forwarding rules. It will only be changed if the forwarding rules is verified as valid. */
   static Var_Rule_Cache m_global_var_rules_valid_cache;
   /* Store the session-level new forwarding rules of specified system variables on primary tdbctl node. var_name -> exec_flag */
@@ -161,7 +164,6 @@ public:
 
   /** Destructor */
   ~Forwarding_rule_mgr() {
-
   }
 
 private:
