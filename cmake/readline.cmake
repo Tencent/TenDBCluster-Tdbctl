@@ -53,61 +53,86 @@ MACRO (MYSQL_CHECK_MULTIBYTE)
 ENDMACRO()
 
 MACRO (FIND_CURSES)
- # Check if we should use bundled static ncurses or system dynamic ncurses
- # Default is bundled (WITH_STATIC_NCURSES=ON or undefined)
- IF(NOT DEFINED WITH_STATIC_NCURSES OR WITH_STATIC_NCURSES)
-   # Use bundled ncurses (default)
-   MESSAGE(STATUS "Using bundled static ncurses library")
-   INCLUDE(${CMAKE_SOURCE_DIR}/cmake/ncurses.cmake)
-   MYSQL_BUILD_BUNDLED_NCURSES()
+  # Check if we should use bundled static ncurses or system dynamic ncurses
+  # Default is bundled (WITH_STATIC_NCURSES=ON or undefined)
+  IF(NOT DEFINED WITH_STATIC_NCURSES OR WITH_STATIC_NCURSES)
+    # Use bundled ncurses (default)
+    MESSAGE(STATUS "Using bundled static ncurses library")
+    INCLUDE(${CMAKE_SOURCE_DIR}/cmake/ncurses.cmake)
+    MYSQL_BUILD_BUNDLED_NCURSES()
 
-   MARK_AS_ADVANCED(CURSES_CURSES_H_PATH CURSES_FORM_LIBRARY CURSES_HAVE_CURSES_H)
+    MARK_AS_ADVANCED(CURSES_CURSES_H_PATH CURSES_FORM_LIBRARY CURSES_HAVE_CURSES_H)
 
-   IF(NOT CURSES_FOUND)
-     MESSAGE(FATAL_ERROR "Failed to build bundled ncurses library.")
-   ENDIF()
+    IF(NOT CURSES_FOUND)
+      MESSAGE(FATAL_ERROR "Failed to build bundled ncurses library.")
+    ENDIF()
 
-   # For bundled ncurses, append tinfo library if it exists
-   IF(CURSES_TINFO_LIBRARY)
-     SET(CURSES_LIBRARY "${CURSES_LIBRARY};${CURSES_TINFO_LIBRARY}")
-   ENDIF()
+    # For bundled ncurses, append tinfo library if it exists
+    IF(CURSES_TINFO_LIBRARY)
+      SET(CURSES_LIBRARY "${CURSES_LIBRARY};${CURSES_TINFO_LIBRARY}")
+    ENDIF()
 
-   MESSAGE(STATUS "Using bundled ncurses: CURSES_LIBRARY=${CURSES_LIBRARY}")
-   MESSAGE(STATUS "Using bundled ncurses: CURSES_INCLUDE_PATH=${CURSES_INCLUDE_PATH}")
+    MESSAGE(STATUS "Using bundled ncurses: CURSES_LIBRARY=${CURSES_LIBRARY}")
+    MESSAGE(STATUS "Using bundled ncurses: CURSES_INCLUDE_PATH=${CURSES_INCLUDE_PATH}")
 
-   # Re-check HAVE_TERM_H with bundled ncurses include path
-   # (configure.cmake may have checked this before ncurses was built)
-   UNSET(HAVE_TERM_H CACHE)
-   SET(SAVE_CMAKE_REQUIRED_INCLUDES ${CMAKE_REQUIRED_INCLUDES})
-   SET(CMAKE_REQUIRED_INCLUDES ${CURSES_INCLUDE_PATH})
-   INCLUDE(CheckIncludeFiles)
-   CHECK_INCLUDE_FILES(term.h HAVE_TERM_H)
-   SET(CMAKE_REQUIRED_INCLUDES ${SAVE_CMAKE_REQUIRED_INCLUDES})
- ELSE()
-   # Use system ncurses (dynamic linking)
-   MESSAGE(STATUS "Using system dynamic ncurses library")
+    # Re-check HAVE_TERM_H with bundled ncurses include path
+    # (configure.cmake may have checked this before ncurses was built)
+    UNSET(HAVE_TERM_H CACHE)
+    SET(SAVE_CMAKE_REQUIRED_INCLUDES ${CMAKE_REQUIRED_INCLUDES})
+    SET(CMAKE_REQUIRED_INCLUDES ${CURSES_INCLUDE_PATH})
+    INCLUDE(CheckIncludeFiles)
+    CHECK_INCLUDE_FILES(term.h HAVE_TERM_H)
+    SET(CMAKE_REQUIRED_INCLUDES ${SAVE_CMAKE_REQUIRED_INCLUDES})
 
-   # Explicitly set USING_BUNDLED_NCURSES to FALSE for system ncurses
-   SET(USING_BUNDLED_NCURSES FALSE CACHE INTERNAL "Using system ncurses" FORCE)
+  ELSE()
+    FIND_PACKAGE(Curses) 
+    MARK_AS_ADVANCED(CURSES_CURSES_H_PATH CURSES_FORM_LIBRARY CURSES_HAVE_CURSES_H)
+    IF(NOT CURSES_FOUND)
+      SET(ERRORMSG "Curses library not found. Please install appropriate package,
+        remove CMakeCache.txt and rerun cmake.")
+      IF(CMAKE_SYSTEM_NAME MATCHES "Linux")
+        SET(ERRORMSG ${ERRORMSG} 
+        "On Debian/Ubuntu, package name is libncurses5-dev, on Redhat and derivates " 
+        "it is ncurses-devel.")
+      ENDIF()
+      MESSAGE(FATAL_ERROR ${ERRORMSG})
+    ENDIF()
 
-   # Find system curses library (will find dynamic .so library)
-   INCLUDE(FindCurses)
+    IF(CURSES_HAVE_CURSES_H)
+      SET(HAVE_CURSES_H 1 CACHE INTERNAL "")
+    ELSEIF(CURSES_HAVE_NCURSES_H)
+      SET(HAVE_NCURSES_H 1 CACHE INTERNAL "")
+    ENDIF()
+    IF(CMAKE_SYSTEM_NAME MATCHES "HP")
+      # CMake uses full path to library /lib/libcurses.sl 
+      # On Itanium, it results into architecture mismatch+
+      # the library is for  PA-RISC
+      SET(CURSES_LIBRARY "curses" CACHE INTERNAL "" FORCE)
+      SET(CURSES_CURSES_LIBRARY "curses" CACHE INTERNAL "" FORCE)
+    ENDIF()
+    IF(CMAKE_SYSTEM_NAME MATCHES "SunOS")
+      # CMake generates /lib/64/libcurses.so -R/lib/64
+      # The result is we cannot find
+      # /opt/studio12u2/lib/stlport4/v9/libstlport.so.1
+      # at runtime
+      SET(CURSES_LIBRARY "curses" CACHE INTERNAL "" FORCE)
+      SET(CURSES_CURSES_LIBRARY "curses" CACHE INTERNAL "" FORCE)
+      MESSAGE(STATUS "CURSES_LIBRARY ${CURSES_LIBRARY}")
+    ENDIF()
 
-   IF(NOT CURSES_FOUND)
-     MESSAGE(FATAL_ERROR "Cannot find system ncurses library. Install ncurses-devel or use --static-ncurses")
-   ENDIF()
+    IF(CMAKE_SYSTEM_NAME MATCHES "Linux")
+      # -Wl,--as-needed breaks linking with -lcurses, e.g on Fedora 
+      # Lower-level libcurses calls are exposed by libtinfo
+      CHECK_LIBRARY_EXISTS(${CURSES_LIBRARY} tputs "" HAVE_TPUTS_IN_CURSES)
+      IF(NOT HAVE_TPUTS_IN_CURSES)
+        CHECK_LIBRARY_EXISTS(tinfo tputs "" HAVE_TPUTS_IN_TINFO)
+        IF(HAVE_TPUTS_IN_TINFO)
+          SET(CURSES_LIBRARY tinfo)
+        ENDIF()
+      ENDIF() 
+    ENDIF()
 
-   MESSAGE(STATUS "Using system ncurses: CURSES_LIBRARY=${CURSES_LIBRARY}")
-   MESSAGE(STATUS "Using system ncurses: CURSES_INCLUDE_PATH=${CURSES_INCLUDE_PATH}")
-
-   # Check for term.h in system ncurses
-   UNSET(HAVE_TERM_H CACHE)
-   SET(SAVE_CMAKE_REQUIRED_INCLUDES ${CMAKE_REQUIRED_INCLUDES})
-   SET(CMAKE_REQUIRED_INCLUDES ${CURSES_INCLUDE_PATH})
-   INCLUDE(CheckIncludeFiles)
-   CHECK_INCLUDE_FILES(term.h HAVE_TERM_H)
-   SET(CMAKE_REQUIRED_INCLUDES ${SAVE_CMAKE_REQUIRED_INCLUDES})
- ENDIF()
+  ENDIF()
 ENDMACRO()
 
 MACRO (MYSQL_USE_BUNDLED_EDITLINE)
