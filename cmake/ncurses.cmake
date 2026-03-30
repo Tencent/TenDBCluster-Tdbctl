@@ -1,13 +1,4 @@
-# Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; version 2 of the License.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+# Copyright (c) 2020, Tencent and/or its affiliates. All rights reserved.
 
 # Build bundled ncurses 5.7 from source (located in extra/ncurses-5.7)
 # to remove dependency on system ncurses.
