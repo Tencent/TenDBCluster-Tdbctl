@@ -75,14 +75,9 @@ MACRO (FIND_CURSES)
     MESSAGE(STATUS "Using bundled ncurses: CURSES_LIBRARY=${CURSES_LIBRARY}")
     MESSAGE(STATUS "Using bundled ncurses: CURSES_INCLUDE_PATH=${CURSES_INCLUDE_PATH}")
 
-    # Re-check HAVE_TERM_H with bundled ncurses include path
-    # (configure.cmake may have checked this before ncurses was built)
-    UNSET(HAVE_TERM_H CACHE)
-    SET(SAVE_CMAKE_REQUIRED_INCLUDES ${CMAKE_REQUIRED_INCLUDES})
-    SET(CMAKE_REQUIRED_INCLUDES ${CURSES_INCLUDE_PATH})
-    INCLUDE(CheckIncludeFiles)
-    CHECK_INCLUDE_FILES(term.h HAVE_TERM_H)
-    SET(CMAKE_REQUIRED_INCLUDES ${SAVE_CMAKE_REQUIRED_INCLUDES})
+    # Bundled ncurses always has term.h, skip runtime check
+    # (headers don't exist yet during configure phase with ExternalProject_Add)
+    SET(HAVE_TERM_H 1 CACHE INTERNAL "")
 
   ELSE()
     FIND_PACKAGE(Curses) 

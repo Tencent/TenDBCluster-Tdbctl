@@ -11,6 +11,11 @@
 
 # Build bundled ncurses 5.7 from source (located in extra/ncurses-5.7)
 # to remove dependency on system ncurses.
+#
+# Uses ExternalProject_Add to build ncurses during the build phase
+# (not configure phase), which is the standard CMake approach.
+
+INCLUDE(ExternalProject)
 
 SET(BUNDLED_NCURSES_SRC "${CMAKE_SOURCE_DIR}/extra/ncurses-5.7")
 SET(BUNDLED_NCURSES_BUILD "${CMAKE_BINARY_DIR}/bundled_ncurses/build")
@@ -27,80 +32,51 @@ MACRO(MYSQL_BUILD_BUNDLED_NCURSES)
       "Or manually download ncurses source and extract to extra/ncurses-<version>/")
   ENDIF()
 
-  IF(NOT EXISTS "${BUNDLED_NCURSES_INSTALL}/lib/libncurses.a")
-    MESSAGE(STATUS "Building bundled ncurses from ${BUNDLED_NCURSES_SRC} ...")
-
-    # Create build and install directories
-    FILE(MAKE_DIRECTORY "${BUNDLED_NCURSES_BUILD}")
-    FILE(MAKE_DIRECTORY "${BUNDLED_NCURSES_INSTALL}")
-
-    # Configure ncurses
-    # Build a minimal ncurses with only the features we need:
-    #   - static library only (no shared)
-    #   - no programs (tic, toe, etc.)
-    #   - no manpages
-    #   - with terminfo fallback (so it works without terminfo database)
-    #   - position independent code for linking into shared libraries
-    MESSAGE(STATUS "Configuring ncurses...")
-    EXECUTE_PROCESS(
-      COMMAND "${BUNDLED_NCURSES_SRC}/configure"
-        "--prefix=${BUNDLED_NCURSES_INSTALL}"
-        "--without-shared"
-        "--with-normal"
-        "--without-debug"
-        "--without-ada"
-        "--without-manpages"
-        "--without-progs"
-        "--without-tests"
-        "--without-cxx"
-        "--without-cxx-binding"
-        "--with-termlib"
-        "--with-fallbacks=ansi,cons25,dumb,linux,rxvt,screen,sun,vt100,vt102,vt220,xterm,xterm-256color,xterm-color"
-        "--enable-termcap"
-        "CFLAGS=-fPIC"
-        "CPPFLAGS=-fPIC"
-      WORKING_DIRECTORY "${BUNDLED_NCURSES_BUILD}"
-      RESULT_VARIABLE NCURSES_CONFIGURE_RESULT
-    )
-    IF(NOT NCURSES_CONFIGURE_RESULT EQUAL 0)
-      MESSAGE(FATAL_ERROR "Failed to configure ncurses")
-    ENDIF()
-
-    # Build ncurses
-    # Detect number of CPUs for parallel build
-    INCLUDE(ProcessorCount)
-    ProcessorCount(NCPU)
-    IF(NOT NCPU OR NCPU EQUAL 0)
-      SET(NCPU 4)
-    ENDIF()
-
-    MESSAGE(STATUS "Building ncurses with ${NCPU} parallel jobs...")
-    EXECUTE_PROCESS(
-      COMMAND make -j${NCPU}
-      WORKING_DIRECTORY "${BUNDLED_NCURSES_BUILD}"
-      RESULT_VARIABLE NCURSES_BUILD_RESULT
-    )
-    IF(NOT NCURSES_BUILD_RESULT EQUAL 0)
-      MESSAGE(FATAL_ERROR "Failed to build ncurses")
-    ENDIF()
-
-    # Install ncurses to local prefix
-    MESSAGE(STATUS "Installing ncurses to ${BUNDLED_NCURSES_INSTALL}")
-    EXECUTE_PROCESS(
-      COMMAND make install
-      WORKING_DIRECTORY "${BUNDLED_NCURSES_BUILD}"
-      RESULT_VARIABLE NCURSES_INSTALL_RESULT
-    )
-    IF(NOT NCURSES_INSTALL_RESULT EQUAL 0)
-      MESSAGE(FATAL_ERROR "Failed to install ncurses")
-    ENDIF()
-
-    MESSAGE(STATUS "Bundled ncurses built successfully")
-  ELSE()
-    MESSAGE(STATUS "Using previously built bundled ncurses at ${BUNDLED_NCURSES_INSTALL}")
+  # Detect number of CPUs for parallel build
+  INCLUDE(ProcessorCount)
+  ProcessorCount(NCPU)
+  IF(NOT NCPU OR NCPU EQUAL 0)
+    SET(NCPU 4)
   ENDIF()
 
+  # Build ncurses using ExternalProject_Add (builds during make, not cmake)
+  ExternalProject_Add(ncurses_external
+    SOURCE_DIR "${BUNDLED_NCURSES_SRC}"
+    BINARY_DIR "${BUNDLED_NCURSES_BUILD}"
+    INSTALL_DIR "${BUNDLED_NCURSES_INSTALL}"
+    
+    # Configure step - build a minimal ncurses with only the features we need
+    CONFIGURE_COMMAND "${BUNDLED_NCURSES_SRC}/configure"
+      "--prefix=<INSTALL_DIR>"
+      "--without-shared"
+      "--with-normal"
+      "--without-debug"
+      "--without-ada"
+      "--without-manpages"
+      "--without-progs"
+      "--without-tests"
+      "--without-cxx"
+      "--without-cxx-binding"
+      "--with-termlib"
+      "--with-fallbacks=ansi,cons25,dumb,linux,rxvt,screen,sun,vt100,vt102,vt220,xterm,xterm-256color,xterm-color"
+      "--enable-termcap"
+      "CFLAGS=-fPIC"
+      "CPPFLAGS=-fPIC"
+    
+    # Build step
+    BUILD_COMMAND make -j${NCPU}
+    
+    # Install step
+    INSTALL_COMMAND make install
+    
+    # Avoid repeated configure when stamp files exist
+    BUILD_BYPRODUCTS
+      "${BUNDLED_NCURSES_INSTALL}/lib/libncurses.a"
+      "${BUNDLED_NCURSES_INSTALL}/lib/libtinfo.a"
+  )
+
   # Set variables for the rest of the build system
+  # These point to where the libraries will be after ncurses_external is built
   SET(CURSES_FOUND TRUE)
 
   # ncurses 5.7 installs headers to include/ncurses/ directory
@@ -113,21 +89,13 @@ MACRO(MYSQL_BUILD_BUNDLED_NCURSES)
   SET(CURSES_CURSES_H_PATH "${CURSES_INCLUDE_PATH}"
     CACHE PATH "" FORCE)
 
-  # Check which libraries were built
-  IF(EXISTS "${BUNDLED_NCURSES_INSTALL}/lib/libncurses.a")
-    SET(CURSES_LIBRARY "${BUNDLED_NCURSES_INSTALL}/lib/libncurses.a"
-      CACHE FILEPATH "Path to bundled ncurses library" FORCE)
-    SET(CURSES_CURSES_LIBRARY "${BUNDLED_NCURSES_INSTALL}/lib/libncurses.a"
-      CACHE FILEPATH "" FORCE)
-  ENDIF()
-
-  # Also include libtinfo if built separately
-  IF(EXISTS "${BUNDLED_NCURSES_INSTALL}/lib/libtinfo.a")
-    SET(CURSES_TINFO_LIBRARY "${BUNDLED_NCURSES_INSTALL}/lib/libtinfo.a"
-      CACHE FILEPATH "Path to bundled tinfo library" FORCE)
-  ELSE()
-    SET(CURSES_TINFO_LIBRARY "" CACHE FILEPATH "" FORCE)
-  ENDIF()
+  # Set library paths (will exist after ncurses_external builds)
+  SET(CURSES_LIBRARY "${BUNDLED_NCURSES_INSTALL}/lib/libncurses.a"
+    CACHE FILEPATH "Path to bundled ncurses library" FORCE)
+  SET(CURSES_CURSES_LIBRARY "${BUNDLED_NCURSES_INSTALL}/lib/libncurses.a"
+    CACHE FILEPATH "" FORCE)
+  SET(CURSES_TINFO_LIBRARY "${BUNDLED_NCURSES_INSTALL}/lib/libtinfo.a"
+    CACHE FILEPATH "Path to bundled tinfo library" FORCE)
 
   SET(CURSES_HAVE_CURSES_H FALSE)
   SET(CURSES_HAVE_NCURSES_H TRUE)
@@ -135,9 +103,11 @@ MACRO(MYSQL_BUILD_BUNDLED_NCURSES)
 
   SET(USING_BUNDLED_NCURSES TRUE CACHE INTERNAL "Using bundled ncurses" FORCE)
 
-  MESSAGE(STATUS "Bundled ncurses: CURSES_INCLUDE_PATH=${CURSES_INCLUDE_PATH}")
-  MESSAGE(STATUS "Bundled ncurses: CURSES_LIBRARY=${CURSES_LIBRARY}")
-  IF(CURSES_TINFO_LIBRARY)
-    MESSAGE(STATUS "Bundled ncurses: CURSES_TINFO_LIBRARY=${CURSES_TINFO_LIBRARY}")
-  ENDIF()
+  # Export the target name so libedit can add dependency
+  SET(NCURSES_EXTERNAL_TARGET ncurses_external PARENT_SCOPE)
+
+  MESSAGE(STATUS "Using bundled ncurses (will build during make)")
+  MESSAGE(STATUS "  CURSES_INCLUDE_PATH=${CURSES_INCLUDE_PATH}")
+  MESSAGE(STATUS "  CURSES_LIBRARY=${CURSES_LIBRARY}")
+  MESSAGE(STATUS "  CURSES_TINFO_LIBRARY=${CURSES_TINFO_LIBRARY}")
 ENDMACRO()
