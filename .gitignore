@@ -3124,3 +3124,7 @@ client/mysql_ssl_rsa_setup
 # Allow
 !include/*/boost/geometry/*
 !mysql-test/suite/tdbctl/data/*
+
+# Allow ncurses source code needed for compilation
+!extra/ncurses-5.7/
+!extra/ncurses-5.7/**
