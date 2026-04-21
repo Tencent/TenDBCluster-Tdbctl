@@ -16,48 +16,32 @@
 INCLUDE_DIRECTORIES(BEFORE ${CMAKE_CURRENT_SOURCE_DIR} )
 INCLUDE(CheckIncludeFile)
 include(CheckFunctionExists)
+CHECK_INCLUDE_FILES(term.h HAVE_TERM_H)
 
-# When using bundled ncurses, add its include path to CMAKE_REQUIRED_INCLUDES
-# so that CHECK_INCLUDE_FILES and CHECK_CXX_SOURCE_COMPILES can find headers
-# But skip these checks since bundled ncurses always has term.h and tgoto
-IF(USING_BUNDLED_NCURSES)
-  # Bundled ncurses always has these features, skip runtime checks
-  # (headers and libs don't exist yet during configure phase)
-  SET(HAVE_TERM_H 1 CACHE INTERNAL "")
-  SET(HAVE_DECL_TGOTO 1 CACHE INTERNAL "")
-ELSE()
-  IF(CURSES_INCLUDE_PATH)
-    SET(CMAKE_REQUIRED_INCLUDES ${CURSES_INCLUDE_PATH})
-  ENDIF()
-
-  CHECK_INCLUDE_FILES(term.h HAVE_TERM_H)
-
-  SET(CMAKE_REQUIRED_LIBRARIES ${CURSES_LIBRARY})
-  CHECK_CXX_SOURCE_COMPILES("
+SET(CMAKE_REQUIRED_LIBRARIES ${CURSES_LIBRARY})
+CHECK_CXX_SOURCE_COMPILES("
 #include <term.h>
 int main()
 {
   tgoto(0,0,0);
   return 0;
 }" HAVE_DECL_TGOTO)
-  IF(NOT HAVE_DECL_TGOTO)
-    # On Solaris 11, term.h is broken, curses.h is also required.
-    CHECK_CXX_SOURCE_COMPILES("
-    #include <curses.h>
-    #include <term.h>
-    int main()
-    {
-      tgoto(0,0,0);
-      return 0;
-    }" HAVE_DECL_TGOTO2)
-    IF(HAVE_DECL_TGOTO2)
-      SET(HAVE_DECL_TGOTO 1 CACHE INTERNAL "" FORCE)
-    ENDIF()
+IF(NOT HAVE_DECL_TGOTO)
+  # On Solaris 11, term.h is broken, curses.h is also required.
+  CHECK_CXX_SOURCE_COMPILES("
+  #include <curses.h>
+  #include <term.h>
+  int main()
+  {
+    tgoto(0,0,0);
+    return 0;
+  }" HAVE_DECL_TGOTO2)
+  IF(HAVE_DECL_TGOTO2)
+    SET(HAVE_DECL_TGOTO 1 CACHE INTERNAL "" FORCE)
   ENDIF()
-
-  SET(CMAKE_REQUIRED_LIBRARIES)
-  SET(CMAKE_REQUIRED_INCLUDES)
 ENDIF()
+
+SET(CMAKE_REQUIRED_LIBRARIES)
 
 
 
@@ -204,9 +188,4 @@ SET(LIBEDIT_SOURCES
 )
 ADD_CONVENIENCE_LIBRARY(edit ${LIBEDIT_SOURCES})
 TARGET_LINK_LIBRARIES(edit ${CURSES_LIBRARY})
-
-# When using bundled ncurses, add dependency so ncurses builds first
-IF(TARGET ncurses_external)
-  ADD_DEPENDENCIES(edit ncurses_external)
-ENDIF()
 
