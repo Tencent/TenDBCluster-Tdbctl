@@ -5848,6 +5848,10 @@ mysql_execute_command(THD *thd, bool first_level)
     }
     case TC_SQLCOM_FLUSH_ROUTING:
     {
+      /* SUPER access is required to flush routing */
+      if (check_global_access(thd, SUPER_ACL))
+        goto error;
+
       /**
        * Block the following types of commands:
        * - Commands that modify routing: TC_SQLCOM_CREATE_NODE, TC_SQLCOM_ALTER_NODE, TC_SQLCOM_DROP_NODE
