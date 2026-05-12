@@ -1,0 +1,31 @@
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+
+# Case 1: TDBCTL FLUSH ROUTING without SUPER privilege should fail.
+# Create a normal user.
+SET tc_admin=OFF;
+CREATE USER IF NOT EXISTS 'test_user'@'%' IDENTIFIED BY 'test_pwd';
+GRANT USAGE ON *.* TO 'test_user'@'%';
+GRANT SELECT ON test.* TO 'test_user'@'%';
+FLUSH PRIVILEGES;
+# Connect as that user (without SUPER privilege).
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+ERROR 42000: Access denied; you need (at least one of) the SUPER privilege(s) for this operation
+
+# Case 2: TDBCTL FLUSH ROUTING with SUPER privilege should succeed.
+# Grant SUPER privilege to the test user.
+SET tc_admin=OFF;
+GRANT SUPER ON *.* TO 'test_user'@'%';
+FLUSH PRIVILEGES;
+# Reconnect as that user (with SUPER privilege).
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+# Cleanup: revoke SUPER and drop test user.
+SET tc_admin=OFF;
+REVOKE SUPER ON *.* FROM 'test_user'@'%';
+DROP USER IF EXISTS 'test_user'@'%';
+FLUSH PRIVILEGES;
+
+# Restore to the initial state.
+SET @@SESSION.tc_admin = @origin_tc_admin;

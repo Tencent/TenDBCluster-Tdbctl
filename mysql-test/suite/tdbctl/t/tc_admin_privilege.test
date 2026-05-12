@@ -1,0 +1,55 @@
+# Test the privilege requirements for TDBCTL management commands.
+# Currently tests: TDBCTL FLUSH ROUTING requires SUPER privilege.
+
+--source suite/tdbctl/inc/tdbctl_conn_init.inc
+
+--connection tdbctl0
+SELECT @@SESSION.tc_admin INTO @origin_tc_admin;
+
+--echo
+--echo # Case 1: TDBCTL FLUSH ROUTING without SUPER privilege should fail.
+--echo # Create a normal user.
+SET tc_admin=OFF;
+CREATE USER IF NOT EXISTS 'test_user'@'%' IDENTIFIED BY 'test_pwd';
+GRANT USAGE ON *.* TO 'test_user'@'%';
+GRANT SELECT ON test.* TO 'test_user'@'%';
+FLUSH PRIVILEGES;
+
+--echo # Connect as that user (without SUPER privilege).
+--connect (test_conn,127.0.0.1,test_user,test_pwd,test,46000,)
+
+--connection test_conn
+SET tc_admin=ON;
+--error ER_SPECIFIC_ACCESS_DENIED_ERROR
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Case 2: TDBCTL FLUSH ROUTING with SUPER privilege should succeed.
+--echo # Grant SUPER privilege to the test user.
+--connection tdbctl0
+SET tc_admin=OFF;
+GRANT SUPER ON *.* TO 'test_user'@'%';
+FLUSH PRIVILEGES;
+
+--echo # Reconnect as that user (with SUPER privilege).
+--connect (test_conn2,127.0.0.1,test_user,test_pwd,test,46000,)
+
+--connection test_conn2
+SET tc_admin=ON;
+TDBCTL FLUSH ROUTING;
+
+--echo
+--echo # Cleanup: revoke SUPER and drop test user.
+--connection tdbctl0
+SET tc_admin=OFF;
+REVOKE SUPER ON *.* FROM 'test_user'@'%';
+DROP USER IF EXISTS 'test_user'@'%';
+FLUSH PRIVILEGES;
+
+--disconnect test_conn
+--disconnect test_conn2
+
+--echo
+--echo # Restore to the initial state.
+--connection tdbctl0
+SET @@SESSION.tc_admin = @origin_tc_admin;
